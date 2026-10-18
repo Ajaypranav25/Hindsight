@@ -1,0 +1,18 @@
+// title: Closures remember
+// summary: Each counter keeps its own count alive after make_counter returns. Find both in the heap.
+
+fn make_counter(start) {
+  var count = start
+  let increment = || {
+    count += 1
+    count
+  }
+  increment
+}
+
+let a = make_counter(0)
+let b = make_counter(100)
+print(a())
+print(a())
+print(b())
+print(a())

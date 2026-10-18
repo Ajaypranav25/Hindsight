@@ -1,0 +1,15 @@
+// title: Quicksort with filter
+// summary: A functional quicksort. Library calls like filter are skipped while just-my-code is on.
+
+fn quicksort(xs) {
+  match xs {
+    [] => []
+    [pivot, ...rest] => {
+      let smaller = filter(rest, |x| x < pivot)
+      let larger = filter(rest, |x| x >= pivot)
+      quicksort(smaller) + [pivot] + quicksort(larger)
+    }
+  }
+}
+
+print(quicksort([33, 4, 15, 8, 42, 16, 23]))

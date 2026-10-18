@@ -1,0 +1,17 @@
+// title: Bug hunt
+// summary: The average comes out wrong and the program stops. Select "total" and press ⟲ to find the step that set it.
+// outcome: error
+
+let scores = [88, 92, 79, 95, 61, 84]
+
+fn average(xs) {
+  var total = 0
+  for i in 1..len(xs) {
+    total += xs[i]
+  }
+  total / len(xs)
+}
+
+let avg = average(scores)
+print("average score: {avg}")
+assert(avg > 80, "the average should be above 80, got {avg}")

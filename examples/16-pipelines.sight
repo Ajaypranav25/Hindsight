@@ -1,0 +1,25 @@
+// title: Pipelines
+// summary: Data flows top to bottom through |>. Turn off just-my-code to step inside the library stages.
+
+let orders = [
+  {id: 1, customer: "ada", amount: 30, paid: true},
+  {id: 2, customer: "grace", amount: 12, paid: false},
+  {id: 3, customer: "ada", amount: 55, paid: true},
+  {id: 4, customer: "linus", amount: 8, paid: true},
+  {id: 5, customer: "grace", amount: 41, paid: true},
+]
+
+let revenue = orders
+  |> filter(|o| o.paid)
+  |> map(|o| o.amount)
+  |> sum()
+print("revenue: {revenue}")
+
+let by_customer = orders
+  |> filter(|o| o.paid)
+  |> group_by(|o| o.customer)
+
+for name in keys(by_customer) {
+  let total = by_customer[name] |> map(|o| o.amount) |> sum()
+  print("{name}: {total}")
+}

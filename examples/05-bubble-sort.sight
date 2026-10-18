@@ -1,0 +1,24 @@
+// title: Bubble sort, swap by swap
+// summary: One list changes shape in place. Every swap is a recorded write you can jump back to.
+
+let xs = [5, 1, 4, 2, 8, 3]
+
+fn swap(list, i, j) {
+  let held = list[i]
+  list[i] = list[j]
+  list[j] = held
+}
+
+var unsorted = len(xs)
+var swapped = true
+while swapped {
+  swapped = false
+  for i in 1..unsorted {
+    if xs[i - 1] > xs[i] {
+      swap(xs, i - 1, i)
+      swapped = true
+    }
+  }
+  unsorted -= 1
+}
+print(xs)

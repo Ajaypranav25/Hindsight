@@ -1,0 +1,37 @@
+// title: Linked list
+// summary: Records pointing at records. Reversing the chain rewires every arrow in the heap graph.
+
+fn prepend(rest, value) {
+  ({value, next: rest})
+}
+
+var chain = nil
+for n in [4, 3, 2, 1] {
+  chain = prepend(chain, n)
+}
+
+fn describe(node) {
+  var parts = []
+  var at = node
+  while at != nil {
+    push(parts, str(at.value))
+    at = at.next
+  }
+  join(parts, " -> ")
+}
+print(describe(chain))
+
+fn reversed(node) {
+  var previous = nil
+  var current = node
+  while current != nil {
+    let following = current.next
+    current.next = previous
+    previous = current
+    current = following
+  }
+  previous
+}
+
+chain = reversed(chain)
+print(describe(chain))

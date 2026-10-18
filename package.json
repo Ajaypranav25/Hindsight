@@ -16,6 +16,7 @@
     "build": "npm run build:studio && npm run build:cli",
     "build:studio": "vite build",
     "build:cli": "node scripts/build-cli.mjs",
+    "build:page": "vite build --config vite.page.config.ts",
     "preview": "vite preview",
     "sight": "tsx src/cli/main.ts",
     "test": "vitest run",

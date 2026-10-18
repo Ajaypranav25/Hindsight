@@ -1,0 +1,65 @@
+// title: Breadth-first maze
+// summary: A queue of frontier squares floods the maze. Watch the queue grow and shrink in the heap.
+
+let maze = [
+  "#########",
+  "#S..#...#",
+  "#.#.#.#.#",
+  "#.#...#.#",
+  "#.#####.#",
+  "#.....#E#",
+  "#########",
+]
+
+fn locate(symbol) {
+  for r in 0..len(maze) {
+    for c in 0..len(maze[r]) {
+      if maze[r][c] == symbol { return [r, c] }
+    }
+  }
+  nil
+}
+
+fn key(pos) {
+  "{pos[0]},{pos[1]}"
+}
+
+let start = locate("S")
+let goal = locate("E")
+
+fn search() {
+  let queue = [start]
+  let came_from = {}
+  came_from[key(start)] = nil
+  while len(queue) > 0 {
+    let [r, c] = remove(queue, 0)
+    if r == goal[0] and c == goal[1] {
+      return came_from
+    }
+    for [dr, dc] in [[0, 1], [1, 0], [0, -1], [-1, 0]] {
+      let next = [r + dr, c + dc]
+      if maze[next[0]][next[1]] != "#" and not has(came_from, key(next)) {
+        came_from[key(next)] = [r, c]
+        push(queue, next)
+      }
+    }
+  }
+  nil
+}
+
+let parents = search()
+var path = []
+var at = goal
+while at != nil {
+  push(path, at)
+  at = parents[key(at)]
+}
+print("shortest path: {len(path) - 1} steps")
+
+let grid = map(maze, |row| chars(row))
+for [r, c] in path {
+  if grid[r][c] == "." { grid[r][c] = "o" }
+}
+for row in grid {
+  print(join(row))
+}

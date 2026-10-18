@@ -1,0 +1,16 @@
+// title: Towers of Hanoi
+// summary: Three pegs, seven moves, one recursive idea. Step out of a call to skip a whole sub-tower.
+
+let pegs = {A: [3, 2, 1], B: [], C: []}
+
+fn move(n, from, to, via) {
+  if n == 0 { return }
+  move(n - 1, from, via, to)
+  let disk = pop(pegs[from])
+  push(pegs[to], disk)
+  print("move disk {disk} from {from} to {to}")
+  move(n - 1, via, to, from)
+}
+
+move(3, "A", "C", "B")
+print(pegs)

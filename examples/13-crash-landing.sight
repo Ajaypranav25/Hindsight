@@ -1,0 +1,13 @@
+// title: Crash landing
+// summary: This launch fails four calls deep. The pen starts at the crash; step backwards to see why.
+// outcome: error
+
+fn launch(stages, i) {
+  if i > len(stages) {
+    return "orbit"
+  }
+  print("stage {i}: {stages[i]}")
+  launch(stages, i + 1)
+}
+
+launch(["ignition", "boosters", "main engine", "separation"], 0)

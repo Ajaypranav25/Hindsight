@@ -1,0 +1,21 @@
+// title: Sieve of Eratosthenes
+// summary: Crossing out multiples. The heat gutter shows which lines did the most work.
+
+let limit = 60
+let is_prime = times(limit + 1, |_| true)
+is_prime[0] = false
+is_prime[1] = false
+
+for n in 2..=limit {
+  if is_prime[n] and n * n <= limit {
+    var multiple = n * n
+    while multiple <= limit {
+      is_prime[multiple] = false
+      multiple += n
+    }
+  }
+}
+
+let primes = range(limit + 1) |> filter(|n| is_prime[n])
+print(primes)
+print("{len(primes)} primes up to {limit}")

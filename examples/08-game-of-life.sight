@@ -1,0 +1,58 @@
+// title: Game of Life
+// summary: Each printed board is a moment in time. Click a board in the console to jump to that generation.
+
+let width = 8
+let height = 6
+
+fn empty_board() {
+  times(height, |_| times(width, |_| false))
+}
+
+fn alive(board, row, col) {
+  let r = (row + height) % height
+  let c = (col + width) % width
+  board[r][c]
+}
+
+fn neighbours(board, row, col) {
+  var count = 0
+  for dr in -1..=1 {
+    for dc in -1..=1 {
+      if (dr != 0 or dc != 0) and alive(board, row + dr, col + dc) {
+        count += 1
+      }
+    }
+  }
+  count
+}
+
+fn advance(board) {
+  var next = []
+  for row in 0..height {
+    var line = []
+    for col in 0..width {
+      let n = neighbours(board, row, col)
+      push(line, n == 3 or (board[row][col] and n == 2))
+    }
+    push(next, line)
+  }
+  next
+}
+
+fn render(board) {
+  var rows = []
+  for line in board {
+    push(rows, join(map(line, |cell| if cell { "#" } else { "." })))
+  }
+  join(rows, "\n")
+}
+
+var board = empty_board()
+for [r, c] in [[0, 1], [1, 2], [2, 0], [2, 1], [2, 2]] {
+  board[r][c] = true
+}
+
+for generation in 0..5 {
+  print("generation {generation}\n{render(board)}")
+  board = advance(board)
+}

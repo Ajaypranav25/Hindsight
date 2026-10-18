@@ -1,0 +1,13 @@
+// title: Word frequency
+// summary: A record as a tally. Open the history of "counts" to see every increment as it happened.
+
+let text = "the quick brown fox jumps over the lazy dog while the fox barks at the moon"
+let counts = {}
+for word in split(text, " ") {
+  counts[word] = get(counts, word, 0) + 1
+}
+
+let ranked = entries(counts) |> sort_by(|[word, n]| -n)
+for [word, n] in take(ranked, 5) {
+  print("{pad_end(word, 6)} {repeat("*", n)}")
+}

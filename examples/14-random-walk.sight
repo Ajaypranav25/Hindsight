@@ -1,0 +1,10 @@
+// title: Random walk
+// summary: Randomness is seeded, so rewinding replays the exact same walk. Change the seed for a new one.
+
+seed(2026)
+var position = 0
+for step in 1..=24 {
+  position += if random() < 0.5 { -1 } else { 1 }
+  print("{pad_start(str(step), 2)} {repeat(" ", position + 24)}*")
+}
+print("ended {abs(position)} steps from home")

@@ -1,0 +1,21 @@
+// title: Hello, Hindsight
+// summary: A first tour. Run it, then drag the red pen backwards to un-run it.
+
+let name = "Hindsight"
+print("Hello from {name}!")
+
+fn greet(person, excited) {
+  let mark = if excited { "!" } else { "." }
+  "Nice to meet you, {person}{mark}"
+}
+
+let people = ["Ada", "Grace", "Linus"]
+for person in people {
+  print(greet(person, len(person) > 3))
+}
+
+var total = 0
+for n in 1..=10 {
+  total += n
+}
+print("1 + 2 + ... + 10 = {total}")

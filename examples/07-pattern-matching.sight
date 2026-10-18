@@ -1,0 +1,22 @@
+// title: Pattern matching
+// summary: Shapes, ranges and guards. Step through slowly to watch each arm being tried in turn.
+
+fn describe(value) {
+  match value {
+    nil => "nothing"
+    0 => "zero"
+    1..10 => "a small number"
+    n if type(n) == "number" => "the number {n}"
+    "" => "an empty string"
+    [] => "an empty list"
+    [only] => "a list with just {only}"
+    [first, ...rest] => "a list starting with {first} and {len(rest)} more"
+    {name, age} => "{name}, aged {age}"
+    _ => "something else: {repr(value)}"
+  }
+}
+
+let things = [nil, 0, 7, 42, "", [], [9], [1, 2, 3], {name: "Ada", age: 36}, "hello"]
+for thing in things {
+  print(describe(thing))
+}
