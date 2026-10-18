@@ -47,7 +47,7 @@ export interface RuntimeErrorInfo {
   readonly code: RuntimeErrorCode
   readonly message: string
   readonly hint?: string
-  /** Location in the main source; failures inside library code map to the user call site. */
+  /** Location in the main source (SPEC §10.4); failures in library code map to the user call. */
   readonly span: Span
   /** Innermost first. */
   readonly stack: readonly StackEntry[]
@@ -81,9 +81,12 @@ export interface Location {
   readonly library: boolean
   /** Span of the instruction, in its source (`main` or the prelude). */
   readonly span: Span
+  /** Span of the innermost enclosing statement (or match arm, or lambda expression body). */
   readonly stmtSpan: Span
   /** 1-based line of `span.start` in its source. */
   readonly line: number
+  /** 1-based line of `stmtSpan.start`: the line breakpoints and execution heat use. */
+  readonly stmtLine: number
   readonly stmtStart: boolean
   /** Instruction mnemonic, e.g. `Add`. */
   readonly opName: string
@@ -100,7 +103,7 @@ export type ValueView =
       readonly kind: 'ref'
       readonly id: number
       readonly type: RefType
-      /** `repr` truncated to about 48 characters. */
+      /** A bounded `repr`, about 48 characters at most. */
       readonly preview: string
     }
 
@@ -109,6 +112,7 @@ export type WriteTarget =
   | { readonly kind: 'local'; readonly frameUid: number; readonly slot: number }
   | { readonly kind: 'global'; readonly name: string }
   | { readonly kind: 'field'; readonly objectId: number; readonly key: string }
+  /** `index` is always the normalized, non-negative index. */
   | { readonly kind: 'element'; readonly objectId: number; readonly index: number }
   | { readonly kind: 'object'; readonly objectId: number }
   | { readonly kind: 'cell'; readonly cellId: number }
@@ -119,12 +123,22 @@ export interface CaptureView {
   readonly target: WriteTarget
 }
 
+/** Lists and records include at most `limit` (default 100) items/entries; `length` is the total. */
 export type ObjectView =
-  | { readonly type: 'list'; readonly id: number; readonly items: readonly ValueView[] }
+  | {
+      readonly type: 'list'
+      readonly id: number
+      /** Index of `items[0]` within the list. */
+      readonly offset: number
+      readonly items: readonly ValueView[]
+      readonly length: number
+    }
   | {
       readonly type: 'record'
       readonly id: number
+      readonly offset: number
       readonly entries: readonly { readonly key: string; readonly value: ValueView }[]
+      readonly length: number
     }
   | {
       readonly type: 'function'
@@ -190,13 +204,13 @@ export interface GlobalView {
 
 export interface StateView {
   readonly time: number
-  /** The instruction about to execute; at time N, the failing instruction or null. */
+  /** The instruction about to execute; at N, the failing or paused instruction (null if finished). */
   readonly location: Location | null
   /** Outermost first; the last frame is executing. Empty at N when the program finished. */
   readonly frames: readonly FrameView[]
   /** Defined user globals in definition order. */
   readonly globals: readonly GlobalView[]
-  /** Objects reachable from frames and globals (bounded by `heapLimit`). */
+  /** Objects reachable from the roots, breadth first, bounded by `heapLimit` (ARCHITECTURE §7.4). */
   readonly heap: ReadonlyMap<number, ObjectView>
   readonly heapTruncated: boolean
   /** Number of output events with `time < this.time`. */
@@ -211,15 +225,43 @@ export interface StateView {
 /** A value stored with an event: primitives as-is, objects by id. */
 export type TracedValue = null | boolean | number | string | { readonly ref: number }
 
-export type EventKind = 'declare' | 'write' | 'alloc'
+/**
+ * `declare`/`write`: a variable, field or element got a value. `alloc`: an object was created
+ * (target `{kind: 'object'}`). `list`: a list changed shape (target `{kind: 'object'}`, see `op`).
+ * `delete`: `delete(record, key)` removed a key (target `{kind: 'field'}`, value nil).
+ */
+export type EventKind = 'declare' | 'write' | 'alloc' | 'list' | 'delete'
+
+export type ListOp = 'append' | 'extend' | 'insert' | 'remove' | 'pop'
 
 export interface ProvenanceEvent {
   /** The step that performed it; the effect is visible from `time + 1`. */
   readonly time: number
   readonly kind: EventKind
   readonly target: WriteTarget
-  /** The value written (for `alloc`: `{ref: id}`). */
+  /** The value written; for `alloc` `{ref: id}`; for `list` the item (or the extended iterable). */
   readonly value: TracedValue
+  /** For `list` events. */
+  readonly op?: ListOp
+  /** For `list` events: the normalized index the change happened at. */
+  readonly index?: number
+  /** For `list` events: number of items appended by `extend` (1 otherwise). */
+  readonly count?: number
+}
+
+export interface HistoryWindow {
+  readonly from?: number
+  readonly to?: number
+  /** Default 1000. */
+  readonly limit?: number
+}
+
+export interface HistoryResult {
+  /** Ascending by time; evenly sampled (first and last kept) when `truncated`. */
+  readonly events: readonly ProvenanceEvent[]
+  /** Number of events in the window before sampling. */
+  readonly total: number
+  readonly truncated: boolean
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -253,8 +295,9 @@ export interface AsyncRecordOptions extends RecordOptions {
 }
 
 /**
- * A recorded run. Times are integers in `0..=length`. Treat it as immutable: every method is a
- * query (internal caches aside); `extend` returns a new Recording.
+ * A recorded run. Times are integers in `0..=length`; any other time throws `InternalError`.
+ * Treat it as immutable: every method is a query (internal caches aside); `extend` and
+ * `extendAsync` return a new Recording and leave this one unchanged.
  */
 export interface Recording {
   readonly program: Program
@@ -263,12 +306,18 @@ export interface Recording {
   readonly outcome: Outcome
   readonly outputs: readonly OutputEvent[]
 
-  /** The instruction about to execute at `t`; at N, the failing/paused instruction or null. */
+  /** The instruction about to execute at `t`; at N, the failing or paused instruction (or null). */
   locationAt(t: number): Location | null
   depthAt(t: number): number
   /** Depth per step, length N (do not mutate). */
   depthSeries(): Int32Array
   stateAt(t: number): StateView
+  /** A reachable object at `t`, paging long lists and records; null when not reachable at `t`. */
+  objectAt(
+    t: number,
+    id: number,
+    range?: { readonly offset: number; readonly limit: number },
+  ): ObjectView | null
   /** Number of output events with `time < t`. */
   outputCountAt(t: number): number
 
@@ -279,15 +328,18 @@ export interface Recording {
     breakpoints: ReadonlySet<number>,
     options?: NavOptions,
   ): number
-  /** Times at which a statement on `line` (user code) starts, ascending. */
+  /** Times `t < N` at which a user-code statement on `line` (its statement line) starts. */
   lineHits(line: number): readonly number[]
   /** line → number of hits. */
   lineHitCounts(): ReadonlyMap<number, number>
 
+  /** The latest event that produced the target's value before `before` (ARCHITECTURE §7.3). */
   origin(target: WriteTarget, before: number): ProvenanceEvent | null
-  history(target: WriteTarget): readonly ProvenanceEvent[]
+  /** The events of the binding live at `at` (ARCHITECTURE §7.3). */
+  history(target: WriteTarget, at: number, window?: HistoryWindow): HistoryResult
   allocationTime(objectId: number): number | null
 
-  /** Continues a `step-limit` recording for up to `extraSteps` more steps. */
+  /** Continues a `step-limit` or `aborted` recording for up to `extraSteps` more steps. */
   extend(extraSteps: number): Recording
+  extendAsync(extraSteps: number, options?: AsyncRecordOptions): Promise<Recording>
 }

@@ -1,0 +1,146 @@
+/*
+ * Hindsight Studio design tokens.
+ * Layout concept: a strip-chart recorder for programs — graph paper, blue-black ink,
+ * a red recording pen for "now", cobalt event markers for everything you can jump to.
+ * Every color is a token. Light values live on bare :root; dark values are redefined for
+ * the system preference (unless the page forces light) and for an explicit data-theme="dark".
+ */
+:root {
+  /* surfaces */
+  --bg: #e9eee8;
+  --surface: #f5f8f3;
+  --surface-raised: #fbfcfa;
+  --surface-sunken: #e1e8e0;
+  --rule: #c9d4c8;
+  --grid-minor: #dbe5da;
+  --grid-major: #bccdbb;
+
+  /* ink */
+  --ink: #17202b;
+  --ink-muted: #4f5b6a;
+  --ink-faint: #7f8a98;
+  --ink-inverse: #f5f8f3;
+
+  /* instruments */
+  --pen: #cf3427;
+  --pen-soft: rgb(207 52 39 / 0.14);
+  --marker: #2958d0;
+  --marker-soft: rgb(41 88 208 / 0.12);
+  --trace-fill: rgb(23 32 43 / 0.1);
+  --trace-line: #17202b;
+  --highlight-line: rgb(41 88 208 / 0.08);
+  --highlight-span: rgb(207 52 39 / 0.16);
+  --highlight-caller: rgb(127 138 152 / 0.18);
+
+  /* semantic */
+  --ok: #2c7a4b;
+  --warn: #a8691a;
+  --error: #b42318;
+  --error-soft: rgb(180 35 24 / 0.1);
+
+  /* syntax */
+  --syn-keyword: #7a3b98;
+  --syn-string: #2b7a4b;
+  --syn-number: #b0521a;
+  --syn-comment: #7a8593;
+  --syn-builtin: #1f5aa8;
+  --syn-punct: #4f5b6a;
+  --syn-ident: #17202b;
+
+  /* type */
+  --font-display: 'Barlow Condensed', 'Arial Narrow', 'Roboto Condensed', sans-serif;
+  --font-ui: 'Barlow', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono:
+    'JetBrains Mono', ui-monospace, 'Cascadia Mono', 'SF Mono', Menlo, Consolas, monospace;
+  --text-xs: 0.6875rem;
+  --text-sm: 0.78125rem;
+  --text-md: 0.875rem;
+  --text-lg: 1rem;
+  --text-xl: 1.25rem;
+  --label-tracking: 0.12em;
+
+  /* space and shape */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --radius-sm: 3px;
+  --radius-md: 6px;
+  --shadow-pop: 0 6px 24px rgb(23 32 43 / 0.16), 0 1px 3px rgb(23 32 43 / 0.12);
+  --focus-ring: 0 0 0 2px var(--surface), 0 0 0 4px var(--marker);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #0e1319;
+    --surface: #141a21;
+    --surface-raised: #1a222b;
+    --surface-sunken: #0a0f14;
+    --rule: #26313d;
+    --grid-minor: #1c2631;
+    --grid-major: #2a3847;
+    --ink: #e1e7ee;
+    --ink-muted: #9aa5b3;
+    --ink-faint: #677385;
+    --ink-inverse: #0e1319;
+    --pen: #ff5a4c;
+    --pen-soft: rgb(255 90 76 / 0.18);
+    --marker: #79a0ff;
+    --marker-soft: rgb(121 160 255 / 0.16);
+    --trace-fill: rgb(225 231 238 / 0.1);
+    --trace-line: #c9d2dd;
+    --highlight-line: rgb(121 160 255 / 0.1);
+    --highlight-span: rgb(255 90 76 / 0.22);
+    --highlight-caller: rgb(154 165 179 / 0.18);
+    --ok: #5cc28a;
+    --warn: #e2a64b;
+    --error: #ff6b5d;
+    --error-soft: rgb(255 107 93 / 0.12);
+    --syn-keyword: #d5a3ef;
+    --syn-string: #8fd2a5;
+    --syn-number: #f1a06b;
+    --syn-comment: #6d7a8b;
+    --syn-builtin: #8ab4ff;
+    --syn-punct: #9aa5b3;
+    --syn-ident: #e1e7ee;
+    --shadow-pop: 0 8px 28px rgb(0 0 0 / 0.5), 0 1px 3px rgb(0 0 0 / 0.4);
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --bg: #0e1319;
+  --surface: #141a21;
+  --surface-raised: #1a222b;
+  --surface-sunken: #0a0f14;
+  --rule: #26313d;
+  --grid-minor: #1c2631;
+  --grid-major: #2a3847;
+  --ink: #e1e7ee;
+  --ink-muted: #9aa5b3;
+  --ink-faint: #677385;
+  --ink-inverse: #0e1319;
+  --pen: #ff5a4c;
+  --pen-soft: rgb(255 90 76 / 0.18);
+  --marker: #79a0ff;
+  --marker-soft: rgb(121 160 255 / 0.16);
+  --trace-fill: rgb(225 231 238 / 0.1);
+  --trace-line: #c9d2dd;
+  --highlight-line: rgb(121 160 255 / 0.1);
+  --highlight-span: rgb(255 90 76 / 0.22);
+  --highlight-caller: rgb(154 165 179 / 0.18);
+  --ok: #5cc28a;
+  --warn: #e2a64b;
+  --error: #ff6b5d;
+  --error-soft: rgb(255 107 93 / 0.12);
+  --syn-keyword: #d5a3ef;
+  --syn-string: #8fd2a5;
+  --syn-number: #f1a06b;
+  --syn-comment: #6d7a8b;
+  --syn-builtin: #8ab4ff;
+  --syn-punct: #9aa5b3;
+  --syn-ident: #e1e7ee;
+  --shadow-pop: 0 8px 28px rgb(0 0 0 / 0.5), 0 1px 3px rgb(0 0 0 / 0.4);
+  color-scheme: dark;
+}

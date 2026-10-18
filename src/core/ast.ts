@@ -220,12 +220,18 @@ export interface Logical {
   readonly span: Span
 }
 
-/** A call. `pipe` is true when the call was written with `|>` (SPEC §7.11). */
+/**
+ * A call. `pipe` is true when the call was written with `|>` (SPEC §7.11); then `span` covers the
+ * whole pipe expression and `pipeSpan` runs from the `|>` token to the end of the right-hand side
+ * (it is the span runtime errors of this call are reported at, SPEC §10.4). Otherwise `pipeSpan`
+ * is null.
+ */
 export interface Call {
   readonly kind: 'Call'
   readonly callee: Expr
   readonly args: readonly Expr[]
   readonly pipe: boolean
+  readonly pipeSpan: Span | null
   readonly span: Span
 }
 
@@ -236,11 +242,13 @@ export interface Index {
   readonly span: Span
 }
 
+/** `object.name`. `accessSpan` runs from the `.` to the end of the name (SPEC §10.4). */
 export interface Member {
   readonly kind: 'Member'
   readonly object: Expr
   readonly name: string
   readonly nameSpan: Span
+  readonly accessSpan: Span
   readonly span: Span
 }
 

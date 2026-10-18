@@ -26,8 +26,9 @@ export type CompileErrorCode =
   | 'E025'
   | 'E026'
   | 'E027'
+  | 'E028'
 
-/** Runtime error codes. Messages are cataloged in docs/SPEC.md §11.2. */
+/** Runtime error codes. Messages are cataloged in docs/SPEC.md §11.3. */
 export type RuntimeErrorCode =
   | 'R001'
   | 'R002'
@@ -51,6 +52,7 @@ export type RuntimeErrorCode =
   | 'R021'
   | 'R022'
   | 'R024'
+  | 'R025'
 
 export type Severity = 'error' | 'warning'
 
@@ -109,12 +111,13 @@ export function editDistance(a: string, b: string): number {
 /**
  * The closest candidate to `name` for a "did you mean" hint: distance <= 2 and smaller than
  * `name.length`. Earlier candidates win ties, so callers pass candidates in priority order.
+ * Compiler-internal names (starting with `$`) are never suggested.
  */
 export function closestName(name: string, candidates: Iterable<string>): string | undefined {
   let best: string | undefined
   let bestDistance = Infinity
   for (const candidate of candidates) {
-    if (candidate === name) continue
+    if (candidate === name || candidate.startsWith('$')) continue
     const distance = editDistance(name, candidate)
     if (distance <= 2 && distance < name.length && distance < bestDistance) {
       best = candidate
