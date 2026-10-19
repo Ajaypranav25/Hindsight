@@ -417,6 +417,25 @@ In library mode, references to library names resolve to `GetBuiltin`, and anythi
 top-level `fn` declarations is an internal error. A prelude compile or run failure throws
 `InternalError` with the details.
 
+### 6.10 Implementation notes
+
+Decisions made while building the runtime, recorded here so tools can rely on them:
+
+- `DefineBuiltin` writes into the very array passed as `VMOptions.builtins`; `library.ts` reads the
+  library closures back from that array.
+- `run()` attaches hooks whose callbacks other than `output` do nothing; it drops output events
+  with `time >= N` so its output matches a recording's.
+- `ListExtend` and spreads that add no elements record no `listOp` event.
+- `restore()` accepts only snapshots taken from the same `Program` object (a fresh VM resuming a
+  recording must be created from that object).
+- `GlobalInfo.declSpan` is the span of the global's binding name, not of the whole statement.
+- `Recording.continue` already requires user code, so `NavOptions.justMyCode` does not change it.
+- `allocationTime` is null for the script closure (id 1) and for objects allocated in a failing
+  step. `recordAsync` reports `onProgress` one last time with the final `N`.
+- Measured on the reference machine: 5,000,000 VM instructions in about 430 ms; a 1.26 M-step
+  recording in about 230 ms with 0.35 ms average seeks. Heap-heavy programs (60,000 records) seek in
+  about 27 ms, because snapshots are spaced in proportion to their size.
+
 ## 7. Time travel
 
 ### 7.1 Recorder (`recorder*.ts`) — implements `Recording` (`api-types.ts`)

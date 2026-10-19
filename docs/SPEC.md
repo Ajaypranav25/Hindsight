@@ -191,9 +191,9 @@ Notes:
 - **Assignment** is a statement, not an expression. The left side must be an identifier (not `_`),
   a member access `a.b`, or an index `a[i]`; anything else is **E012**.
 - **Statement separation.** After a statement, the next token must be `;`, a token with
-  `newlineBefore`, `}` or end of file; otherwise **E018**. The same rule separates match arms, with
-  `,` allowed in place of `;`. A `;` that ends nothing (`;;`, or `;` first in a block or program) is
-  **E011**.
+  `newlineBefore`, `}` or end of file; otherwise **E018**. Match arms follow the same rule with `,`
+  in place of `;` (a `;` between arms is E018). A `;` that ends nothing (`;;`, or `;` first in a
+  block or program) is **E011**.
 - Template parts (`STRING_HEAD` …) come from the lexer (§2.6).
 
 ### 3.2 Newline sensitivity
@@ -575,8 +575,9 @@ non-iterable is **R013**.
 
 - `{a: 1, "b c": 2, d, ...other}` creates a new record, entries in source order. `d` alone means
   `d: d`. `...e` copies every entry of the record `e` (a non-record is **R024**). A later entry for
-  the same key replaces the value but keeps the key's original position. Repeating an explicit key in
-  one literal is **E019**.
+  the same key replaces the value but keeps the key's original position. Repeating a key in one
+  literal, in any spelling (`{a, a: 1}`, `{a: 1, "a": 2}`), is **E019**; keys supplied by a spread
+  never count.
 - `r.k` reads a field; a missing key is **R010**, with the hint `did you mean 'k2'?` chosen from the
   record's keys by the §5.3 rule (insertion order breaks ties). On a non-record, `.k` is **R011**
   `cannot read field 'k' of AT`.
@@ -627,7 +628,8 @@ the chosen arm's body. When no arm is chosen, **R015**. A match with no arms alw
 ### 7.15 Blocks
 
 A block's value is the value of its last statement when that statement is an expression statement,
-otherwise `nil`. The empty block's value is `nil`.
+otherwise `nil` (a nested block statement is not an expression statement, so `{ 1; { 2 } }` is
+`nil`). The empty block's value is `nil`.
 
 ---
 
