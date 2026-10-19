@@ -118,6 +118,10 @@
   background: var(--surface);
   color: var(--ink);
   font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-feature-settings:
+    'calt' 0,
+    'liga' 0;
   font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
 }
@@ -134,6 +138,10 @@
 
 .tl-opname__value {
   font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-feature-settings:
+    'calt' 0,
+    'liga' 0;
   font-size: var(--text-sm);
   color: var(--marker);
 }
@@ -161,6 +169,10 @@
 
 .tl-counter__digits {
   font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-feature-settings:
+    'calt' 0,
+    'liga' 0;
   font-size: var(--text-md);
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
@@ -190,6 +202,10 @@
   min-width: 0;
   overflow: hidden;
   font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-feature-settings:
+    'calt' 0,
+    'liga' 0;
   font-size: var(--text-sm);
   color: var(--ink-muted);
   text-overflow: ellipsis;
@@ -266,6 +282,10 @@
 .tl-chart__speed {
   margin-left: auto;
   font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-feature-settings:
+    'calt' 0,
+    'liga' 0;
   font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
   color: var(--ink-muted);
@@ -315,6 +335,10 @@
   box-shadow: var(--shadow-pop);
   color: var(--ink);
   font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-feature-settings:
+    'calt' 0,
+    'liga' 0;
   font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;

@@ -19,6 +19,7 @@ const EXAMPLES: readonly Example[] = [
     summary: 'Prints a greeting',
     source: 'print("hi")\n',
     outcome: 'finished',
+    pen: 'peak',
   },
   {
     id: 'fib',
@@ -26,6 +27,7 @@ const EXAMPLES: readonly Example[] = [
     summary: 'Recursion as peaks',
     source: 'print(1)\n',
     outcome: 'finished',
+    pen: 'peak',
   },
 ]
 

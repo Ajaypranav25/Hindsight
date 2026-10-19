@@ -1,5 +1,6 @@
 // title: Word frequency
 // summary: A record as a tally. Open the history of "counts" to see every increment as it happened.
+// pen: end
 
 let text = "the quick brown fox jumps over the lazy dog while the fox barks at the moon"
 let counts = {}

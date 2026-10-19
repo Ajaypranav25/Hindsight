@@ -1,5 +1,6 @@
 // title: Random walk
 // summary: Randomness is seeded, so rewinding replays the exact same walk. Change the seed for a new one.
+// pen: end
 
 seed(2026)
 var position = 0

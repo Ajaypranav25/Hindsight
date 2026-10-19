@@ -1,6 +1,12 @@
 /** The editor theme, built from the studio's CSS tokens (both color schemes follow them). */
 import { EditorView } from '@codemirror/view'
 
+/** JetBrains Mono would draw `=>`, `==`, `!=`, `<=`, `>=` as ligatures; show the real characters. */
+const NO_LIGATURES = {
+  fontVariantLigatures: 'none',
+  fontFeatureSettings: '"calt" 0, "liga" 0',
+}
+
 const SELECTION = {
   backgroundColor: 'var(--marker-soft)',
 }
@@ -11,6 +17,7 @@ export const hindsightTheme = EditorView.theme({
     color: 'var(--ink)',
     backgroundColor: 'var(--surface)',
     fontSize: '13.5px',
+    ...NO_LIGATURES,
   },
   '&.cm-focused': {
     outline: 'none',
@@ -18,8 +25,9 @@ export const hindsightTheme = EditorView.theme({
   '.cm-scroller': {
     fontFamily: 'var(--font-mono)',
     lineHeight: '1.65',
-    fontVariantLigatures: 'none',
+    ...NO_LIGATURES,
   },
+  '.cm-content, .cm-gutters': NO_LIGATURES,
   '.cm-content': {
     caretColor: 'var(--ink)',
     padding: 'var(--space-2) 0',
@@ -74,6 +82,7 @@ export const hindsightTheme = EditorView.theme({
     borderRadius: 'var(--radius-sm)',
     boxShadow: 'var(--shadow-pop)',
     fontFamily: 'var(--font-ui)',
+    ...NO_LIGATURES,
   },
   '.cm-tooltip-lint': {
     padding: 0,

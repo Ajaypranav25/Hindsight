@@ -3,16 +3,16 @@ import { createRoot } from 'react-dom/client'
 import './styles/tokens.css'
 import './styles/base.css'
 import { App } from './App'
-import { applyTheme } from './chrome/theme'
+import { createThemeSwitch } from './chrome/theme'
 import { StudioProvider } from './state/context'
 import { studioStore } from './state/studio'
 
-/** Keeps `data-theme` on <html> in step with the theme setting ('system' removes it). */
+/** Keeps `data-theme` on <html> in step with the theme setting. */
 function syncTheme(): void {
-  const root = document.documentElement
-  applyTheme(studioStore.getState().settings.theme, root)
+  const applyTheme = createThemeSwitch(document.documentElement)
+  applyTheme(studioStore.getState().settings.theme)
   studioStore.subscribe((state, previous) => {
-    if (state.settings.theme !== previous.settings.theme) applyTheme(state.settings.theme, root)
+    if (state.settings.theme !== previous.settings.theme) applyTheme(state.settings.theme)
   })
 }
 

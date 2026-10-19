@@ -5,7 +5,7 @@ import { DEFAULT_SETTINGS } from '../state/defaults'
 import { fakeRecording } from '../state/testing'
 import type { StudioState } from '../state/types'
 import { staleBadge, statusLine } from './status-model'
-import { applyTheme } from './theme'
+import { createThemeSwitch } from './theme'
 
 function state(patch: Partial<StudioState> = {}): StudioState {
   return {
@@ -23,6 +23,7 @@ function state(patch: Partial<StudioState> = {}): StudioState {
     settings: DEFAULT_SETTINGS,
     hintDismissed: false,
     notice: null,
+    originMark: null,
     ...patch,
   }
 }
@@ -117,18 +118,36 @@ describe('staleBadge', () => {
   })
 })
 
-describe('applyTheme', () => {
-  test('sets or removes data-theme', () => {
-    const attrs = new Map<string, string>()
-    const root = {
+describe('createThemeSwitch', () => {
+  function fakeRoot(initial?: string) {
+    const attrs = new Map<string, string>(initial ? [['data-theme', initial]] : [])
+    return {
+      attrs,
+      getAttribute: (name: string) => attrs.get(name) ?? null,
       setAttribute: (name: string, value: string) => void attrs.set(name, value),
       removeAttribute: (name: string) => void attrs.delete(name),
     }
-    applyTheme('dark', root)
-    expect(attrs.get('data-theme')).toBe('dark')
-    applyTheme('light', root)
-    expect(attrs.get('data-theme')).toBe('light')
-    applyTheme('system', root)
-    expect(attrs.has('data-theme')).toBe(false)
+  }
+
+  test('forces light and dark, and system removes the override', () => {
+    const root = fakeRoot()
+    const apply = createThemeSwitch(root)
+    apply('dark')
+    expect(root.attrs.get('data-theme')).toBe('dark')
+    apply('light')
+    expect(root.attrs.get('data-theme')).toBe('light')
+    apply('system')
+    expect(root.attrs.has('data-theme')).toBe(false)
+  })
+
+  test("leaves a host's own data-theme alone in system mode and restores it after an override", () => {
+    const root = fakeRoot('dark')
+    const apply = createThemeSwitch(root)
+    apply('system')
+    expect(root.attrs.get('data-theme')).toBe('dark')
+    apply('light')
+    expect(root.attrs.get('data-theme')).toBe('light')
+    apply('system')
+    expect(root.attrs.get('data-theme')).toBe('dark')
   })
 })

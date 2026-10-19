@@ -35,6 +35,10 @@
 .pn-code,
 .pn-out {
   font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-feature-settings:
+    'calt' 0,
+    'liga' 0;
   font-variant-numeric: tabular-nums;
 }
 
@@ -120,6 +124,10 @@
   min-width: 1.6em;
   border-radius: var(--radius-sm);
   font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-feature-settings:
+    'calt' 0,
+    'liga' 0;
   font-size: var(--text-sm);
   line-height: 1.5;
   color: var(--marker);
@@ -227,6 +235,10 @@
 .pn-frame-name {
   overflow: hidden;
   font: 600 var(--text-sm) / 1.4 var(--font-mono);
+  font-variant-ligatures: none;
+  font-feature-settings:
+    'calt' 0,
+    'liga' 0;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -240,6 +252,10 @@
 .pn-frame-locals {
   overflow: hidden;
   font: var(--text-xs) / 1.4 var(--font-mono);
+  font-variant-ligatures: none;
+  font-feature-settings:
+    'calt' 0,
+    'liga' 0;
   color: var(--ink-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -295,6 +311,10 @@
   max-width: 40%;
   overflow: hidden;
   font: 500 var(--text-sm) / 1.6 var(--font-mono);
+  font-variant-ligatures: none;
+  font-feature-settings:
+    'calt' 0,
+    'liga' 0;
   color: var(--ink);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -432,6 +452,10 @@
 
 .pn-history-name {
   font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-feature-settings:
+    'calt' 0,
+    'liga' 0;
   letter-spacing: 0;
   text-transform: none;
   color: var(--ink);

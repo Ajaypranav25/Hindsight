@@ -1,8 +1,17 @@
-import type { Example } from './state/types'
+import type { Example, PenPosition } from './state/types'
+
+function parsePen(text: string | undefined): PenPosition {
+  if (text === 'start' || text === 'end' || text === 'peak') return text
+  const fraction = Number(text)
+  return text !== undefined && Number.isFinite(fraction) && fraction >= 0 && fraction <= 1
+    ? fraction
+    : 'peak'
+}
 
 /**
- * Reads an example's header comments: `// title:`, `// summary:` and optionally `// outcome: error`.
- * The id is the file name without its numeric prefix and extension.
+ * Reads an example's header comments: `// title:`, `// summary:`, and optionally `// outcome: error`
+ * and `// pen: start | end | peak | <fraction>`. The id is the file name without its numeric
+ * prefix and extension.
  */
 export function parseExample(path: string, source: string): Example {
   const file = path.split('/').pop() ?? path
@@ -14,6 +23,7 @@ export function parseExample(path: string, source: string): Example {
     summary: header('summary') ?? '',
     source,
     outcome: header('outcome') === 'error' ? 'error' : 'finished',
+    pen: parsePen(header('pen')),
   }
 }
 

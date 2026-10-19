@@ -1,6 +1,7 @@
 /*
  * Studio layout (ARCHITECTURE §11.2) and the instrument-panel frame.
- * Desktop ≥ 1100px: editor beside a stacked instrument column, one screen, panels scroll inside.
+ * Desktop ≥ 1100px: editor over the console on the left, a stacked instrument column (call stack,
+ * variables, heap) on the right; one screen, panels scroll inside.
  * Tablet 700–1099px: editor on top, instruments as tabs, transport and chart pinned below.
  * Phone < 700px: one column; the page scrolls vertically only.
  */
@@ -11,14 +12,19 @@
   padding: 0 max(16px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px)
     max(16px, env(safe-area-inset-left, 0px));
   grid-template-columns: minmax(0, 56fr) minmax(0, 44fr);
-  grid-template-rows: auto minmax(0, 1fr) auto auto auto;
+  grid-template-rows: auto minmax(0, 64fr) minmax(0, 36fr) auto auto auto;
   grid-template-areas:
     'header header'
     'editor instruments'
+    'console instruments'
     'hint hint'
     'transport transport'
     'chart chart';
   column-gap: var(--space-4);
+}
+
+.app[data-console-collapsed='true'] {
+  grid-template-rows: auto minmax(0, 1fr) auto auto auto auto;
 }
 
 .app-header {
@@ -41,6 +47,23 @@
 .app-editor > * {
   flex: 1 1 auto;
   min-height: 0;
+}
+
+.app-console {
+  grid-area: console;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin-top: var(--space-2);
+}
+
+.app-console > .app-panel {
+  flex: 1 1 auto;
+}
+
+.app-console > .app-panel[data-collapsed='true'] {
+  flex: 0 0 auto;
 }
 
 .app-instruments {
@@ -100,8 +123,10 @@
   min-height: 3.5rem;
 }
 
+/* The call stack is compact: as tall as its frames, at most 30% of the column. */
 .app-panel-stack {
-  flex-grow: 2;
+  flex: 0 1 auto;
+  max-height: 30%;
 }
 
 .app-panel-variables {
@@ -109,11 +134,8 @@
 }
 
 .app-panel-heap {
-  flex-grow: 3;
-}
-
-.app-panel-console {
-  flex-grow: 3;
+  flex-grow: 5;
+  min-height: 9rem;
 }
 
 .app-panel[data-collapsed='true'] {

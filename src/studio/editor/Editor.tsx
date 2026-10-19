@@ -9,7 +9,7 @@ import { minimalChange } from './doc-sync'
 import { maxHitCount } from './gutter-math'
 import { LibraryChip } from './LibraryChip'
 import { diagnosticsTransaction } from './lint'
-import { computeOverlay, EMPTY_OVERLAY, type EditorOverlay } from './overlay'
+import { computeOverlay, EMPTY_OVERLAY, originSpanAt, type EditorOverlay } from './overlay'
 import { editorExtensions, fromStore } from './setup'
 import { setStudio, type EditorStudio } from './studio-field'
 import './editor.css'
@@ -28,6 +28,7 @@ export function Editor() {
   const selectedFrameUid = useStudio((s) => s.selectedFrameUid)
   const breakpoints = useStudio((s) => s.breakpoints)
   const compileResult = useStudio((s) => s.compile)
+  const originMark = useStudio((s) => s.originMark)
   const view = useStateView()
   const actions = useStudioActions()
 
@@ -67,10 +68,11 @@ export function Editor() {
     compileResult && !compileResult.ok ? compileResult.diagnostics : NO_DIAGNOSTICS
   const hitCounts = useMemo(() => recording?.lineHitCounts() ?? NO_HITS, [recording])
   const maxHits = useMemo(() => maxHitCount(hitCounts), [hitCounts])
-  const overlay = useMemo(
-    () => computeOverlay({ view, stale, selectedFrameUid, source }),
-    [view, stale, selectedFrameUid, source],
-  )
+  const overlay = useMemo(() => {
+    const base = computeOverlay({ view, stale, selectedFrameUid, source })
+    const originSpan = stale ? null : originSpanAt(recording, originMark, time, source.length)
+    return originSpan ? { ...base, originSpan } : base
+  }, [view, stale, selectedFrameUid, source, recording, originMark, time])
 
   useEffect(() => {
     const editor = editorRef.current

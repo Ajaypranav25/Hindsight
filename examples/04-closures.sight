@@ -1,5 +1,6 @@
 // title: Closures remember
 // summary: Each counter keeps its own count alive after make_counter returns. Find both in the heap.
+// pen: end
 
 fn make_counter(start) {
   var count = start

@@ -1,10 +1,12 @@
 import { describe, expect, test } from 'vitest'
 import { compile, record } from '../../core/index'
 import type { FrameView, Location, Recording, StateView, Token } from '../../core/index'
+import { Text } from '@codemirror/state'
+import { tintLineRange } from './decorations'
 import { minimalChange } from './doc-sync'
 import { heatLevel, heatTitle, maxHitCount, nextHit } from './gutter-math'
 import { classifyToken, highlightRanges, identifierAt, tokenRanges } from './highlight'
-import { computeOverlay, EMPTY_OVERLAY, MAX_HINTS } from './overlay'
+import { computeOverlay, EMPTY_OVERLAY, MAX_HINTS, originSpanAt } from './overlay'
 import { resolveName } from './resolve'
 
 function token(kind: Token['kind'], start: number, end: number, value?: string): Token {
@@ -287,5 +289,47 @@ describe('with a real recording', () => {
     expect(resolveName('sq', view, inner)?.kind).toBe('fn')
     expect(resolveName('zzz', view, inner)).toBeNull()
     expect(recording.lineHitCounts().get(2)).toBe(1)
+  })
+})
+
+describe('statement tint lines', () => {
+  const source = 'for i in 0..3 {\n  print(i)\n}\nlet x = (1 +\n  2)\n'
+  const doc = Text.of(source.split('\n'))
+  const loop = { start: 0, end: source.indexOf('}') + 1 }
+
+  test('a loop header tints only its own line, not the body', () => {
+    const header = { start: 9, end: 13 }
+    expect(tintLineRange(doc, loop, header)).toEqual({ first: 1, last: 1 })
+  })
+
+  test('tints through the line where the instruction ends, within the statement', () => {
+    const stmt = { start: source.indexOf('let'), end: source.indexOf('2)') + 2 }
+    const add = { start: source.indexOf('(1'), end: source.indexOf('2)') + 2 }
+    expect(tintLineRange(doc, stmt, add)).toEqual({ first: 4, last: 5 })
+    const pastEnd = { start: add.start, end: source.length }
+    expect(tintLineRange(doc, stmt, pastEnd)).toEqual({ first: 4, last: 5 })
+    const before = { start: 0, end: 3 }
+    expect(tintLineRange(doc, stmt, before)).toEqual({ first: 4, last: 4 })
+  })
+
+  test('without an instruction span the whole statement is tinted', () => {
+    expect(tintLineRange(doc, loop, null)).toEqual({ first: 1, last: 3 })
+  })
+})
+
+describe('origin span', () => {
+  test('marks the write only while the pen sits right after it, in main source', () => {
+    const source = 'let a = 1\nlet b = a + 1\nprint(b)\n'
+    const compiled = compile(source)
+    if (!compiled.ok) throw new Error('fixture does not compile')
+    const recording = record(compiled.program)
+    let t = 0
+    while (recording.locationAt(t)?.line !== 2) t++
+    const mark = { time: t, label: 'b' }
+    const span = originSpanAt(recording, mark, t + 1, source.length)
+    expect(span).toEqual(recording.locationAt(t)!.span)
+    expect(originSpanAt(recording, mark, t, source.length)).toBeNull()
+    expect(originSpanAt(recording, null, t + 1, source.length)).toBeNull()
+    expect(originSpanAt(null, mark, t + 1, source.length)).toBeNull()
   })
 })

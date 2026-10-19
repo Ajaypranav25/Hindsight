@@ -80,6 +80,27 @@ describe('Editor', () => {
     expect(container.querySelector('.ed-heat:not(.ed-heat-spacer)')).toBeNull()
   })
 
+  test('an origin jump marks the write one step behind the pen', async () => {
+    const { engine, store, container } = setup()
+    const recording = realRecording(SOURCE)
+    await act(async () => {
+      void store.getState().run()
+      await engine.resolveNext(recording)
+    })
+    act(() => store.getState().jumpToEnd())
+    act(() => store.getState().jumpToOrigin({ kind: 'global', name: 'a' }, 'a'))
+    const mark = store.getState().originMark
+    expect(mark).not.toBeNull()
+    expect(store.getState().time).toBe(mark!.time + 1)
+    const origin = container.querySelector('.ed-span-origin')
+    const span = recording.locationAt(mark!.time)!.span
+    expect(origin?.textContent).toBe(SOURCE.slice(span.start, span.end))
+    expect(container.querySelector('.ed-origin-label')?.textContent).toBe('set here')
+    act(() => store.getState().stepNav('into', 'forward'))
+    expect(container.querySelector('.ed-span-origin')).toBeNull()
+    expect(container.querySelector('.ed-origin-label')).toBeNull()
+  })
+
   test('compile diagnostics become lint squiggles', () => {
     const { store, container } = setup()
     act(() => store.getState().setSource('let x = ERROR\n'))

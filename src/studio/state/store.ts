@@ -1,10 +1,16 @@
 import { createStore, type StoreApi } from 'zustand/vanilla'
-import type { Direction, ProvenanceEvent, StepKind, WriteTarget } from '../../core/api-types'
+import type {
+  Direction,
+  ProvenanceEvent,
+  Recording,
+  StepKind,
+  WriteTarget,
+} from '../../core/api-types'
 import { writeJson } from '../lib/storage'
 import {
   AUTO_RUN_DELAY_MS,
-  interestingTime,
   NOTICE_DURATION_MS,
+  penTime,
   PERSIST_DELAY_MS,
   STORAGE_KEYS,
 } from './defaults'
@@ -28,8 +34,11 @@ export interface StoreDeps {
   readonly examples: readonly Example[]
 }
 
-/** How the pen is placed when a recording completes. */
-type PenStrategy = 'interesting' | 'keep'
+/**
+ * How the pen is placed when a recording completes: where the current example asks for it, or
+ * (after an edit) where it was.
+ */
+type PenStrategy = 'example' | 'keep'
 
 /** A cancellation token for one recording; `recordAsync` polls `aborted`. */
 class RunToken {
@@ -49,7 +58,7 @@ export function createStudioStore(deps: StoreDeps, startup: Startup): StoreApi<S
 /** Owns the timers and the in-flight recording; every state change goes through `set`. */
 class Controller {
   private current: RunToken | null = null
-  private penStrategy: PenStrategy = 'interesting'
+  private penStrategy: PenStrategy = 'example'
   private autoRunTimer: number | null = null
   private persistTimer: number | null = null
   private noticeTimer: number | null = null
@@ -118,9 +127,15 @@ class Controller {
     if (!example) return
     this.stopPlay()
     this.cancelAutoRun()
-    this.set({ source: example.source, exampleId: id, breakpoints: new Set(), watch: null })
+    this.set({
+      source: example.source,
+      exampleId: id,
+      breakpoints: new Set(),
+      watch: null,
+      originMark: null,
+    })
     this.schedulePersist()
-    this.penStrategy = 'interesting'
+    this.penStrategy = 'example'
     void this.run()
   }
 
@@ -135,7 +150,7 @@ class Controller {
     if (this.current) this.current.aborted = true
     const token = new RunToken()
     this.current = token
-    this.set({ compile, status: { kind: 'recording', progress: 0 } })
+    this.set({ compile, status: { kind: 'recording', progress: 0 }, originMark: null })
     const recording = await this.deps.engine.recordAsync(compile.program, {
       maxSteps: settings.maxSteps,
       signal: token,
@@ -147,10 +162,7 @@ class Controller {
     this.current = null
     this.stopPlay()
     const previous = this.get()
-    const time =
-      this.penStrategy === 'interesting'
-        ? interestingTime(recording)
-        : this.keptTime(recording.length)
+    const time = this.placePen(recording)
     this.penStrategy = 'keep'
     this.set({
       recording,
@@ -159,7 +171,14 @@ class Controller {
       time,
       selectedFrameUid: null,
       watch: previous.recordedSource === source ? previous.watch : null,
+      originMark: null,
     })
+  }
+
+  private placePen(recording: Recording): number {
+    if (this.penStrategy === 'keep') return this.keptTime(recording.length)
+    const example = this.deps.examples.find((candidate) => candidate.id === this.get().exampleId)
+    return penTime(recording, example?.pen ?? 'peak')
   }
 
   /** After an edit, keep the pen where it was (or at the end if it was at the end). */
@@ -214,7 +233,7 @@ class Controller {
   private seek(time: number): void {
     const length = this.get().recording?.length ?? 0
     const clamped = Math.max(0, Math.min(length, Math.round(Number.isFinite(time) ? time : 0)))
-    this.set({ time: clamped, selectedFrameUid: null })
+    this.set({ time: clamped, selectedFrameUid: null, originMark: null })
   }
 
   private stepNav(kind: StepKind, direction: Direction): void {
@@ -269,7 +288,8 @@ class Controller {
       this.notify({ text: `No earlier change to ${label} in this run`, tone: 'info' })
       return
     }
-    this.seek(event.time)
+    this.seek(Math.min(event.time + 1, recording.length))
+    this.set({ originMark: { time: event.time, label } })
     this.notify({ text: describeOrigin(event, label), tone: 'info' })
   }
 

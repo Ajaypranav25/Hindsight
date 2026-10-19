@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import type { FrameView, ProvenanceEvent, StateView } from '../../core/api-types'
 import { memoryStorage } from '../lib/storage'
-import { DEFAULT_SETTINGS, interestingTime, isSettings, STORAGE_KEYS } from './defaults'
+import { DEFAULT_SETTINGS, interestingTime, isSettings, penTime, STORAGE_KEYS } from './defaults'
 import { ManualScheduler } from './scheduler'
 import { currentDiagnostics, isStale, selectedFrame, visibleFrames } from './selectors'
 import { createStudioStore, describeOrigin } from './store'
@@ -9,13 +9,21 @@ import { fakeRecording, scriptedEngine } from './testing'
 import type { Example, KeyValueStorage } from './types'
 
 const EXAMPLES: readonly Example[] = [
-  { id: 'hello', title: 'Hello', summary: 's', source: 'print(1)\n', outcome: 'finished' },
+  {
+    id: 'hello',
+    title: 'Hello',
+    summary: 's',
+    source: 'print(1)\n',
+    outcome: 'finished',
+    pen: 'peak',
+  },
   {
     id: 'loop',
     title: 'Loop',
     summary: 's',
     source: 'for i in 0..3 { print(i) }\n',
     outcome: 'finished',
+    pen: 'end',
   },
 ]
 
@@ -149,16 +157,19 @@ describe('running', () => {
     expect(isStale(store.getState())).toBe(true)
   })
 
-  test('loads an example and runs it with the pen on its peak', async () => {
+  test('loads an example and opens it where its pen header asks', async () => {
     const { store, engine } = setup()
     store.getState().toggleBreakpoint(3)
     store.getState().loadExample('loop')
     expect(store.getState().source).toBe(EXAMPLES[1]!.source)
     expect(store.getState().breakpoints.size).toBe(0)
     await engine.resolveNext(fakeRecording({ length: 4, depths: [0, 1, 0, 0] }))
+    expect(store.getState().time).toBe(4)
+    store.getState().loadExample('hello')
+    await engine.resolveNext(fakeRecording({ length: 4, depths: [0, 1, 0, 0] }))
     expect(store.getState().time).toBe(1)
     store.getState().loadExample('missing')
-    expect(store.getState().exampleId).toBe('loop')
+    expect(store.getState().exampleId).toBe('hello')
   })
 
   test('extends a step-limited recording', async () => {
@@ -272,7 +283,8 @@ describe('navigation', () => {
     const { store, scheduler } = await recorded({ length: 10, origins })
     store.getState().seek(9)
     store.getState().jumpToOrigin(target, 'x')
-    expect(store.getState().time).toBe(3)
+    expect(store.getState().time).toBe(4)
+    expect(store.getState().originMark).toEqual({ time: 3, label: 'x' })
     expect(store.getState().notice?.text).toBe('x was set here (step 3)')
     scheduler.advance(6000)
     expect(store.getState().notice).toBeNull()
@@ -280,6 +292,36 @@ describe('navigation', () => {
     expect(store.getState().notice?.text).toBe('No earlier change to y in this run')
     store.getState().clearNotice()
     expect(store.getState().notice).toBeNull()
+  })
+
+  test('an origin jump lands after the write, clamped to the recording', async () => {
+    const target = { kind: 'global', name: 'x' } as const
+    const event: ProvenanceEvent = { time: 10, kind: 'write', target, value: 1 }
+    const origins = new Map([[JSON.stringify(target), event]])
+    const { store } = await recorded({ length: 10, origins })
+    store.getState().jumpToOrigin(target, 'x')
+    expect(store.getState().time).toBe(10)
+    expect(store.getState().originMark).toEqual({ time: 10, label: 'x' })
+  })
+
+  test('the origin mark clears on a later seek, run or example load', async () => {
+    const target = { kind: 'global', name: 'x' } as const
+    const event: ProvenanceEvent = { time: 3, kind: 'write', target, value: 1 }
+    const origins = new Map([[JSON.stringify(target), event]])
+    const { store, engine } = await recorded({ length: 10, origins })
+    expect(store.getState().originMark).toBeNull()
+    store.getState().jumpToOrigin(target, 'x')
+    store.getState().stepNav('into', 'forward')
+    expect(store.getState().originMark).toBeNull()
+
+    store.getState().jumpToOrigin(target, 'x')
+    void store.getState().run()
+    expect(store.getState().originMark).toBeNull()
+    await engine.resolveNext(fakeRecording({ length: 10, origins }))
+
+    store.getState().jumpToOrigin(target, 'x')
+    store.getState().loadExample('loop')
+    expect(store.getState().originMark).toBeNull()
   })
 
   test('watches a binding and keeps the watch across re-runs of the same source', async () => {
@@ -314,6 +356,17 @@ describe('helpers', () => {
     ).toBe(4)
     expect(interestingTime(fakeRecording({ length: 4, depths: [0, 0, 0, 0] }))).toBe(4)
     expect(interestingTime(fakeRecording({ length: 4, depths: [0, 2, 1, 2] }))).toBe(1)
+  })
+
+  test('penTime honors start, end and fractions, but always opens a failed run at the failure', () => {
+    const run = fakeRecording({ length: 10, depths: [0, 0, 3, 0, 0, 0, 0, 0, 0, 0] })
+    expect(penTime(run, 'start')).toBe(0)
+    expect(penTime(run, 'end')).toBe(10)
+    expect(penTime(run, 'peak')).toBe(2)
+    expect(penTime(run, 0.25)).toBe(3)
+    expect(penTime(run, 7)).toBe(10)
+    const failed = fakeRecording({ length: 10, outcome: { kind: 'error', error: {} } as never })
+    expect(penTime(failed, 'start')).toBe(10)
   })
 
   test('describeOrigin names each kind of event', () => {

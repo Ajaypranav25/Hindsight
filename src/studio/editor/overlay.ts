@@ -1,8 +1,9 @@
 /** Pure computation of what the editor overlays at the pen (no CodeMirror imports). */
 import { LineIndex } from '../../core/index'
-import type { FrameView, Span, StateView, ValueView } from '../../core/index'
+import type { FrameView, Recording, Span, StateView, ValueView } from '../../core/index'
 import { formatValue, truncate } from '../lib/format'
 import { selectedFrame } from '../state/selectors'
+import type { OriginMark } from '../state/types'
 
 export const MAX_HINTS = 12
 export const HINT_VALUE_CHARS = 32
@@ -23,6 +24,8 @@ export interface EditorOverlay {
   /** Name of the library function executing, when the pen is in library code. */
   readonly libraryFunction: string | null
   readonly hints: readonly InlineHint[]
+  /** The write an origin jump explains (marked "set here"), while the pen is just after it. */
+  readonly originSpan: Span | null
 }
 
 export const EMPTY_OVERLAY: EditorOverlay = {
@@ -31,6 +34,7 @@ export const EMPTY_OVERLAY: EditorOverlay = {
   callerSpan: null,
   libraryFunction: null,
   hints: [],
+  originSpan: null,
 }
 
 export interface OverlayInput {
@@ -111,4 +115,21 @@ export function inlineHints(
   return [...byLine.entries()]
     .sort((a, b) => a[0] - b[0])
     .map(([line, texts]) => ({ line, text: texts.join(', ') }))
+}
+
+/**
+ * The span of the write an origin jump explains: shown while the pen sits on the step right after
+ * it, and only when that write happened in the main source.
+ */
+export function originSpanAt(
+  recording: Recording | null,
+  mark: OriginMark | null,
+  time: number,
+  length: number,
+): Span | null {
+  if (!recording || !mark || time !== mark.time + 1) return null
+  const location = recording.locationAt(mark.time)
+  if (!location || location.source !== 'main') return null
+  const span = clampSpan(location.span, length)
+  return span.end > span.start ? span : null
 }

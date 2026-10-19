@@ -1,5 +1,6 @@
 // title: Pipelines
 // summary: Data flows top to bottom through |>. Turn off just-my-code to step inside the library stages.
+// pen: end
 
 let orders = [
   {id: 1, customer: "ada", amount: 30, paid: true},

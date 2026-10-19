@@ -1,5 +1,6 @@
 // title: Linked list
 // summary: Records pointing at records. Reversing the chain rewires every arrow in the heap graph.
+// pen: end
 
 fn prepend(rest, value) {
   ({value, next: rest})

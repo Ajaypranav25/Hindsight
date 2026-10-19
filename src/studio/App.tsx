@@ -24,20 +24,33 @@ interface InstrumentPanel {
   readonly Component: ComponentType
 }
 
-/** The instrument column, top to bottom. Room is shared by weight in layout.css. */
-const PANELS: readonly InstrumentPanel[] = [
+const CONSOLE: InstrumentPanel = { id: 'console', title: 'Console', Component: Console }
+
+/** The desktop instrument column, top to bottom. Room is shared by weight in layout.css. */
+const COLUMN_PANELS: readonly InstrumentPanel[] = [
   { id: 'stack', title: 'Call stack', Component: CallStack },
   { id: 'variables', title: 'Variables', Component: Variables },
   { id: 'heap', title: 'Heap', Component: HeapGraph },
-  { id: 'console', title: 'Console', Component: Console },
 ]
 
-/** The studio: header, editor and instruments, transport, and the strip chart along the bottom. */
+/** Tablet and phone show every panel, the console included, as tabs. */
+const TABBED_PANELS: readonly InstrumentPanel[] = [...COLUMN_PANELS, CONSOLE]
+
+/**
+ * The studio: header, editor (with the console beneath it on desktop) and instruments,
+ * transport, and the strip chart along the bottom.
+ */
 export function App() {
   useGlobalShortcuts()
   const mode = useLayoutMode()
+  const [collapsed, toggle] = useCollapsedPanels()
+  const desktop = mode === 'desktop'
   return (
-    <div className="app" data-layout={mode}>
+    <div
+      className="app"
+      data-layout={mode}
+      data-console-collapsed={desktop && collapsed.has('console')}
+    >
       <div className="app-header">
         <Header />
       </div>
@@ -46,8 +59,20 @@ export function App() {
           <Editor />
         </PanelBoundary>
       </section>
+      {desktop && (
+        <div className="app-console">
+          <Panel
+            title={CONSOLE.title}
+            className="app-panel app-panel-console"
+            collapsed={collapsed.has('console')}
+            onToggle={() => toggle('console')}
+          >
+            <Console />
+          </Panel>
+        </div>
+      )}
       <div className="app-instruments">
-        {mode === 'desktop' ? <StackedPanels /> : <TabbedPanels />}
+        {desktop ? <StackedPanels collapsed={collapsed} toggle={toggle} /> : <TabbedPanels />}
       </div>
       <div className="app-hint">
         <Hint />
@@ -67,7 +92,7 @@ export function App() {
   )
 }
 
-function StackedPanels() {
+function useCollapsedPanels(): [ReadonlySet<PanelId>, (id: PanelId) => void] {
   const [collapsed, setCollapsed] = useState<ReadonlySet<PanelId>>(() => new Set())
   const toggle = (id: PanelId) =>
     setCollapsed((previous) => {
@@ -76,15 +101,19 @@ function StackedPanels() {
       else next.add(id)
       return next
     })
+  return [collapsed, toggle]
+}
+
+function StackedPanels(props: { collapsed: ReadonlySet<PanelId>; toggle: (id: PanelId) => void }) {
   return (
     <div className="app-stack">
-      {PANELS.map(({ id, title, Component }) => (
+      {COLUMN_PANELS.map(({ id, title, Component }) => (
         <Panel
           key={id}
           title={title}
           className={`app-panel app-panel-${id}`}
-          collapsed={collapsed.has(id)}
-          onToggle={() => toggle(id)}
+          collapsed={props.collapsed.has(id)}
+          onToggle={() => props.toggle(id)}
         >
           <Component />
         </Panel>
@@ -94,7 +123,7 @@ function StackedPanels() {
 }
 
 function TabbedPanels() {
-  const panels = PANELS.map(({ id, title, Component }) => ({
+  const panels = TABBED_PANELS.map(({ id, title, Component }) => ({
     id,
     title,
     content: <Component />,

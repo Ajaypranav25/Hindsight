@@ -1,5 +1,6 @@
 // title: Breadth-first maze
 // summary: A queue of frontier squares floods the maze. Watch the queue grow and shrink in the heap.
+// pen: 0.5
 
 let maze = [
   "#########",

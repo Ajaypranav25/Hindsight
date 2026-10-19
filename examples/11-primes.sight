@@ -1,5 +1,6 @@
 // title: Sieve of Eratosthenes
 // summary: Crossing out multiples. The heat gutter shows which lines did the most work.
+// pen: end
 
 let limit = 60
 let is_prime = times(limit + 1, |_| true)

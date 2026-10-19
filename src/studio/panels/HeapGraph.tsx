@@ -15,6 +15,7 @@ import {
   collectRoots,
   HEADER_H,
   layoutHeap,
+  fitZoom,
   PAD_X,
   ROW_H,
   type BoxRow,
@@ -27,7 +28,8 @@ import {
 } from '../lib/heap-layout'
 import './heap.css'
 
-const MIN_ZOOM = 0.2
+/** Lowest zoom the user can reach with the zoom-out button, keys or the wheel. */
+const MIN_ZOOM = 0.4
 const MAX_ZOOM = 2.5
 const ZOOM_STEP = 1.25
 const PAN_STEP = 48
@@ -480,7 +482,7 @@ function useViewport(
   const fit = () => {
     const el = container.current
     if (!el || el.clientWidth === 0 || el.clientHeight === 0) return
-    const k = clampZoom(Math.min(1, el.clientWidth / bounds.width, el.clientHeight / bounds.height))
+    const k = fitZoom({ width: el.clientWidth, height: el.clientHeight }, bounds)
     setTransform({ x: -bounds.x * k, y: -bounds.y * k, k })
   }
 

@@ -1,5 +1,6 @@
 // title: Bubble sort, swap by swap
 // summary: One list changes shape in place. Every swap is a recorded write you can jump back to.
+// pen: 0.45
 
 let xs = [5, 1, 4, 2, 8, 3]
 

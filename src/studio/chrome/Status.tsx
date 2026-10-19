@@ -36,48 +36,53 @@ export function Status() {
     </>
   )
 
+  // A notice temporarily takes over the single status line, so the header never grows.
   return (
-    <div className="ch-status" data-tone={line.tone}>
+    <div className="ch-status" data-tone={line.tone} data-notice={notice !== null}>
       <div className="ch-status-line">
-        {line.action ? (
-          <button
-            type="button"
-            className="ch-status-text ch-status-link"
-            title="Jump to the moment it failed"
-            onClick={() => perform(line.action!)}
-          >
-            {text}
-          </button>
-        ) : (
-          <span className="ch-status-text" role="status">
-            {text}
-          </span>
+        {!notice && (
+          <>
+            {line.action ? (
+              <button
+                type="button"
+                className="ch-status-text ch-status-link"
+                title="Jump to the moment it failed"
+                onClick={() => perform(line.action!)}
+              >
+                {text}
+              </button>
+            ) : (
+              <span className="ch-status-text" role="status">
+                {text}
+              </span>
+            )}
+            {line.button && (
+              <button
+                type="button"
+                className="ch-button ch-button-small"
+                onClick={() => perform(line.button!.action)}
+              >
+                {line.button.label}
+              </button>
+            )}
+            {badge && <span className="ch-stale">{badge}</span>}
+          </>
         )}
-        {line.button && (
-          <button
-            type="button"
-            className="ch-button ch-button-small"
-            onClick={() => perform(line.button!.action)}
-          >
-            {line.button.label}
-          </button>
-        )}
-        {badge && <span className="ch-stale">{badge}</span>}
-      </div>
-      <div className="ch-notice-region" aria-live="polite" aria-atomic="true">
-        {notice && (
-          <p className="ch-notice" data-tone={notice.tone}>
-            <span className="ch-notice-text">{notice.text}</span>
-            <button
-              type="button"
-              className="ch-button ch-icon-button ch-notice-close"
-              aria-label="Dismiss message"
-              onClick={actions.clearNotice}
-            >
-              <CloseIcon />
-            </button>
-          </p>
-        )}
+        <div className="ch-notice-region" aria-live="polite" aria-atomic="true">
+          {notice && (
+            <p className="ch-notice" data-tone={notice.tone} title={notice.text}>
+              <span className="ch-notice-text">{notice.text}</span>
+              <button
+                type="button"
+                className="ch-button ch-icon-button ch-notice-close"
+                aria-label="Dismiss message"
+                onClick={actions.clearNotice}
+              >
+                <CloseIcon />
+              </button>
+            </p>
+          )}
+        </div>
       </div>
     </div>
   )

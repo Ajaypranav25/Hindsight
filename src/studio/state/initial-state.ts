@@ -34,5 +34,6 @@ export function initialState(
     settings: readJson(storage, STORAGE_KEYS.settings, isSettings) ?? DEFAULT_SETTINGS,
     hintDismissed: storage.read(STORAGE_KEYS.hintDismissed) === 'true',
     notice: null,
+    originMark: null,
   }
 }

@@ -130,10 +130,11 @@ describe('Variables', () => {
     expect(rows).toEqual(['xvar1⟲history', 'ccap7⟲history', 'glet"hi"⟲history'])
   })
 
-  test('jump to origin moves the pen to the write that set the value', () => {
+  test('jump to origin moves the pen just after the write that set the value', () => {
     const { store } = renderWithRecording(<Variables />, recording, 4)
     fireEvent.click(screen.getByRole('button', { name: 'Jump to where x was set' }))
-    expect(store.getState().time).toBe(1)
+    expect(store.getState().time).toBe(2)
+    expect(store.getState().originMark).toEqual({ time: 1, label: 'x' })
     expect(store.getState().notice?.text).toBe('x was set here (step 1)')
   })
 

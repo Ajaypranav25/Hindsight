@@ -1,5 +1,5 @@
 import type { Recording } from '../../core/api-types'
-import type { Settings } from './types'
+import type { PenPosition, Settings } from './types'
 
 export const STEP_BUDGETS = [500_000, 2_000_000, 10_000_000] as const
 
@@ -57,4 +57,13 @@ export function interestingTime(recording: Recording): number {
     }
   }
   return best === 0 ? n : bestTime
+}
+
+/** The pen's opening position for a recording, per an example's `// pen:` header. */
+export function penTime(recording: Recording, pen: PenPosition): number {
+  const n = recording.length
+  if (recording.outcome.kind === 'error' || pen === 'peak') return interestingTime(recording)
+  if (pen === 'start') return 0
+  if (pen === 'end') return n
+  return Math.round(Math.min(1, Math.max(0, pen)) * n)
 }

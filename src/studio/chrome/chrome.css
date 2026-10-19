@@ -369,6 +369,10 @@
   border-radius: var(--radius-sm);
   background: var(--surface);
   font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-feature-settings:
+    'calt' 0,
+    'liga' 0;
   font-size: var(--text-sm);
 }
 
@@ -381,7 +385,6 @@
 .ch-status {
   display: flex;
   flex-direction: column;
-  gap: 0.125rem;
   min-width: 0;
   --ch-tone: var(--ink-faint);
 }
@@ -407,6 +410,7 @@
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
+  height: 2rem;
 }
 
 .ch-status-text {
@@ -475,14 +479,22 @@
   white-space: nowrap;
 }
 
+.ch-notice-region {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
 .ch-notice-region:empty {
   display: none;
 }
 
 .ch-notice {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: var(--space-1);
+  min-width: 0;
   max-width: 100%;
   padding-left: var(--space-2);
   border-left: 2px solid var(--marker);
@@ -496,6 +508,7 @@
 }
 
 .ch-notice-text {
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -503,6 +516,7 @@
 }
 
 .ch-notice-close {
+  flex: none;
   width: 1.5rem;
   min-height: 1.5rem;
   border-color: transparent;
@@ -517,9 +531,10 @@
   gap: var(--space-2);
   margin-top: var(--space-2);
   padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
-  border: 1px dashed color-mix(in srgb, var(--pen) 45%, var(--rule));
+  border: 1px solid var(--rule);
   border-radius: var(--radius-sm);
-  background: var(--pen-soft);
+  background: var(--surface-raised);
+  color: var(--ink);
   font-size: var(--text-sm);
 }
 
@@ -650,6 +665,10 @@
   font-size: var(--text-xs);
   line-height: 1.55;
   color: var(--syn-ident);
+  font-variant-ligatures: none;
+  font-feature-settings:
+    'calt' 0,
+    'liga' 0;
 }
 
 /* --- narrow screens ------------------------------------------------------------------------ */

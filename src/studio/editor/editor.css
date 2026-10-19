@@ -91,6 +91,31 @@
   user-select: none;
 }
 
+/* Origin jump: the write being explained, one step before the pen. */
+.ed-span-origin {
+  background-color: var(--marker-soft);
+  outline: 1.5px solid var(--marker);
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+
+.ed-origin-label {
+  margin-left: 1ch;
+  padding: 0 0.6ch;
+  border-radius: var(--radius-sm);
+  background: var(--marker);
+  color: var(--surface);
+  font-family: var(--font-display);
+  font-size: 0.78em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: pre;
+  vertical-align: 1px;
+  pointer-events: none;
+  user-select: none;
+}
+
 /* --- gutters ------------------------------------------------------------------------------ */
 
 .ed-gutter-bp .cm-gutterElement {
@@ -189,6 +214,10 @@
 
 .ed-lib-name {
   font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-feature-settings:
+    'calt' 0,
+    'liga' 0;
   font-size: var(--text-sm);
 }
 
@@ -207,6 +236,10 @@
 
 .ed-lib-note code {
   font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-feature-settings:
+    'calt' 0,
+    'liga' 0;
   color: var(--ink);
 }
 
@@ -231,6 +264,10 @@
 
 .ed-hover-value {
   font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-feature-settings:
+    'calt' 0,
+    'liga' 0;
   font-size: var(--text-sm);
   font-variant-numeric: tabular-nums;
   color: var(--ink);

@@ -586,3 +586,15 @@ export function layoutHeap(input: HeapLayoutInput, memory: LayoutMemory | null =
     memory: nextMemory(boxes, memory, widths),
   }
 }
+
+/** Fitting never shrinks below this; larger graphs are panned instead of becoming unreadable. */
+export const FIT_MIN_ZOOM = 0.85
+
+/** The zoom that fits `bounds` into a viewport, kept between FIT_MIN_ZOOM and 1. */
+export function fitZoom(
+  viewport: { readonly width: number; readonly height: number },
+  bounds: { readonly width: number; readonly height: number },
+): number {
+  const k = Math.min(1, viewport.width / bounds.width, viewport.height / bounds.height)
+  return Number.isFinite(k) ? Math.max(FIT_MIN_ZOOM, k) : 1
+}

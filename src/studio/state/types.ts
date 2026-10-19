@@ -40,6 +40,13 @@ export interface Notice {
   readonly tone: 'info' | 'error'
 }
 
+/** The write being explained after an origin jump: the pen sits one step after `time`. */
+export interface OriginMark {
+  /** The step that performed the write (the pen is at `time + 1`, clamped). */
+  readonly time: number
+  readonly label: string
+}
+
 export interface StudioState {
   readonly source: string
   /** The gallery example the source came from, if unchanged since loading. */
@@ -67,6 +74,8 @@ export interface StudioState {
   readonly settings: Settings
   readonly hintDismissed: boolean
   readonly notice: Notice | null
+  /** Set by `jumpToOrigin`; any later seek, run or example load clears it. */
+  readonly originMark: OriginMark | null
 }
 
 export interface StudioActions {
@@ -89,7 +98,10 @@ export interface StudioActions {
   stopPlay(): void
   toggleBreakpoint(line: number): void
   selectFrame(uid: number | null): void
-  /** Moves the pen to the step that produced the target's current value. */
+  /**
+   * Moves the pen just after the step that produced the target's current value and marks that
+   * step (`originMark`).
+   */
   jumpToOrigin(target: WriteTarget, label: string): void
   /** Marks a binding's history on the strip chart (null clears). */
   setWatch(target: WriteTarget | null, label?: string): void
@@ -106,6 +118,12 @@ export interface Engine {
   recordAsync(program: Program, options: AsyncRecordOptions): Promise<Recording>
 }
 
+/**
+ * Where the pen starts on a freshly recorded example: the top of the tallest call peak, the start,
+ * the end, or a fraction (0 to 1) of the run. Runs that end in an error always open at the failure.
+ */
+export type PenPosition = 'peak' | 'start' | 'end' | number
+
 /** A gallery program. */
 export interface Example {
   readonly id: string
@@ -114,6 +132,7 @@ export interface Example {
   readonly source: string
   /** The outcome the example is written to have. */
   readonly outcome: 'finished' | 'error'
+  readonly pen: PenPosition
 }
 
 /** Key-value persistence that may be unavailable (private windows, sandboxed previews). */

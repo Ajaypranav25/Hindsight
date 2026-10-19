@@ -69,6 +69,10 @@ pre,
 samp,
 output {
   font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-feature-settings:
+    'calt' 0,
+    'liga' 0;
   font-variant-numeric: tabular-nums;
 }
 

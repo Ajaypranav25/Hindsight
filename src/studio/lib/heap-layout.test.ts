@@ -5,6 +5,8 @@ import { compile, record } from '../../core/index'
 import {
   BOX_GAP,
   collectRoots,
+  FIT_MIN_ZOOM,
+  fitZoom,
   layoutHeap,
   MAX_BOXES,
   type HeapLayout,
@@ -305,5 +307,14 @@ describe('collectRoots', () => {
     )
     expect(roots.map((r) => `${r.group}:${r.name}`)).toEqual(['local:x', 'capture:c', 'global:g'])
     expect(collectRoots(null, [])).toEqual([])
+  })
+})
+
+describe('fitZoom', () => {
+  test('never enlarges, and never shrinks below the readable minimum', () => {
+    expect(fitZoom({ width: 800, height: 600 }, { width: 200, height: 100 })).toBe(1)
+    expect(fitZoom({ width: 450, height: 600 }, { width: 500, height: 100 })).toBeCloseTo(0.9)
+    expect(fitZoom({ width: 100, height: 60 }, { width: 2000, height: 900 })).toBe(FIT_MIN_ZOOM)
+    expect(fitZoom({ width: 100, height: 60 }, { width: 0, height: 0 })).toBe(1)
   })
 })

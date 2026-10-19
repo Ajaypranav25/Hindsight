@@ -10,7 +10,17 @@ describe('examples', () => {
       summary: 'Find it.',
       source,
       outcome: 'error',
+      pen: 'peak',
     })
+  })
+
+  test('reads the pen header', () => {
+    const pen = (value: string) => parseExample('/examples/a.sight', `// pen: ${value}\n`).pen
+    expect(pen('end')).toBe('end')
+    expect(pen('start')).toBe('start')
+    expect(pen('0.25')).toBe(0.25)
+    expect(pen('7')).toBe('peak')
+    expect(pen('soon')).toBe('peak')
   })
 
   test('falls back to the file name when headers are missing', () => {
