@@ -25,6 +25,8 @@ export default mergeConfig(
   base,
   defineConfig({
     plugins: [inlineIntoPage()],
+    // The published page cannot receive #src= links, so "Copy link" copies the program instead.
+    define: { 'import.meta.env.VITE_SHARE_MODE': JSON.stringify('source') },
     build: {
       outDir: 'dist/page',
       sourcemap: false,

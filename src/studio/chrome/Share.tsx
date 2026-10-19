@@ -8,10 +8,16 @@ import { usePopover } from './usePopover'
 type ShareResult =
   | { readonly kind: 'none' }
   | { readonly kind: 'copied' }
-  | { readonly kind: 'manual'; readonly url: string }
+  | { readonly kind: 'manual'; readonly text: string }
   | { readonly kind: 'too-large' }
 
 const COPIED_MS = 2000
+
+/**
+ * The single-page build is hosted where links cannot carry a program (only plain #anchors reach the
+ * page), so there the button copies the program's source text instead of a link.
+ */
+const COPY_SOURCE = import.meta.env.VITE_SHARE_MODE === 'source'
 
 /** The page address without its fragment. */
 export function pageAddress(location: Pick<Location, 'origin' | 'pathname' | 'href'>): string {
@@ -19,9 +25,14 @@ export function pageAddress(location: Pick<Location, 'origin' | 'pathname' | 'hr
   return location.href.split('#')[0] ?? ''
 }
 
+function linkTo(source: string): string | null {
+  const fragment = shareFragment(source)
+  return fragment === null ? null : pageAddress(window.location) + fragment
+}
+
 /**
  * "Copy link": writes a link carrying the program to the clipboard inside the click handler. When
- * the clipboard refuses, a popover shows the link selected for manual copying.
+ * the clipboard refuses, a popover shows the text selected for manual copying.
  */
 export function Share() {
   const source = useStudio((s) => s.source)
@@ -35,22 +46,22 @@ export function Share() {
   }, [result])
 
   const copy = () => {
-    const fragment = shareFragment(source)
-    if (fragment === null) {
+    const text = COPY_SOURCE ? source : linkTo(source)
+    if (text === null) {
       setResult({ kind: 'too-large' })
       show()
       return
     }
-    const url = pageAddress(window.location) + fragment
     const fallback = () => {
-      setResult({ kind: 'manual', url })
+      setResult({ kind: 'manual', text })
       show()
     }
     const clipboard = navigator.clipboard as Clipboard | undefined
     if (!clipboard?.writeText) return fallback()
-    clipboard.writeText(url).then(() => setResult({ kind: 'copied' }), fallback)
+    clipboard.writeText(text).then(() => setResult({ kind: 'copied' }), fallback)
   }
 
+  const noun = COPY_SOURCE ? 'Program' : 'Link'
   return (
     <div className="ch-anchor" ref={rootRef}>
       <button
@@ -58,17 +69,25 @@ export function Share() {
         type="button"
         className="ch-button ch-share"
         onClick={copy}
-        aria-label={result.kind === 'copied' ? 'Link copied' : 'Copy a link to this program'}
+        aria-label={
+          result.kind === 'copied'
+            ? `${noun} copied`
+            : COPY_SOURCE
+              ? "Copy this program's source"
+              : 'Copy a link to this program'
+        }
       >
         <ShareIcon />
         <span className="ch-collapsible-label">
-          {result.kind === 'copied' ? 'Copied' : 'Copy link'}
+          {result.kind === 'copied' ? 'Copied' : `Copy ${noun.toLowerCase()}`}
         </span>
       </button>
       <span className="ch-sr" aria-live="polite">
-        {result.kind === 'copied' ? 'Link copied to the clipboard' : ''}
+        {result.kind === 'copied' ? `${noun} copied to the clipboard` : ''}
       </span>
-      {open && result.kind === 'manual' && <ManualCopy url={result.url} />}
+      {open && result.kind === 'manual' && (
+        <ManualCopy text={result.text} multiline={COPY_SOURCE} />
+      )}
       {open && result.kind === 'too-large' && (
         <div className="ch-pop ch-share-panel" role="dialog" aria-label="Link not available">
           <p className="ch-share-text">
@@ -81,25 +100,38 @@ export function Share() {
   )
 }
 
-function ManualCopy(props: { url: string }) {
-  const inputRef = useRef<HTMLInputElement>(null)
+function ManualCopy(props: { text: string; multiline: boolean }) {
+  const fieldRef = useRef<HTMLInputElement & HTMLTextAreaElement>(null)
   useEffect(() => {
-    inputRef.current?.focus()
-    inputRef.current?.select()
+    fieldRef.current?.focus()
+    fieldRef.current?.select()
   }, [])
+  const label = props.multiline ? 'Copy this program' : 'Copy this link'
   return (
-    <div className="ch-pop ch-share-panel" role="dialog" aria-label="Copy this link">
+    <div className="ch-pop ch-share-panel" role="dialog" aria-label={label}>
       <label className="ch-label" htmlFor="ch-share-url">
-        Copy this link
+        {label}
       </label>
-      <input
-        ref={inputRef}
-        id="ch-share-url"
-        className="ch-share-url"
-        readOnly
-        value={props.url}
-        onFocus={(event) => event.target.select()}
-      />
+      {props.multiline ? (
+        <textarea
+          ref={fieldRef}
+          id="ch-share-url"
+          className="ch-share-url"
+          readOnly
+          rows={8}
+          value={props.text}
+          onFocus={(event) => event.target.select()}
+        />
+      ) : (
+        <input
+          ref={fieldRef}
+          id="ch-share-url"
+          className="ch-share-url"
+          readOnly
+          value={props.text}
+          onFocus={(event) => event.target.select()}
+        />
+      )}
       <p className="ch-note">The clipboard is not available here. Press Ctrl+C or ⌘ C to copy.</p>
     </div>
   )
