@@ -1,0 +1,282 @@
+/* Code editor (prefix ed-). Colors come only from tokens.css. */
+
+.ed-root {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  background: var(--surface);
+}
+
+.ed-host {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.ed-host .cm-editor {
+  height: 100%;
+}
+
+.ed-host .cm-editor.cm-focused {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--marker) 55%, transparent);
+}
+
+/* --- syntax ----------------------------------------------------------------------------- */
+
+.ed-syn-keyword {
+  color: var(--syn-keyword);
+}
+.ed-syn-atom,
+.ed-syn-number {
+  color: var(--syn-number);
+}
+.ed-syn-string {
+  color: var(--syn-string);
+}
+.ed-syn-interp {
+  color: var(--syn-keyword);
+  font-weight: 600;
+}
+.ed-syn-builtin {
+  color: var(--syn-builtin);
+}
+.ed-syn-ident {
+  color: var(--syn-ident);
+}
+.ed-syn-punct {
+  color: var(--syn-punct);
+}
+.ed-syn-comment {
+  color: var(--syn-comment);
+  font-style: italic;
+}
+
+/* --- the pen ------------------------------------------------------------------------------ */
+
+.ed-host .cm-line.ed-line-current {
+  background-color: var(--highlight-line);
+  box-shadow: inset 2px 0 0 var(--pen);
+}
+
+.ed-host .cm-line.ed-line-caller {
+  background-color: var(--highlight-caller);
+  box-shadow: inset 2px 0 0 var(--ink-faint);
+}
+
+.ed-span-current {
+  background-color: var(--highlight-span);
+  outline: 1px solid color-mix(in srgb, var(--pen) 55%, transparent);
+  border-radius: 2px;
+}
+
+.ed-span-caller {
+  background-color: var(--highlight-caller);
+  outline: 1px dashed var(--ink-faint);
+  border-radius: 2px;
+}
+
+.ed-hint {
+  margin-left: 2ch;
+  padding: 0 0.6ch;
+  border-left: 1px solid var(--rule);
+  color: var(--ink-faint);
+  font-size: 0.88em;
+  font-variant-numeric: tabular-nums;
+  white-space: pre;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* --- gutters ------------------------------------------------------------------------------ */
+
+.ed-gutter-bp .cm-gutterElement {
+  position: relative;
+  width: 14px;
+  padding: 0 0 0 4px;
+  cursor: pointer;
+}
+
+.ed-bp-spacer {
+  display: inline-block;
+  width: 10px;
+}
+
+.ed-bp-dot,
+.ed-gutter-bp .cm-gutterElement:not(.ed-bp-on):hover::after {
+  position: absolute;
+  top: 50%;
+  left: 5px;
+  width: 9px;
+  height: 9px;
+  margin-top: -4.5px;
+  border-radius: 50%;
+  background: var(--pen);
+}
+
+.ed-gutter-bp .cm-gutterElement:not(.ed-bp-on):hover::after {
+  content: '';
+  background: color-mix(in srgb, var(--pen) 35%, transparent);
+}
+
+.ed-gutter-heat .cm-gutterElement {
+  width: 22px;
+  padding: 0 6px 0 2px;
+  cursor: pointer;
+}
+
+.ed-heat {
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+
+.ed-heat-bar {
+  display: block;
+  width: 100%;
+  height: 4px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--marker) 70%, transparent);
+  transform: scaleX(var(--ed-heat, 0));
+  transform-origin: left center;
+}
+
+.ed-gutter-heat .cm-gutterElement:hover .ed-heat-bar {
+  background: var(--marker);
+}
+
+/* --- library chip ------------------------------------------------------------------------- */
+
+.ed-lib {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-3);
+  z-index: 5;
+  max-width: min(22rem, calc(100% - 2 * var(--space-3)));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-1);
+}
+
+.ed-lib-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: 2px var(--space-2);
+  border: 1px solid var(--marker);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--marker);
+  cursor: pointer;
+}
+
+.ed-lib-chip:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.ed-lib-label {
+  font-family: var(--font-display);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+}
+
+.ed-lib-name {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.ed-lib-note {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-pop);
+  color: var(--ink-muted);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+.ed-lib-note code {
+  font-family: var(--font-mono);
+  color: var(--ink);
+}
+
+/* --- hover and lint tooltips -------------------------------------------------------------- */
+
+.ed-hover {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  max-width: min(32rem, 90vw);
+}
+
+.ed-hover-kind {
+  font-family: var(--font-display);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.ed-hover-value {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.ed-hover-origin {
+  flex: none;
+  padding: 1px var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--marker);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.ed-hover-origin:hover {
+  background: var(--marker-soft);
+}
+
+.ed-hover-origin:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.ed-lint-message {
+  max-width: min(30rem, 90vw);
+  font-family: var(--font-ui);
+  font-size: var(--text-md);
+}
+
+.ed-lint-text,
+.ed-lint-hint {
+  margin: 0;
+}
+
+.ed-lint-hint {
+  margin-top: var(--space-1);
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ed-heat-bar {
+    transition: transform 160ms ease-out;
+  }
+}
