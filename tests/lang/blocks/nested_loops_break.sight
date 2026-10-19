@@ -1,0 +1,10 @@
+// break and continue affect the innermost loop.
+var pairs = []
+for i in 0..3 {
+  for j in 0..3 {
+    if j > i { break }
+    if j == 1 { continue }
+    push(pairs, [i, j])
+  }
+}
+print(pairs) // expect: [[0, 0], [1, 0], [2, 0], [2, 2]]

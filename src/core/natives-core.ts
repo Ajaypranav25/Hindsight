@@ -69,7 +69,8 @@ function list(ctx: NativeContext, args: Args): Value {
 }
 
 function range(ctx: NativeContext, args: Args): Value {
-  for (let position = 1; position <= args.length; position++) numberArg(ctx, 'range', args, position)
+  for (let position = 1; position <= args.length; position++)
+    numberArg(ctx, 'range', args, position)
   const numbers = args as readonly number[]
   if (numbers.length === 1) return ctx.newRange(0, numbers[0]!, 1, false)
   if (numbers.length === 2) return ctx.newRange(numbers[0]!, numbers[1]!, 1, false)

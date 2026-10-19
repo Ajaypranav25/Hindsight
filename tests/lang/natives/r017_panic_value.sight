@@ -1,0 +1,1 @@
+panic(["x", 1]) // expect runtime error R017: ["x", 1]

@@ -1,0 +1,1 @@
+repeat("x", -1) // expect runtime error R019: 'repeat' expects a non-negative integer as argument 2, got a number

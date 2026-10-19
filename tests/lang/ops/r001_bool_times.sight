@@ -1,0 +1,1 @@
+let x = true * 2 // expect runtime error R001: cannot apply '*' to bool and number

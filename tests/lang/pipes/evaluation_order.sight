@@ -1,0 +1,19 @@
+// Evaluation order is that of the resulting call (SPEC §7.11).
+fn get_f() {
+  print("callee")
+  |a, b| a - b
+}
+fn val(v) {
+  print("value {v}")
+  v
+}
+print(val(10) |> get_f()(val(3)))
+// expect: callee
+// expect: value 10
+// expect: value 3
+// expect: 7
+fn sub(a, b) { a - b }
+print(val(1) |> sub(val(2)))
+// expect: value 1
+// expect: value 2
+// expect: -1

@@ -1,0 +1,1 @@
+join("abc") // expect runtime error R019: 'join' expects a list as argument 1, got a string

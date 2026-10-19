@@ -1,0 +1,14 @@
+var xs = [1, 2, 3]
+print(insert(xs, 0, "a"), xs) // expect: nil ["a", 1, 2, 3]
+insert(xs, 4, "end")
+print(xs) // expect: ["a", 1, 2, 3, "end"]
+insert(xs, -1, "before last")
+print(xs) // expect: ["a", 1, 2, 3, "before last", "end"]
+insert(xs, -6, "front")
+print(xs[0], len(xs)) // expect: front 7
+var ys = [10, 20, 30]
+print(remove(ys, 1), ys) // expect: 20 [10, 30]
+print(remove(ys, -1), ys) // expect: 30 [10]
+var empty = []
+insert(empty, 0, 1)
+print(empty) // expect: [1]

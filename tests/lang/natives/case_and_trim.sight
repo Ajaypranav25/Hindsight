@@ -1,0 +1,2 @@
+print(upper("abc"), lower("ABC"), upper("straße"), lower("ÀB")) // expect: ABC abc STRASSE àb
+print(repr(trim("  x y \n\t"))) // expect: "x y"

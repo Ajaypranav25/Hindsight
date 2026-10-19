@@ -1,0 +1,2 @@
+let s = "abc"
+print(s[3]) // expect runtime error R007: index 3 is out of bounds for a string of length 3

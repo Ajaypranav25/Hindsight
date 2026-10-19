@@ -1,0 +1,6 @@
+print() // expect:
+print(1, "a", nil) // expect: 1 a nil
+print("two\nlines") // expect: two
+// expect: lines
+print(print("inner")) // expect: inner // expect: nil
+print("", "") // expect:

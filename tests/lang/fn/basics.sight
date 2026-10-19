@@ -1,0 +1,15 @@
+// Function declarations and calls (SPEC §7.10, §7.12).
+fn add(a, b) { a + b }
+print(add(2, 3)) // expect: 5
+fn noargs() { "none" }
+print(noargs()) // expect: none
+fn trailing(a, b,) { a - b }
+print(trailing(5, 3,)) // expect: 2
+print(type(add), add) // expect: function <fn add>
+fn early(n) {
+  if n > 0 { return "positive" }
+  "not positive"
+}
+print(early(1), early(-1)) // expect: positive not positive
+fn(x) { print(x) }(7) // expect: 7
+print(fn(x) { x + 1 }(5)) // expect: 6

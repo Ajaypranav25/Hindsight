@@ -1,0 +1,1 @@
+seed("x") // expect runtime error R019: 'seed' expects a number as argument 1, got a string

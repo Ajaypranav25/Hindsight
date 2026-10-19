@@ -1,0 +1,1 @@
+pop({}) // expect runtime error R019: 'pop' expects a list as argument 1, got a record

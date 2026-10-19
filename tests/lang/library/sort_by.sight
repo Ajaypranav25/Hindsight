@@ -1,0 +1,12 @@
+let people = [{n: "b", k: 1}, {n: "a", k: 0}, {n: "c", k: 1}, {n: "d", k: 0}]
+print(map(sort_by(people, |p| p.k), |p| p.n)) // expect: ["a", "d", "b", "c"]
+print(sort_by([3, 1, 2], |x| -x), sort_by(["bb", "a", "ccc"], len)) // expect: [3, 2, 1] ["a", "bb", "ccc"]
+print(sort_by([], |x| x), sort_by("cab", |c| c)) // expect: [] ["a", "b", "c"]
+let keyed = sort_by([3, 1, 2], |x| {
+  print("key {x}")
+  x
+})
+// expect: key 3
+// expect: key 1
+// expect: key 2
+print(keyed) // expect: [1, 2, 3]

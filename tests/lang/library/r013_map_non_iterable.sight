@@ -1,0 +1,1 @@
+let ys = map(5, |x| x) // expect runtime error R013: cannot iterate over a number

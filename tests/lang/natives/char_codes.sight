@@ -1,0 +1,3 @@
+print(char_code("A"), char_code("abc", 2), char_code("abc", -1)) // expect: 65 99 99
+print(from_char_code(65), from_char_code(0) == "\0", repr(from_char_code(10))) // expect: A true "\n"
+print(char_code(from_char_code(65535))) // expect: 65535

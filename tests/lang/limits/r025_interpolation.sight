@@ -1,0 +1,2 @@
+let s = repeat("ab", 2 ** 22)
+let t = "{s}{s}{s}{s}!" // expect runtime error R025: result too large

@@ -1,0 +1,2 @@
+let s = "abc"
+s["not an index"] = 1 // expect runtime error R022: cannot assign into a string: strings are immutable

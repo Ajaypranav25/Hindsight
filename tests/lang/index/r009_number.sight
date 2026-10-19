@@ -1,0 +1,2 @@
+let n = 5
+print(n[[]]) // expect runtime error R009: cannot index a number

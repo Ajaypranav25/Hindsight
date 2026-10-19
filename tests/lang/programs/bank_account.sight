@@ -1,0 +1,26 @@
+fn make_account(owner) {
+  var balance = 0
+  var history = []
+  let account = {
+    owner,
+    deposit: |amount| {
+      balance += amount
+      push(history, "+{amount}")
+    },
+    withdraw: |amount| {
+      if amount > balance { return false }
+      balance -= amount
+      push(history, "-{amount}")
+      true
+    },
+    balance: || balance,
+    history: || copy(history),
+  }
+  account
+}
+let acct = make_account("ann")
+acct.deposit(100)
+print(acct.withdraw(30), acct.withdraw(500)) // expect: true false
+print(acct.owner, acct.balance(), acct.history()) // expect: ann 70 ["+100", "-30"]
+let other = make_account("bo")
+print(other.balance(), acct.balance()) // expect: 0 70

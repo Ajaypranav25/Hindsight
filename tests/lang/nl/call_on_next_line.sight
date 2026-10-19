@@ -1,0 +1,9 @@
+// `f` and `(x)` on separate lines are two statements (SPEC §3.2).
+var calls = 0
+fn f(x) {
+  calls += 1
+  x
+}
+f
+(5)
+print(calls) // expect: 0

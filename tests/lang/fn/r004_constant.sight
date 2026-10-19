@@ -1,0 +1,1 @@
+print(PI()) // expect runtime error R004: cannot call a number

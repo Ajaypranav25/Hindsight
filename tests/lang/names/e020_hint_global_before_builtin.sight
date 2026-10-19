@@ -1,0 +1,4 @@
+let hab = 1
+fn f() {
+  hat // expect compile error E020: undefined variable 'hat' // hint: did you mean 'hab'?
+}

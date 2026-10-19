@@ -1,0 +1,2 @@
+let xs = []
+xs[0] // expect runtime error R007: index 0 is out of bounds for a list of length 0

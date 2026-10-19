@@ -1,0 +1,4 @@
+// R014 for a parameter is reported at that parameter's pattern (SPEC §6.4).
+fn area({w, h}) { w * h } // expect runtime error R014: value {w: 2} does not match pattern {w, h}
+print(area({w: 2, h: 3})) // expect: 6
+area({w: 2})

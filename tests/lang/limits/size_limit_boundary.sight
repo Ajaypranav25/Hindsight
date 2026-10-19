@@ -1,0 +1,3 @@
+// Exactly 2^24 code units is allowed (SPEC §10.5).
+let s = repeat("x", 2 ** 24)
+print(len(s)) // expect: 16777216

@@ -1,0 +1,2 @@
+var r = {}
+r[nil] = 2 // expect runtime error R012: record keys must be strings, got nil

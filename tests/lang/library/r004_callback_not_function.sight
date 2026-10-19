@@ -1,0 +1,6 @@
+let xs = [1, 2]
+let total = reduce( // expect runtime error R004: cannot call nil
+  xs,
+  nil,
+  0
+)

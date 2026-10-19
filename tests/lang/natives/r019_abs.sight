@@ -1,0 +1,1 @@
+abs("x") // expect runtime error R019: 'abs' expects a number as argument 1, got a string

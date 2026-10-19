@@ -1,0 +1,13 @@
+// Line and block comments; block comments nest (SPEC §2.2).
+// a line comment
+print(1) // expect: 1
+/* block */ print(2) // expect: 2
+/* outer /* inner */ still comment */ print(3) // expect: 3
+print(/* inline */ 4) // expect: 4
+/*
+multi-line
+/* nested
+*/
+*/
+print(5) // expect: 5
+print(6) /* trailing block */ // expect: 6

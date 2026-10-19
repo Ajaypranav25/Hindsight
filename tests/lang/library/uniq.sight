@@ -1,0 +1,4 @@
+print(uniq([1, 2, 1, [1], [1], "1"])) // expect: [1, 2, [1], "1"]
+print(uniq("hello"), uniq([0, -0])) // expect: ["h", "e", "l", "o"] [0]
+let nan = INF - INF
+print(uniq([nan, nan])) // expect: [NaN, NaN]

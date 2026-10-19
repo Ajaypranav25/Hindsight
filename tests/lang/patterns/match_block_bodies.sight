@@ -1,0 +1,11 @@
+let v = match 2 {
+  1 => { "one" }
+  2 => {
+    let doubled = 2 * 2
+    doubled
+  }
+  _ => nil
+}
+print(v) // expect: 4
+let rec = match 1 { _ => ({a: 1}) }
+print(rec) // expect: {a: 1}

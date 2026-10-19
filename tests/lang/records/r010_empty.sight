@@ -1,0 +1,2 @@
+let r = {}
+print(r.x) // expect runtime error R010: record has no field 'x'

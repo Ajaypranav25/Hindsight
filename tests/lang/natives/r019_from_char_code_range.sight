@@ -1,0 +1,1 @@
+from_char_code(65536) // expect runtime error R019: 'from_char_code' expects an integer from 0 to 65535 as argument 1, got a number

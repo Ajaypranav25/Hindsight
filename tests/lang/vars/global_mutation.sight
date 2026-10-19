@@ -1,0 +1,10 @@
+var counter = 0
+fn inc() { counter += 1 }
+inc()
+inc()
+print(counter) // expect: 2
+var log = []
+fn note(x) { push(log, x) }
+note("a")
+note("b")
+print(log) // expect: ["a", "b"]

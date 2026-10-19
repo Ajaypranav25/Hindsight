@@ -1,0 +1,7 @@
+// Lambda expression bodies inherit the context they appear in (SPEC §3.2 rule 3).
+let f = |x| x
+- 1
+print(f(5)) // expect: 5
+let g = (|x| x
+- 1)
+print(g(5)) // expect: 4

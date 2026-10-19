@@ -1,0 +1,1 @@
+print(1 else) // expect compile error E010: expected ')' but found keyword 'else'

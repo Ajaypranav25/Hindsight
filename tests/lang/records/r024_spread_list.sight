@@ -1,0 +1,1 @@
+let r = {a: 1, ...[1]} // expect runtime error R024: cannot spread a list into a record

@@ -1,0 +1,1 @@
+assert(false, [1, "a"]) // expect runtime error R018: assertion failed: [1, "a"]

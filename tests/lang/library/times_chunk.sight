@@ -1,0 +1,3 @@
+print(times(3, |i| i * i), times(0, |i| i)) // expect: [0, 1, 4] []
+print(chunk([1, 2, 3, 4, 5], 2)) // expect: [[1, 2], [3, 4], [5]]
+print(chunk([1, 2], 2), chunk([], 3), chunk("abc", 1)) // expect: [[1, 2]] [] [["a"], ["b"], ["c"]]

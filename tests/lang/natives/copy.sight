@@ -1,0 +1,10 @@
+let a = [[1]]
+let b = copy(a)
+push(b, 2)
+push(b[0], 9)
+print(a, b) // expect: [[1, 9]] [[1, 9], 2]
+let r = {k: [1]}
+let c = copy(r)
+c.n = 1
+push(c.k, 2)
+print(r, c) // expect: {k: [1, 2]} {k: [1, 2], n: 1}

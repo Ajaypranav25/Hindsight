@@ -1,0 +1,4 @@
+// The span of an index error runs from the start of the object to ']'.
+let m = [[1]]
+print(m[0] // expect runtime error R007: index 5 is out of bounds for a list of length 1
+  [5])

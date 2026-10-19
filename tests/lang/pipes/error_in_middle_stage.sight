@@ -1,0 +1,5 @@
+// A piped call's error is reported from its '|>' (SPEC §10.4).
+let r = [1, 2, 3]
+  |> map(|x| x * 2)
+  |> len(5) // expect runtime error R005: 'len' expects 1 argument but got 2
+  |> str

@@ -1,0 +1,10 @@
+// A var declared in the body is fresh per iteration; closures see their own copy.
+var fs = []
+for i in 0..2 {
+  var x = i * 10
+  push(fs, || {
+    x += 1
+    x
+  })
+}
+print(fs[0](), fs[0](), fs[1]()) // expect: 1 2 11

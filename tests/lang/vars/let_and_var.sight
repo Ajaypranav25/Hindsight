@@ -1,0 +1,14 @@
+// let and var with patterns (SPEC §5.1).
+var n = 1
+n = n + 1
+n += 10
+print(n) // expect: 12
+let [a, b] = [1, 2]
+print(a, b) // expect: 1 2
+var {c, d: e} = {c: 3, d: 4}
+c = 30
+e = 40
+print(c, e) // expect: 30 40
+var [p, ...q] = [1, 2]
+q = "replaced"
+print(p, q) // expect: 1 replaced

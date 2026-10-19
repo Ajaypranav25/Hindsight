@@ -1,0 +1,1 @@
+pritn("hello") // expect compile error E020: undefined variable 'pritn' // hint: did you mean 'print'?

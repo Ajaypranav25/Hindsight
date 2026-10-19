@@ -1,0 +1,10 @@
+let base = {a: 1, b: 2}
+print({...base, c: 3}) // expect: {a: 1, b: 2, c: 3}
+print({...base, a: 10}) // expect: {a: 10, b: 2}
+print({a: 0, ...base}) // expect: {a: 1, b: 2}
+print({c: 0, ...base, ...{c: 5}}) // expect: {c: 5, a: 1, b: 2}
+let copied = {...base}
+copied.a = 100
+print(base.a, copied.a) // expect: 1 100
+let name = "n"
+print({name, ...{name: "m"}}) // expect: {name: "m"}

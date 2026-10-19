@@ -1,0 +1,5 @@
+print(split("a,b,,c", ",")) // expect: ["a", "b", "", "c"]
+print(split("abc", ""), split("", ","), split("", "")) // expect: ["a", "b", "c"] [""] []
+print(split("a--b", "--"), split("abc", "x")) // expect: ["a", "b"] ["abc"]
+print(replace("a.b.c", ".", "-"), replace("aaa", "a", "$&")) // expect: a-b-c $&$&$&
+print(replace("abc", "", "-"), replace("abc", "z", "y")) // expect: a-b-c abc

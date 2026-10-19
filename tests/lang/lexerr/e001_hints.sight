@@ -1,0 +1,7 @@
+let a = !true // expect compile error E001: unexpected character '!' // hint: use 'not' for negation or '!=' for inequality
+let b = 1 & 2 // expect compile error E001: unexpected character '&' // hint: use 'and'
+let c = 'x' // expect compile error E001: unexpected character ''' // hint: strings use double quotes
+let d = `x` // expect compile error E001: unexpected character '`' // hint: strings use double quotes
+# not a comment // expect compile error E001: unexpected character '#' // hint: comments start with //
+let e = @ // expect compile error E001: unexpected character '@'
+let f = $g // expect compile error E001: unexpected character '$'

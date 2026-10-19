@@ -1,0 +1,2 @@
+let xs = [1]
+print(xs[INF - INF]) // expect runtime error R008: list index must be an integer, got NaN

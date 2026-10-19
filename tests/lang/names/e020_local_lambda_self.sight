@@ -1,0 +1,4 @@
+fn outer() {
+  let rec = |n| if n == 0 { 0 } else { rec(n - 1) } // expect compile error E020: undefined variable 'rec'
+  rec(3)
+}

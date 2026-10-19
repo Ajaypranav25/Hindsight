@@ -1,0 +1,1 @@
+min([1], [2]) // expect runtime error R019: 'min' expects a number as argument 1, got a list

@@ -1,0 +1,16 @@
+fn outer() {
+  var x = 1
+  fn middle() {
+    fn inner() {
+      x += 1
+      x
+    }
+    inner
+  }
+  middle()
+}
+let inc = outer()
+print(inc(), inc()) // expect: 2 3
+fn adder(n) { |x| x + n }
+let add5 = adder(5)
+print(add5(1), adder(10)(1)) // expect: 6 11

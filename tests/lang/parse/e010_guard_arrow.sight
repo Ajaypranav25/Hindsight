@@ -1,0 +1,1 @@
+let v = match 1 { x if x > 0 x } // expect compile error E010: expected '=>' but found identifier 'x'

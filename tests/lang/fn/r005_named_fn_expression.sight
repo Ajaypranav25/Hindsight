@@ -1,0 +1,2 @@
+let twice = fn(x) { x * 2 }
+twice() // expect runtime error R005: 'twice' expects 1 argument but got 0

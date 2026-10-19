@@ -1,0 +1,3 @@
+let a = 1 < 2 < 3
+print(undefined_name)
+let b = [1 2] // expect compile error E010: expected ']' but found number 2

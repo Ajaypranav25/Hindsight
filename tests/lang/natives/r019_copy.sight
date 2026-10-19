@@ -1,0 +1,1 @@
+copy("s") // expect runtime error R019: 'copy' expects a list or record as argument 1, got a string

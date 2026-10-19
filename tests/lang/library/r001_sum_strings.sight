@@ -1,0 +1,1 @@
+let total = sum(["a"]) // expect runtime error R001: cannot apply '+' to number and string

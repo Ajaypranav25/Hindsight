@@ -1,0 +1,1 @@
+let x = -not true // expect compile error E011: expected an expression but found keyword 'not'

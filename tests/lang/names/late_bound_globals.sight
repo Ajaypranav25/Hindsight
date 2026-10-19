@@ -1,0 +1,10 @@
+// References inside functions are late-bound (SPEC §5.3).
+fn a() { b() }
+fn b() { "b" }
+print(a()) // expect: b
+fn show_total() { total }
+let total = 42
+print(show_total()) // expect: 42
+let f = || later_value
+let later_value = "late"
+print(f()) // expect: late

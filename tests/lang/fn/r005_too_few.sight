@@ -1,0 +1,2 @@
+fn f(a, b) { a }
+f(1) // expect runtime error R005: 'f' expects 2 arguments but got 1

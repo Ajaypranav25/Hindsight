@@ -1,0 +1,25 @@
+// Every match pattern form (SPEC §6.1, §7.14).
+fn describe(v) {
+  match v {
+    nil => "nil"
+    true => "true"
+    0 => "zero"
+    -1 => "minus one"
+    1..10 => "small"
+    10..=20 => "medium"
+    "hi" => "greeting"
+    [] => "empty list"
+    [x] => "one item {x}"
+    [x, ...rest] => "list starting {x} plus {len(rest)}"
+    {kind: "circle", r} => "circle {r}"
+    {kind} => "shape {kind}"
+    _ => "other"
+  }
+}
+print(describe(nil), describe(true), describe(false)) // expect: nil true other
+print(describe(0), describe(-0), describe(-1)) // expect: zero zero minus one
+print(describe(5.5), describe(10), describe(20), describe(20.5)) // expect: small medium medium other
+print(describe("hi"), describe("ho")) // expect: greeting other
+print(describe([]), describe([7]), describe([1, 2, 3])) // expect: empty list one item 7 list starting 1 plus 2
+print(describe({kind: "circle", r: 2}), describe({kind: "square"}), describe({})) // expect: circle 2 shape square other
+print(describe(0..1), describe(print)) // expect: other other

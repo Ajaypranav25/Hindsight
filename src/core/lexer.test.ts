@@ -24,7 +24,9 @@ function newlineFlags(source: string): boolean[] {
   return lex(source).tokens.map((token) => token.newlineBefore)
 }
 
-function diagnostics(source: string): { code: string; message: string; span: [number, number]; hint?: string }[] {
+function diagnostics(
+  source: string,
+): { code: string; message: string; span: [number, number]; hint?: string }[] {
   return lex(source).diagnostics.map((d) => ({
     code: d.code,
     message: d.message,
@@ -397,7 +399,12 @@ describe('lex: string interpolation', () => {
     const result = lex(source)
 
     // Assert
-    expect(result.tokens.map(render)).toEqual(['StringHead("")', 'Identifier("x")', 'StringTail("")', 'EOF'])
+    expect(result.tokens.map(render)).toEqual([
+      'StringHead("")',
+      'Identifier("x")',
+      'StringTail("")',
+      'EOF',
+    ])
     expect(result.comments).toEqual([
       { start: 5, end: 12 },
       { start: 14, end: 21 },
@@ -450,7 +457,13 @@ describe('lex: comments', () => {
 
   test('slashes that do not start a comment are operators', () => {
     // Arrange / Act / Assert
-    expect(tokens('a / b /= c')).toEqual(['Identifier("a")', '/', 'Identifier("b")', '/=', 'Identifier("c")'])
+    expect(tokens('a / b /= c')).toEqual([
+      'Identifier("a")',
+      '/',
+      'Identifier("b")',
+      '/=',
+      'Identifier("c")',
+    ])
   })
 })
 
@@ -497,7 +510,9 @@ describe('lex: unexpected characters (E001)', () => {
 
   test('other characters have no hint', () => {
     // Arrange / Act / Assert
-    expect(diagnostics('@')).toEqual([{ code: 'E001', message: "unexpected character '@'", span: [0, 1] }])
+    expect(diagnostics('@')).toEqual([
+      { code: 'E001', message: "unexpected character '@'", span: [0, 1] },
+    ])
   })
 
   test('every occurrence is reported and lexing continues', () => {
@@ -578,17 +593,23 @@ describe('lex: escape errors (E003)', () => {
 describe('lex: unterminated constructs at end of file', () => {
   test('an open string is E002 at its opening quote', () => {
     // Arrange / Act / Assert
-    expect(diagnostics('x = "abc')).toEqual([{ code: 'E002', message: 'unterminated string', span: [4, 5] }])
+    expect(diagnostics('x = "abc')).toEqual([
+      { code: 'E002', message: 'unterminated string', span: [4, 5] },
+    ])
   })
 
   test('a string reopened after an interpolation is E002 at its first quote', () => {
     // Arrange / Act / Assert
-    expect(diagnostics('"{x} abc')).toEqual([{ code: 'E002', message: 'unterminated string', span: [0, 1] }])
+    expect(diagnostics('"{x} abc')).toEqual([
+      { code: 'E002', message: 'unterminated string', span: [0, 1] },
+    ])
   })
 
   test('a trailing backslash in an open string reports only E002', () => {
     // Arrange / Act / Assert
-    expect(diagnostics('"abc\\')).toEqual([{ code: 'E002', message: 'unterminated string', span: [0, 1] }])
+    expect(diagnostics('"abc\\')).toEqual([
+      { code: 'E002', message: 'unterminated string', span: [0, 1] },
+    ])
   })
 
   test('an open block comment is E005 at its outermost opener', () => {

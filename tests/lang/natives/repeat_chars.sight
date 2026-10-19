@@ -1,0 +1,3 @@
+print(repeat("ab", 3), repr(repeat("x", 0))) // expect: ababab ""
+print(chars("ab"), chars("")) // expect: ["a", "b"] []
+print(len(chars("\u{1F600}"))) // expect: 2

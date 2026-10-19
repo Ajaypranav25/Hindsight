@@ -1,0 +1,2 @@
+print(starts_with("hello", "he"), starts_with("hello", "lo"), starts_with("x", "")) // expect: true false true
+print(ends_with("hello", "lo"), ends_with("hello", "he")) // expect: true false

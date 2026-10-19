@@ -1,0 +1,2 @@
+let r = {cat: 1, bat: 2}
+print(r.hat) // expect runtime error R010: record has no field 'hat' // hint: did you mean 'cat'?

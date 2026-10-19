@@ -1,0 +1,3 @@
+let a = 5
+if a
+  > 3 { print("big") } // expect compile error E010: expected '{' but found '>'

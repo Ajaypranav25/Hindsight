@@ -1,0 +1,2 @@
+let s = repeat("a", 2 ** 23)
+let t = join([s, s], "-") // expect runtime error R025: result too large

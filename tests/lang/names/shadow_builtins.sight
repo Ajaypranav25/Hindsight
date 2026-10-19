@@ -1,0 +1,14 @@
+// Globals and locals may shadow builtins; library code keeps the original (SPEC §5.4).
+fn push(xs, x) { "mine" }
+print(push([], 1)) // expect: mine
+print(map([1, 2], |x| x + 1)) // expect: [2, 3]
+fn f() {
+  let str = "local"
+  str
+}
+print(f()) // expect: local
+print(str(5) + "!") // expect: 5!
+var len = 10
+len += 1
+print(len) // expect: 11
+print(sort_by([3, 1, 2], |x| x)) // expect: [1, 2, 3]

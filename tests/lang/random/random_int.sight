@@ -1,0 +1,10 @@
+print(random_int(1, 6), random_int(1, 6), random_int(1, 6), random_int(1, 6), random_int(1, 6)) // expect: 4 3 6 5 2
+seed(123)
+var draws = []
+for i in 0..10 { push(draws, random_int(0, 9)) }
+print(draws) // expect: [7, 1, 4, 2, 3, 8, 8, 9, 7, 4]
+seed(7)
+random()
+print(random_int(5, 5), random()) // expect: 5 0.97690763277933
+seed(0)
+print(random(), random_int(-3, 3)) // expect: 0.26642920868471265 -3

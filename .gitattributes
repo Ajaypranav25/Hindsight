@@ -3,3 +3,7 @@
 *.gif binary
 *.ico binary
 *.woff2 binary
+
+# Corpus files that test line terminators must keep their bytes.
+tests/lang/lex/crlf.sight -text
+tests/lang/lex/cr_only.sight -text

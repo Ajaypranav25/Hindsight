@@ -1,0 +1,2 @@
+let total = 1
+  + 2 // expect compile error E011: expected an expression but found '+'

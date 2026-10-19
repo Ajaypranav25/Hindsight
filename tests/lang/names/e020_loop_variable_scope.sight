@@ -1,0 +1,2 @@
+for item in [1] {}
+print(item) // expect compile error E020: undefined variable 'item'

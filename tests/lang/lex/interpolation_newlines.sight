@@ -1,0 +1,7 @@
+// Interpolations are newline-insensitive (SPEC §3.2 rule 3).
+let a = 2
+let b = 5
+print("{a
+  + b}") // expect: 7
+print("{[a,
+  b]}") // expect: [2, 5]

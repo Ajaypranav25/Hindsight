@@ -1,0 +1,1 @@
+let {zz} = {a: 1} // expect runtime error R014: value {a: 1} does not match pattern {zz}

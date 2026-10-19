@@ -1,0 +1,1 @@
+let v = match 1 { 1 => "a" 2 => "b" } // expect compile error E018: expected a newline or ',' between match arms

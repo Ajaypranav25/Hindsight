@@ -1,0 +1,2 @@
+print(zip([1, 2, 3], "ab"), zip([], [1])) // expect: [[1, "a"], [2, "b"]] []
+print(enumerate(["x", "y"]), enumerate(5..7)) // expect: [[0, "x"], [1, "y"]] [[0, 5], [1, 6]]

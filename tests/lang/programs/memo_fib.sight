@@ -1,0 +1,10 @@
+var memo = {}
+fn fib(n) {
+  let key = str(n)
+  if has(memo, key) { return memo[key] }
+  let v = if n < 2 { n } else { fib(n - 1) + fib(n - 2) }
+  memo[key] = v
+  v
+}
+print(fib(70)) // expect: 190392490709135
+print(len(keys(memo))) // expect: 71

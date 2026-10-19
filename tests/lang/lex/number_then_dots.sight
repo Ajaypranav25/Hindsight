@@ -1,0 +1,6 @@
+// A '.' belongs to a number only when a digit follows it (SPEC §2.5).
+print(1..5) // expect: 1..5
+print(len(1..5)) // expect: 4
+print(2..=4) // expect: 2..=4
+print(list(1..3)) // expect: [1, 2]
+print(1.5..3) // expect: 1.5..3

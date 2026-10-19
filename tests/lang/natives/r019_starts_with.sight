@@ -1,0 +1,1 @@
+starts_with(1, "1") // expect runtime error R019: 'starts_with' expects a string as argument 1, got a number

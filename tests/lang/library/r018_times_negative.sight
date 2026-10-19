@@ -1,0 +1,1 @@
+times(-1, |i| i) // expect runtime error R018: assertion failed: 'times' expects a non-negative integer

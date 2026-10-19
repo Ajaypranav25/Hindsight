@@ -1,0 +1,7 @@
+// Strings may span lines; raw newlines are kept.
+let s = "line one
+line two"
+print(s) // expect: line one
+// expect: line two
+print(len(s)) // expect: 17
+print(repr(s)) // expect: "line one\nline two"

@@ -1,0 +1,4 @@
+let xs = [
+  1,
+  ...nil, // expect runtime error R013: cannot iterate over nil
+]

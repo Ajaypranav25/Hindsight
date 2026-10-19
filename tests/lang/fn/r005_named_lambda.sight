@@ -1,0 +1,2 @@
+let sq = |x| x * x
+sq(1, 2) // expect runtime error R005: 'sq' expects 1 argument but got 2

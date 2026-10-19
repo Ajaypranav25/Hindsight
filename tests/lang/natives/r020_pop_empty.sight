@@ -1,0 +1,3 @@
+var xs = [1]
+pop(xs)
+pop(xs) // expect runtime error R020: cannot pop from an empty list

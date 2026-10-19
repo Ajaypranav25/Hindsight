@@ -1,0 +1,26 @@
+// A block's value is its last expression statement, else nil (SPEC §7.15).
+fn last_expr() { 1; 2 }
+print(last_expr()) // expect: 2
+fn last_let() { let x = 1 }
+print(last_let()) // expect: nil
+fn empty() {}
+print(empty()) // expect: nil
+fn last_assign() {
+  var x = 1
+  x = 2
+}
+print(last_assign()) // expect: nil
+fn last_while() { while false {} }
+print(last_while()) // expect: nil
+fn last_for() { for x in [] {} }
+print(last_for()) // expect: nil
+fn last_fn() { fn inner() {} }
+print(last_fn()) // expect: nil
+fn last_if() { if true { "yes" } }
+print(last_if()) // expect: yes
+fn if_no_else() { if false { "yes" } }
+print(if_no_else()) // expect: nil
+fn last_match() { match 1 { _ => "m" } }
+print(last_match()) // expect: m
+let lam = || { 5 }
+print(lam()) // expect: 5

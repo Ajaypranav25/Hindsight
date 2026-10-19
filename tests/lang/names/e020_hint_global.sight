@@ -1,0 +1,2 @@
+let counter = 1
+print(countr) // expect compile error E020: undefined variable 'countr' // hint: did you mean 'counter'?

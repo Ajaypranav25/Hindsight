@@ -1,0 +1,3 @@
+for x in 5 { // expect runtime error R013: cannot iterate over a number
+  print(x)
+}

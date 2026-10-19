@@ -1,0 +1,23 @@
+fn merge(a, b) {
+  var out = []
+  var i = 0
+  var j = 0
+  while i < len(a) and j < len(b) {
+    if a[i] <= b[j] {
+      push(out, a[i])
+      i += 1
+    } else {
+      push(out, b[j])
+      j += 1
+    }
+  }
+  [...out, ...slice(a, i), ...slice(b, j)]
+}
+fn merge_sort(xs) {
+  if len(xs) <= 1 { return xs }
+  let mid = floor(len(xs) / 2)
+  merge(merge_sort(slice(xs, 0, mid)), merge_sort(slice(xs, mid)))
+}
+print(merge_sort([38, 27, 43, 3, 9, 82, 10])) // expect: [3, 9, 10, 27, 38, 43, 82]
+let big = times(200, |i| (i * 7919) % 200)
+print(merge_sort(big) == sort(big), len(big)) // expect: true 200

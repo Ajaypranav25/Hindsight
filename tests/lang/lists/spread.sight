@@ -1,0 +1,9 @@
+let a = [1, 2]
+print([0, ...a, 3]) // expect: [0, 1, 2, 3]
+print([...1..4]) // expect: [1, 2, 3]
+print([..."hi"]) // expect: ["h", "i"]
+print([...{x: 1, y: 2}]) // expect: ["x", "y"]
+print([...[], ...range(0, 6, 2)]) // expect: [0, 2, 4]
+let b = [...a]
+push(b, 9)
+print(a, b) // expect: [1, 2] [1, 2, 9]

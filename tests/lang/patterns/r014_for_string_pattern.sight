@@ -1,0 +1,1 @@
+for "a" in "ab" {} // expect runtime error R014: value "b" does not match pattern "a"

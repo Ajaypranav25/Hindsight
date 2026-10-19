@@ -1,0 +1,9 @@
+// contains on ranges vs range patterns (SPEC §7.6).
+print(contains(0..10, 5), contains(0..10, 10), contains(0..=10, 10)) // expect: true false true
+print(contains(0..10, 5.5)) // expect: false
+print(match 5.5 { 0..10 => "pattern matches", _ => "no" }) // expect: pattern matches
+print(contains(range(0, 10, 2), 4), contains(range(0, 10, 2), 5)) // expect: true false
+print(contains(range(10, 0, -2), 4), contains(range(10, 0, -2), 0)) // expect: true false
+print(contains(0..10, "5"), contains(0..10, nil)) // expect: false false
+print(contains(range(0, 1, 0.1), 0.3), contains(range(0, 1, 0.1), 0.30000000000000004)) // expect: false true
+print(contains(-5..5, -5), contains(0..10, -1)) // expect: true false

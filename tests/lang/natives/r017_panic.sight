@@ -1,0 +1,3 @@
+print("before") // expect: before
+panic("boom") // expect runtime error R017: boom
+print("after")

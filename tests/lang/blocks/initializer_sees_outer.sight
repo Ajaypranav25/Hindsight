@@ -1,0 +1,17 @@
+// A let initializer is resolved as if its own declaration did not exist (SPEC §5.2).
+let a = 1
+fn f() {
+  let a = a + 10
+  let a = a * 2
+  a
+}
+print(f()) // expect: 22
+fn g() {
+  let v = 1
+  {
+    let v = v + 1
+    print(v) // expect: 2
+  }
+  v
+}
+print(g()) // expect: 1

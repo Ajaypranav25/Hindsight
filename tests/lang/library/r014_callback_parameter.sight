@@ -1,0 +1,3 @@
+// The lambda's frame is user code, so R014 is reported at its parameter pattern.
+let f = |[a]| a // expect runtime error R014: value 1 does not match pattern [a]
+let ys = map([1], f)

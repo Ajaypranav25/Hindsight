@@ -1,0 +1,1 @@
+let m = min_by([1, "a"], |x| x) // expect runtime error R001: cannot apply '<' to string and number

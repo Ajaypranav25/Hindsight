@@ -1,0 +1,15 @@
+print(any([1, 2], |x| x > 1), any([], |x| true), any([1], |x| x > 1)) // expect: true false false
+print(all([1, 2], |x| x > 0), all([], |x| false), all([1, 2], |x| x > 1)) // expect: true true false
+print(any([1], |x| "truthy"), all([1], |x| 0)) // expect: true true
+print(count([1, 2, 3, 4], |x| x % 2 == 1), count([], |x| true)) // expect: 2 0
+print(sum([1, 2, 3]), sum([]), sum(1..=100), sum([0.1, 0.2])) // expect: 6 0 5050 0.30000000000000004
+var calls = 0
+any([1, 2, 3], |x| {
+  calls += 1
+  x == 1
+})
+all([1, 2, 3], |x| {
+  calls += 1
+  x > 5
+})
+print(calls) // expect: 2

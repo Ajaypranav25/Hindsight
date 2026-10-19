@@ -1,0 +1,10 @@
+let [a, a] = [1, 2] // expect compile error E023: duplicate binding 'a'
+fn f(x, x) { x } // expect compile error E023: duplicate binding 'x'
+fn g([p], {p}) { p } // expect compile error E023: duplicate binding 'p'
+let h = |q, [q]| q // expect compile error E023: duplicate binding 'q'
+let [_, _] = [1, 2]
+let v = match [1, 2] {
+  [m, m] => m // expect compile error E023: duplicate binding 'm'
+  _ => 0
+}
+for [i, {i}] in [] {} // expect compile error E023: duplicate binding 'i'

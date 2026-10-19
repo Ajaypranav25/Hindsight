@@ -166,7 +166,10 @@ function expandExpression(node: Exclude<AstNode, Program | Stmt | Block>): Part[
     case 'Function':
       return functionParts(node)
     case 'If':
-      return group('if', node.else === null ? [node.cond, node.then] : [node.cond, node.then, node.else])
+      return group(
+        'if',
+        node.else === null ? [node.cond, node.then] : [node.cond, node.then, node.else],
+      )
     case 'Match':
       return group('match', [node.subject, ...node.arms])
     case 'Arm':
@@ -185,11 +188,17 @@ function expandPattern(node: Pattern | RestPattern): Part[] {
     case 'PLiteral':
       return [formatLiteral(node.value)]
     case 'PRange':
-      return [`${formatNumber(node.start)}${node.inclusive ? '..=' : '..'}${formatNumber(node.end)}`]
+      return [
+        `${formatNumber(node.start)}${node.inclusive ? '..=' : '..'}${formatNumber(node.end)}`,
+      ]
     case 'PRest':
       return [node.name === null ? '...' : `...${node.name}`]
     case 'PList':
-      return sequence('[', [...node.before, ...(node.rest === null ? [] : [node.rest]), ...node.after], ']')
+      return sequence(
+        '[',
+        [...node.before, ...(node.rest === null ? [] : [node.rest]), ...node.after],
+        ']',
+      )
     case 'PRecord':
       return recordPatternParts(node)
     case 'POr':

@@ -1,0 +1,13 @@
+// Escape sequences (SPEC §2.6).
+print("quote: \" backslash: \\") // expect: quote: " backslash: \
+print("braces: \{ \}") // expect: braces: { }
+print(repr("a\tb")) // expect: "a\tb"
+print(repr("a\nb")) // expect: "a\nb"
+print(repr("\r")) // expect: "\r"
+print(len("\0"), char_code("\0")) // expect: 1 0
+print("\u{41}\u{62}") // expect: Ab
+print("\u{000041}") // expect: A
+print(len("\u{1F600}")) // expect: 2
+print(char_code("\u{1F600}", 0), char_code("\u{1F600}", 1)) // expect: 55357 56832
+print(len("\u{10FFFF}")) // expect: 2
+print("\u{e9}" == "\u{E9}") // expect: true

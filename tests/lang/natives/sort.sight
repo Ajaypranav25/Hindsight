@@ -1,0 +1,4 @@
+let xs = [10, 9, 1, 2.5, -3]
+print(sort(xs), xs) // expect: [-3, 1, 2.5, 9, 10] [10, 9, 1, 2.5, -3]
+print(sort(["b", "a", "B", "aa", ""])) // expect: ["", "B", "a", "aa", "b"]
+print(sort([]), sort([INF, -INF, 0])) // expect: [] [-Infinity, 0, Infinity]

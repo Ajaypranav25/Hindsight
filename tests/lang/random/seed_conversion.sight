@@ -1,0 +1,10 @@
+// seed(n) sets the state to n >>> 0 (SPEC §10.3).
+seed(-1)
+print(random()) // expect: 0.8964226141106337
+seed(1.9)
+let a = random()
+seed(1)
+print(a == random(), a) // expect: true 0.6270739405881613
+seed(2 ** 32 + 7)
+print(random()) // expect: 0.011704753153026104
+print(seed(3)) // expect: nil

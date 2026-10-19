@@ -1,0 +1,1 @@
+max([]) // expect runtime error R019: 'max' expects a non-empty list

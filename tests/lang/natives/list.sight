@@ -1,0 +1,6 @@
+print(list("ab"), list({a: 1, b: 2}), list(1..3)) // expect: ["a", "b"] ["a", "b"] [1, 2]
+let xs = [1, 2]
+let ys = list(xs)
+push(ys, 3)
+print(xs, ys) // expect: [1, 2] [1, 2, 3]
+print(list([]), list("")) // expect: [] []

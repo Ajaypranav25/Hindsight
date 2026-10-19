@@ -1,0 +1,22 @@
+// `target op= e` evaluates object and index once (SPEC §5.5).
+var calls = 0
+fn idx() {
+  calls += 1
+  0
+}
+var ys = [10]
+ys[idx()] += 5
+print(ys, calls) // expect: [15] 1
+let obj = {count: 1}
+fn get() {
+  calls += 1
+  obj
+}
+get().count *= 6
+print(obj.count, calls) // expect: 6 2
+var s = "a"
+s += "b"
+print(s) // expect: ab
+var n = 7
+n %= 4
+print(n) // expect: 3

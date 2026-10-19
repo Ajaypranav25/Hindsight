@@ -1,0 +1,1 @@
+lower(nil) // expect runtime error R019: 'lower' expects a string as argument 1, got nil

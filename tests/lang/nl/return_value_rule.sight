@@ -1,0 +1,26 @@
+// `return` takes a value only on the same line (SPEC §3.2 rule 4).
+fn f() {
+  return
+  5
+}
+print(f()) // expect: nil
+fn g() {
+  return 5
+}
+print(g()) // expect: 5
+fn h() { return }
+print(h()) // expect: nil
+fn k() {
+  return;
+}
+print(k()) // expect: nil
+fn m() {
+  if true { return }
+  7
+}
+print(m()) // expect: nil
+fn n() {
+  return (
+    6)
+}
+print(n()) // expect: 6

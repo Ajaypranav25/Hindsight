@@ -1,0 +1,4 @@
+fn forever(n) {
+  forever(n + 1) // expect runtime error R016: stack overflow: more than 10000 nested calls
+}
+forever(0)

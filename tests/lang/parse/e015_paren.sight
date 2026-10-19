@@ -1,0 +1,1 @@
+let (a) = 1 // expect compile error E015: invalid pattern

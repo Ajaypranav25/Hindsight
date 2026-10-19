@@ -1,0 +1,7 @@
+fn outer() {
+  fn fact(n) { if n <= 1 { 1 } else { n * fact(n - 1) } }
+  fact(5)
+}
+print(outer()) // expect: 120
+let countdown = |n| if n == 0 { "done" } else { countdown(n - 1) }
+print(countdown(3)) // expect: done

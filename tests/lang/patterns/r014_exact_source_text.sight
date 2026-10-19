@@ -1,0 +1,1 @@
+let [ a,b ,  ...c ] = "str" // expect runtime error R014: value "str" does not match pattern [ a,b ,  ...c ]

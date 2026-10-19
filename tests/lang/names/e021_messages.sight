@@ -1,0 +1,16 @@
+let a = 1
+a = 2 // expect compile error E021: cannot assign to 'a' because it was declared with 'let' // hint: declare it with 'var' to make it mutable
+fn f(p) {
+  p = 1 // expect compile error E021: cannot assign to 'p' because it is a parameter
+}
+f = 3 // expect compile error E021: cannot assign to 'f' because it is a function
+for i in 0..3 {
+  i += 1 // expect compile error E021: cannot assign to 'i' because it is a loop variable
+}
+let v = match 1 {
+  m => { m = 2 } // expect compile error E021: cannot assign to 'm' because it is a match binding
+}
+print = 4 // expect compile error E021: cannot assign to builtin 'print'
+len += 1 // expect compile error E021: cannot assign to builtin 'len'
+PI = 3 // expect compile error E021: cannot assign to builtin 'PI'
+map = 0 // expect compile error E021: cannot assign to builtin 'map'

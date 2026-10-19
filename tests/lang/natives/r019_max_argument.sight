@@ -1,0 +1,1 @@
+max(1, "a") // expect runtime error R019: 'max' expects a number as argument 2, got a string

@@ -1,0 +1,9 @@
+// A parenthesized operand never triggers E013/E014 (SPEC §3.3); `(a) = 1` assigns (SPEC §3.4).
+print((1 < 2) == true) // expect: true
+print((1 == 1) != false) // expect: true
+var a = 0
+(a) = 5
+print(a) // expect: 5
+var xs = [1, 2]
+(xs)[0] = 9
+print(xs) // expect: [9, 2]

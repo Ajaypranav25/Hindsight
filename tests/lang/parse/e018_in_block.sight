@@ -1,0 +1,1 @@
+fn f() { 1 2 } // expect compile error E018: expected a newline or ';' between statements

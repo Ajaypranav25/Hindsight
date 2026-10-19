@@ -1,0 +1,2 @@
+let p = {name: "x", age: 3}
+print(p.nme) // expect runtime error R010: record has no field 'nme' // hint: did you mean 'name'?

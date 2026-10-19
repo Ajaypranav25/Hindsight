@@ -1,0 +1,2 @@
+let f = |x| sum(x) // expect runtime error R001: cannot apply '+' to number and string
+let ys = map([[1], ["a"]], f)

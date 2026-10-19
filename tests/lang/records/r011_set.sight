@@ -1,0 +1,2 @@
+let xs = [1]
+xs.y = 2 // expect runtime error R011: cannot set field 'y' on a list

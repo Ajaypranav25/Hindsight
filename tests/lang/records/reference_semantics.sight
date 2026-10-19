@@ -1,0 +1,7 @@
+let a = {n: 1}
+let b = a
+b.n = 2
+print(a.n) // expect: 2
+let nested = {inner: {v: 1}}
+nested.inner.v += 1
+print(nested) // expect: {inner: {v: 2}}

@@ -38,7 +38,8 @@ export const MATH_NATIVES: NativeTable = {
   atan2: {
     min: 2,
     max: 2,
-    fn: (ctx, args) => Math.atan2(numberArg(ctx, 'atan2', args, 1), numberArg(ctx, 'atan2', args, 2)),
+    fn: (ctx, args) =>
+      Math.atan2(numberArg(ctx, 'atan2', args, 1), numberArg(ctx, 'atan2', args, 2)),
   },
   random: { min: 0, max: 0, fn: (ctx) => ctx.random() },
   random_int: { min: 2, max: 2, fn: randomInt },

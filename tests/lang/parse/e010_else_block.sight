@@ -1,0 +1,1 @@
+let v = if true { 1 } else 2 // expect compile error E010: expected '{' but found number 2

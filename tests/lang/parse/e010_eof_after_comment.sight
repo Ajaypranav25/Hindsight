@@ -1,0 +1,4 @@
+fn f() {
+  print(1)
+
+/* the end-of-file anchor is after the last non-whitespace character, comments included */ // expect compile error E010: expected '}' but found end of file

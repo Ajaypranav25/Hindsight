@@ -1,0 +1,1 @@
+sqrt("4") // expect runtime error R019: 'sqrt' expects a number as argument 1, got a string

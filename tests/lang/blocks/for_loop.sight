@@ -1,0 +1,17 @@
+// for over every iterable kind (SPEC §8.3).
+for x in [1, 2] { print(x) } // expect: 1 // expect: 2
+for i in 0..3 { print(i) }
+// expect: 0
+// expect: 1
+// expect: 2
+for c in "hey" { print(c) }
+// expect: h
+// expect: e
+// expect: y
+for k in {b: 1, a: 2} { print(k) }
+// expect: b
+// expect: a
+for _ in 0..2 { print("tick") }
+// expect: tick
+// expect: tick
+for x in [] { print("never") }

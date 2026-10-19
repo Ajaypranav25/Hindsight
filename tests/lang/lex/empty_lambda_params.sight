@@ -1,0 +1,7 @@
+// Two '|' tokens in a row form an empty parameter list (SPEC §2.7).
+let a = || 1
+let b = | | 2
+let c = |/* nothing */| 3
+let d = |
+| 4
+print(a(), b(), c(), d()) // expect: 1 2 3 4

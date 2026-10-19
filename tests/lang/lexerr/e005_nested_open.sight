@@ -1,0 +1,3 @@
+print(1)
+/* first // expect compile error E005: unterminated block comment
+/* second

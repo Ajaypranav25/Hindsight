@@ -1,0 +1,1 @@
+let x = nil + 1 // expect runtime error R001: cannot apply '+' to nil and number

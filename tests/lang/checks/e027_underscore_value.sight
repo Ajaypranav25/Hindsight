@@ -1,0 +1,5 @@
+print(_) // expect compile error E027: '_' can only be used in patterns
+let y = _ + 1 // expect compile error E027: '_' can only be used in patterns
+_.x = 1 // expect compile error E027: '_' can only be used in patterns
+_[0] = 1 // expect compile error E027: '_' can only be used in patterns
+let f = || _ // expect compile error E027: '_' can only be used in patterns

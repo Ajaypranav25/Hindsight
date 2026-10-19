@@ -1,0 +1,14 @@
+// show of a string is itself; repr quotes and escapes (SPEC §4.3).
+print("plain", repr("plain")) // expect: plain "plain"
+print(["a", "b"]) // expect: ["a", "b"]
+print(repr("q\"uote")) // expect: "q\"uote"
+print(repr("back\\slash")) // expect: "back\\slash"
+print(repr("tab\there")) // expect: "tab\there"
+print(repr("cr\rlf\n")) // expect: "cr\rlf\n"
+print(repr("\u{1}\u{1f}\u{0}")) // expect: "\u{1}\u{1f}\u{0}"
+print(repr("\{braces\}")) // expect: "{braces}"
+print(repr(repr("a"))) // expect: "\"a\""
+print([["nested", ["deep"]]]) // expect: [["nested", ["deep"]]]
+print({s: "x"}) // expect: {s: "x"}
+print(str("x"), str(["x"])) // expect: x ["x"]
+print(repr(" ")) // expect: " "

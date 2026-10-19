@@ -1,0 +1,1 @@
+let f = fn x // expect compile error E010: expected '(' but found identifier 'x'

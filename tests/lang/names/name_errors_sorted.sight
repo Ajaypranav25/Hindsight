@@ -1,0 +1,8 @@
+print(undefined_a) // expect compile error E020: undefined variable 'undefined_a'
+let k = 1
+k = 2 // expect compile error E021
+break // expect compile error E024
+print(later) // expect compile error E026
+let later = 1
+let k = 3 // expect compile error E022
+return // expect compile error E025

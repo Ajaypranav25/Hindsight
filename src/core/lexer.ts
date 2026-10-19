@@ -254,7 +254,14 @@ class Lexer {
       if (ch === '"' || ch === '{') {
         cooked += this.source.slice(chunkStart, p)
         if (ch === '{') this.interpolations.push({ bracePos: p, quotePos, depth: 0 })
-        const kind = ch === '"' ? (continuation ? 'StringTail' : 'String') : continuation ? 'StringMiddle' : 'StringHead'
+        const kind =
+          ch === '"'
+            ? continuation
+              ? 'StringTail'
+              : 'String'
+            : continuation
+              ? 'StringMiddle'
+              : 'StringHead'
         this.emit(kind, start, p + 1, cooked)
         this.pos = p + 1
         return
@@ -298,7 +305,9 @@ class Lexer {
     if (this.source.charAt(p) !== '}') return this.invalidUnicodeEscape(backslash, p)
     p++
     const valid = digitCount >= 1 && digitCount <= MAX_UNICODE_ESCAPE_DIGITS
-    const codePoint = valid ? parseInt(this.source.slice(digitsStart, digitsStart + digitCount), 16) : NaN
+    const codePoint = valid
+      ? parseInt(this.source.slice(digitsStart, digitsStart + digitCount), 16)
+      : NaN
     if (!(codePoint <= MAX_CODE_POINT)) return this.invalidUnicodeEscape(backslash, p)
     return { text: String.fromCodePoint(codePoint), end: p }
   }
@@ -340,7 +349,13 @@ class Lexer {
     }
     const character = codePointText(this.source, this.pos)
     const end = this.pos + character.length
-    this.report('E001', `unexpected character '${character}'`, this.pos, end, CHARACTER_HINTS.get(character))
+    this.report(
+      'E001',
+      `unexpected character '${character}'`,
+      this.pos,
+      end,
+      CHARACTER_HINTS.get(character),
+    )
     this.pos = end
   }
 

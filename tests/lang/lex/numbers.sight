@@ -1,0 +1,16 @@
+// Number literals (SPEC §2.5): underscores, fractions, exponents, JavaScript String(n) output.
+print(42) // expect: 42
+print(1_000_000) // expect: 1000000
+print(1__2) // expect: 12
+print(3.25) // expect: 3.25
+print(1_0.0_1) // expect: 10.01
+print(1e3) // expect: 1000
+print(1E3) // expect: 1000
+print(1e+2) // expect: 100
+print(2.5e-3) // expect: 0.0025
+print(1e21) // expect: 1e+21
+print(1e-7) // expect: 1e-7
+print(123e18) // expect: 123000000000000000000
+print(007) // expect: 7
+print(0.1 + 0.2) // expect: 0.30000000000000004
+print(9007199254740993) // expect: 9007199254740992

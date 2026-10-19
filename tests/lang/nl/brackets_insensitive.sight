@@ -1,0 +1,18 @@
+// Parentheses, brackets and record braces are newline-insensitive (SPEC §3.2 rule 3).
+let a = (1
+  + 2)
+print(a) // expect: 3
+print(1,
+  2
+  , 3) // expect: 1 2 3
+let xs = [1
+  - 1, 2]
+print(xs) // expect: [0, 2]
+let r = {a: 1
+  + 1}
+print(r) // expect: {a: 2}
+let f = |x| x * 2
+print(f
+  (4)) // expect: 8
+print(xs
+  [1]) // expect: 2

@@ -1,0 +1,20 @@
+// Cycles print as [...] / {...}; shared references print in full (SPEC §4.3).
+var xs = [1]
+push(xs, xs)
+print(xs) // expect: [1, [...]]
+print(str(xs), "{xs}") // expect: [1, [...]] [1, [...]]
+var r = {name: "r"}
+r.self = r
+print(r) // expect: {name: "r", self: {...}}
+let a = [1]
+print([a, a]) // expect: [[1], [1]]
+let rr = {v: 1}
+print({x: rr, y: rr}) // expect: {x: {v: 1}, y: {v: 1}}
+var outer = [0]
+var inner = [outer]
+push(outer, inner)
+print(outer) // expect: [0, [[...]]]
+print(inner) // expect: [[0, [...]]]
+var m = {}
+m.list = [m]
+print(m) // expect: {list: [{...}]}

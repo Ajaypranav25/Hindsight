@@ -1,0 +1,18 @@
+// An operator at the end of a line continues the expression (SPEC §3.2).
+let a = 1 +
+  2
+let b = 2 *
+  3
+let c = true and
+  false
+let d = 1 <
+  2
+let e = 1 ..
+  3
+let f = nil or
+  "x"
+print(a, b, c, d, e, f) // expect: 3 6 false true 1..3 x
+var g = 1
+g +=
+  4
+print(g) // expect: 5

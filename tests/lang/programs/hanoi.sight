@@ -1,0 +1,13 @@
+var moves = []
+fn hanoi(n, from, to, via) {
+  if n == 0 { return }
+  hanoi(n - 1, from, via, to)
+  push(moves, "{from}->{to}")
+  hanoi(n - 1, via, to, from)
+}
+hanoi(3, "A", "C", "B")
+print(len(moves)) // expect: 7
+print(join(moves, " ")) // expect: A->C A->B C->B A->C B->A B->C A->C
+moves = []
+hanoi(10, "A", "C", "B")
+print(len(moves)) // expect: 1023

@@ -1,0 +1,1 @@
+trim([" a "]) // expect runtime error R019: 'trim' expects a string as argument 1, got a list

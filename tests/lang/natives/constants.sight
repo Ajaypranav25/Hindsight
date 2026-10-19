@@ -1,0 +1,2 @@
+print(PI > 3.14 and PI < 3.15, INF > 1e308, -INF < 0) // expect: true true true
+print(type(PI), type(INF), PI == PI) // expect: number number true

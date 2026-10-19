@@ -1,0 +1,4 @@
+print(assert(true)) // expect: nil
+print(assert(1, "message")) // expect: nil
+assert([], nil)
+print("ok") // expect: ok

@@ -1,0 +1,12 @@
+// `return` leaves the innermost function, including lambdas (SPEC §8.5).
+let f = |x| {
+  if x > 0 { return "positive" }
+  "other"
+}
+print(f(1), f(-1)) // expect: positive other
+fn outer() {
+  let inner = || { return 1 }
+  inner()
+  2
+}
+print(outer()) // expect: 2

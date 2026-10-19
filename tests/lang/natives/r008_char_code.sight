@@ -1,0 +1,1 @@
+char_code("abc", 0.5) // expect runtime error R008: string index must be an integer, got 0.5

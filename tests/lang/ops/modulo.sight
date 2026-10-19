@@ -1,0 +1,11 @@
+// '%' takes the divisor's sign (SPEC §7.2).
+print(7 % 3) // expect: 1
+print(-7 % 3) // expect: 2
+print(7 % -3) // expect: -2
+print(-7 % -3) // expect: -1
+print(5.5 % 2) // expect: 1.5
+print(-5.5 % 2) // expect: 0.5
+print(6 % 3) // expect: 0
+print(5 % INF) // expect: 5
+print(-5 % INF) // expect: Infinity
+print(-6 % 3, atan2(-6 % 3, -1) < 0) // expect: 0 true

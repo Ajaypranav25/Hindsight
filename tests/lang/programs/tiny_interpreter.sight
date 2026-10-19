@@ -1,0 +1,34 @@
+// A tiny expression language: constructors, an evaluator and a printer.
+fn lit(n) { ({num: n}) }
+fn ref(name) { ({ref: name}) }
+fn add(l, r) { ({op: "+", left: l, right: r}) }
+fn mul(l, r) { ({op: "*", left: l, right: r}) }
+fn bind(name, value, body) { ({op: "let", name, value, body}) }
+
+fn evaluate(node, env) {
+  match node {
+    {num} => num
+    {ref: name} => env[name]
+    {op: "+", left, right} => evaluate(left, env) + evaluate(right, env)
+    {op: "*", left, right} => evaluate(left, env) * evaluate(right, env)
+    {op: "let", name, value, body} => {
+      var inner = copy(env)
+      inner[name] = evaluate(value, env)
+      evaluate(body, inner)
+    }
+  }
+}
+
+fn render(node) {
+  match node {
+    {num} => str(num)
+    {ref: name} => name
+    {op: "let", name, value, body} => "let {name} = {render(value)} in {render(body)}"
+    {op, left, right} => "({render(left)} {op} {render(right)})"
+  }
+}
+
+let program = bind("x", add(lit(2), lit(3)), mul(ref("x"), add(ref("x"), lit(1))))
+print(render(program)) // expect: let x = (2 + 3) in (x * (x + 1))
+print(evaluate(program, {})) // expect: 30
+print(evaluate(add(ref("y"), lit(1)), {y: 41})) // expect: 42

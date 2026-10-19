@@ -1,0 +1,2 @@
+let prints = 1
+prnt("x") // expect compile error E020: undefined variable 'prnt' // hint: did you mean 'print'?

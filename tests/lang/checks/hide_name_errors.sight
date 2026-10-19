@@ -1,0 +1,5 @@
+print(undefined_name)
+let a = 1
+a = 2
+break
+let b = 1..2..3 // expect compile error E014: range operators cannot be chained

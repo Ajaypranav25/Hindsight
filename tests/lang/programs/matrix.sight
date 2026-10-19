@@ -1,0 +1,6 @@
+fn matmul(a, b) {
+  map(a, |row| times(len(b[0]), |j| sum(times(len(row), |k| row[k] * b[k][j]))))
+}
+print(matmul([[1, 2], [3, 4]], [[5, 6], [7, 8]])) // expect: [[19, 22], [43, 50]]
+fn transpose(m) { times(len(m[0]), |j| map(m, |row| row[j])) }
+print(transpose([[1, 2, 3], [4, 5, 6]])) // expect: [[1, 4], [2, 5], [3, 6]]

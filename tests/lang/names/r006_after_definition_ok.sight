@@ -1,0 +1,8 @@
+fn read() { item }
+let item = "defined"
+print(read()) // expect: defined
+var n = 0
+fn bump() { n += 1 }
+bump()
+bump()
+print(n) // expect: 2

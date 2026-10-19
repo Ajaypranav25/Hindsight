@@ -1,0 +1,1 @@
+let s = pad_start("", 16777217) // expect runtime error R025: result too large

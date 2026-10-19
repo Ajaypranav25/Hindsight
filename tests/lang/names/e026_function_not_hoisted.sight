@@ -1,0 +1,2 @@
+print(f()) // expect compile error E026: 'f' is used before it is declared
+fn f() { 1 }

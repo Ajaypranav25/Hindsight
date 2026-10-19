@@ -1,0 +1,13 @@
+// Match arms are separated by newlines or ',' (SPEC §3.1).
+let f = |n| match n { 1 => "one", 2 => "two", _ => "other" }
+print(f(1), f(2), f(3)) // expect: one two other
+let g = |n| match n {
+  1 => "a",
+  _ => "b",
+}
+print(g(1), g(5)) // expect: a b
+let h = |n| match n {
+  1 => "x"
+  _ => "y"
+}
+print(h(1), h(2)) // expect: x y

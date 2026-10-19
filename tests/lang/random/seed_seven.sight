@@ -1,0 +1,4 @@
+seed(7)
+print(random(), random(), random()) // expect: 0.011704753153026104 0.06195825757458806 0.97690763277933
+seed(7)
+print(random_int(1, 100), random_int(1, 100), random_int(1, 100), random_int(1, 100), random_int(1, 100)) // expect: 2 7 98 70 53

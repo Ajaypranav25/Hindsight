@@ -1,0 +1,6 @@
+let v = match 1 {
+  1 | y => 0 // expect compile error E017: alternative patterns cannot bind variables // hint: use '_' instead of a name inside alternatives
+  [x] | [_, y] => 0 // expect compile error E017: alternative patterns cannot bind variables
+  {k: 1 | 2} => 0
+  _ => 0
+}

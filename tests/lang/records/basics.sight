@@ -1,0 +1,11 @@
+// Records (SPEC §7.9, §4.3).
+let r = {a: 1, "b c": 2, if_: 3}
+print(r) // expect: {a: 1, "b c": 2, if_: 3}
+print(r.a, r["b c"], r.if_) // expect: 1 2 3
+let d = 4
+print({d}) // expect: {d: 4}
+print({}) // expect: {}
+print({"if": 1, "x-y": 2, "": 3, "_": 4, "a1": 5, "1a": 6}) // expect: {"if": 1, "x-y": 2, "": 3, _: 4, a1: 5, "1a": 6}
+print({"a\nb": 1, nil_: nil, "nil": 0}) // expect: {"a\nb": 1, nil_: nil, "nil": 0}
+print({a: {b: {c: [1]}}}) // expect: {a: {b: {c: [1]}}}
+print({x: 1,}) // expect: {x: 1}

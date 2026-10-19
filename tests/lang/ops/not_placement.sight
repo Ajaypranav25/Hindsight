@@ -1,0 +1,3 @@
+// `not` may follow and, or, |> or another not (SPEC §3.3).
+print(true and not false, false or not nil, not not 1) // expect: true true true
+print(not 1 < 2, not "a" == "b") // expect: false true

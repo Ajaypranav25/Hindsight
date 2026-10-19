@@ -1,0 +1,4 @@
+let get = || value // expect runtime error R006: 'value' was used before it was defined
+print("before") // expect: before
+print(get())
+let value = 1

@@ -1,0 +1,1 @@
+let z = z + 1 // expect compile error E026: 'z' is used before it is declared

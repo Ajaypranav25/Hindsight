@@ -1,0 +1,7 @@
+fn f() {
+  var y = 1
+  let g = || y
+  y = 2
+  g()
+}
+print(f()) // expect: 2

@@ -1,0 +1,19 @@
+// The iterable is evaluated once, outside the loop (SPEC §8.3).
+var evaluated = 0
+fn items() {
+  evaluated += 1
+  [1, 2, 3]
+}
+var total = 0
+for x in items() { total += x }
+print(total, evaluated) // expect: 6 1
+var outer = 0
+while outer < 5 {
+  outer += 1
+  for x in if outer < 3 { continue } else { [outer] } {
+    print(x)
+  }
+}
+// expect: 3
+// expect: 4
+// expect: 5

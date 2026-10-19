@@ -1,0 +1,2 @@
+print(len([1])) // expect compile error E026: 'len' is used before it is declared // hint: this declaration hides the builtin 'len'
+fn len(x) { 0 }

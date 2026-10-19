@@ -1,0 +1,13 @@
+// `else` may follow on the next line (SPEC §3.2 rule 5).
+let v = if false { 1 }
+else { 2 }
+print(v) // expect: 2
+if false {
+  print("no")
+}
+else if true {
+  print("yes") // expect: yes
+}
+else {
+  print("no")
+}

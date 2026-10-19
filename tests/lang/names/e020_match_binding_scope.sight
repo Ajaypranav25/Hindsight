@@ -1,0 +1,4 @@
+let v = match 1 {
+  arm_value => arm_value
+}
+print(arm_value) // expect compile error E020: undefined variable 'arm_value'

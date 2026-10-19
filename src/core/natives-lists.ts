@@ -14,15 +14,7 @@ import {
   stringArg,
   tooLarge,
 } from './natives-args'
-import {
-  SIZE_LIMIT,
-  articleType,
-  equals,
-  isList,
-  isRange,
-  isRecord,
-  rangeContains,
-} from './values'
+import { SIZE_LIMIT, articleType, equals, isList, isRange, isRecord, rangeContains } from './values'
 
 function push(ctx: NativeContext, args: Args): Value {
   const target = listArg(ctx, 'push', args, 1)
@@ -144,7 +136,10 @@ function listExtremum(
   let result = name === 'min' ? Infinity : -Infinity
   for (const item of items) {
     if (typeof item !== 'number') {
-      return ctx.fail('R019', `'${name}' expects a list of numbers as argument 1, got ${articleType(item)}`)
+      return ctx.fail(
+        'R019',
+        `'${name}' expects a list of numbers as argument 1, got ${articleType(item)}`,
+      )
     }
     result = pick(result, item)
   }

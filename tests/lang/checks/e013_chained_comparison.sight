@@ -1,0 +1,4 @@
+let a = 1 < 2 < 3 // expect compile error E013: comparison operators cannot be chained // hint: write 'a < b and b < c'
+let b = 1 == 1 == true // expect compile error E013: comparison operators cannot be chained
+let c = (1 < 2) == true
+let d = 1 != 2 >= 3 // expect compile error E013: comparison operators cannot be chained

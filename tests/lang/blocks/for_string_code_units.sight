@@ -1,0 +1,4 @@
+// Strings iterate by UTF-16 code unit (SPEC §8.3).
+var n = 0
+for c in "a\u{1F600}" { n += 1 }
+print(n) // expect: 3

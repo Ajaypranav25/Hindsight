@@ -1,0 +1,1 @@
+replace("a", "b", 3) // expect runtime error R019: 'replace' expects a string as argument 3, got a number

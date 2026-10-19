@@ -1,0 +1,7 @@
+break // expect compile error E024: 'break' can only be used inside a loop
+continue // expect compile error E024: 'continue' can only be used inside a loop
+for i in [1] {
+  let f = || { break } // expect compile error E024: 'break' can only be used inside a loop
+  fn g() { continue } // expect compile error E024: 'continue' can only be used inside a loop
+}
+fn h() { break } // expect compile error E024: 'break' can only be used inside a loop

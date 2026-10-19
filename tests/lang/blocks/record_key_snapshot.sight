@@ -1,0 +1,16 @@
+// Record iteration uses a snapshot of the keys (SPEC §8.3).
+var r = {a: 1, b: 2}
+for k in r {
+  r.c = 3
+  print(k)
+}
+// expect: a
+// expect: b
+print(keys(r)) // expect: ["a", "b", "c"]
+var s = {x: 1, y: 2}
+for k in s {
+  delete(s, "y")
+  print(k)
+}
+// expect: x
+// expect: y

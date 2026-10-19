@@ -1,0 +1,8 @@
+fn band(n) {
+  match n {
+    -10..-5 => "low"
+    -5..=5 => "mid"
+    _ => "out"
+  }
+}
+print(band(-10), band(-5.5), band(-5), band(5), band(6)) // expect: low low mid mid out

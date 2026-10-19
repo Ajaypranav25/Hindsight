@@ -1,0 +1,24 @@
+// Strictly left to right (SPEC §7.1).
+fn t(label, v) {
+  print(label)
+  v
+}
+let s = t("left", 1) + t("right", 2)
+// expect: left
+// expect: right
+print(s) // expect: 3
+t("callee", |a, b| a * b)(t("arg1", 3), t("arg2", 4))
+// expect: callee
+// expect: arg1
+// expect: arg2
+var xs = [0, 0]
+t("object", xs)[t("index", 1)] = t("value", 5)
+// expect: object
+// expect: index
+// expect: value
+print(xs) // expect: [0, 5]
+let r = {k: 0}
+t("record", r).k = t("field value", 7)
+// expect: record
+// expect: field value
+print(r) // expect: {k: 7}

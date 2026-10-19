@@ -1,0 +1,1 @@
+char_code(5) // expect runtime error R019: 'char_code' expects a string as argument 1, got a number

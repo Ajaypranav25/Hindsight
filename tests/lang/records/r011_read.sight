@@ -1,0 +1,2 @@
+let n = 5
+print(n.x) // expect runtime error R011: cannot read field 'x' of a number

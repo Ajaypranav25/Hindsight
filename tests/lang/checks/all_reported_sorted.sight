@@ -1,0 +1,5 @@
+let a = 1 < 2 < 3 // expect compile error E013: comparison operators cannot be chained
+print(_) // expect compile error E027
+let r = {k: 1, k: 2} // expect compile error E019
+let [x, x] = [1, 2] // expect compile error E023
+1 = 2 // expect compile error E012

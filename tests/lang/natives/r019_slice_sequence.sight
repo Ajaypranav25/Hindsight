@@ -1,0 +1,1 @@
+slice(5, 1) // expect runtime error R019: 'slice' expects a list or string as argument 1, got a number

@@ -1,0 +1,8 @@
+// Ordering comparisons (SPEC §7.3).
+print(1 < 2, 2 <= 2, 3 > 4, 4 >= 4) // expect: true true false true
+print("a" < "b", "B" < "a", "abc" < "abd", "ab" < "abc") // expect: true true true true
+print("Z" < "a", "a" > "") // expect: true true
+print("\u{FFFF}" < "\u{1F600}") // expect: false
+print(-INF < INF) // expect: true
+let nan = INF - INF
+print(nan < 1, nan >= 1) // expect: false false

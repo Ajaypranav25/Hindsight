@@ -64,7 +64,8 @@ export function recordLiteral(m: MachineState, count: number): void {
   const stack = m.stack
   const start = stack.length - 2 * count
   const fields = new Map<string, Value>()
-  for (let i = start; i < stack.length; i += 2) fields.set(stack[i] as string, stack[i + 1] as Value)
+  for (let i = start; i < stack.length; i += 2)
+    fields.set(stack[i] as string, stack[i + 1] as Value)
   stack.length = start
   stack.push(m.newRecord(fields))
 }

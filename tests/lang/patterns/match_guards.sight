@@ -1,0 +1,16 @@
+fn classify(n) {
+  match n {
+    x if x < 0 => "negative"
+    0 => "zero"
+    x if x % 2 == 0 => "even"
+    _ => "odd"
+  }
+}
+print(map([-3, 0, 4, 7], classify)) // expect: ["negative", "zero", "even", "odd"]
+var checks = 0
+fn chk(v) {
+  checks += 1
+  v
+}
+let r = match 5 { x if chk(false) => 1, x if chk(x == 5) => 2, _ => 3 }
+print(r, checks) // expect: 2 2

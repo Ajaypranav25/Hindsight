@@ -1,0 +1,16 @@
+fn binary_search(xs, target) {
+  var lo = 0
+  var hi = len(xs) - 1
+  while lo <= hi {
+    let mid = floor((lo + hi) / 2)
+    match xs[mid] {
+      v if v == target => { return mid }
+      v if v < target => { lo = mid + 1 }
+      _ => { hi = mid - 1 }
+    }
+  }
+  -1
+}
+let xs = list(range(0, 100, 3))
+print(binary_search(xs, 42), binary_search(xs, 43), binary_search([], 1)) // expect: 14 -1 -1
+print(binary_search(xs, 0), binary_search(xs, 99)) // expect: 0 33

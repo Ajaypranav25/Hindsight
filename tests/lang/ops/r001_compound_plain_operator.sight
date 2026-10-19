@@ -1,0 +1,2 @@
+var s = "a"
+s += 1 // expect runtime error R001: cannot apply '+' to string and number

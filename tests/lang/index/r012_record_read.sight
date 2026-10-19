@@ -1,0 +1,2 @@
+let r = {a: 1}
+print(r[1]) // expect runtime error R012: record keys must be strings, got a number

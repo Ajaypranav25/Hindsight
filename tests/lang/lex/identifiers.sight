@@ -1,0 +1,7 @@
+// Identifier syntax (SPEC §2.4).
+let _x = 1
+let x_1 = 2
+let CamelCase = 3
+let __ = 4
+let a1b2 = 5
+print(_x + x_1 + CamelCase + __ + a1b2) // expect: 15

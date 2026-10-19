@@ -1,0 +1,2 @@
+let a = 2
+  * 3 // expect compile error E011: expected an expression but found '*'

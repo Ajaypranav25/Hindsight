@@ -1,0 +1,6 @@
+var xs = [1]
+print(push(xs, 2), xs) // expect: nil [1, 2]
+push(xs, [3])
+print(xs) // expect: [1, 2, [3]]
+print(pop(xs), xs) // expect: [3] [1, 2]
+print(pop(xs), pop(xs), xs) // expect: 2 1 []

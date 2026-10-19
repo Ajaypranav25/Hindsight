@@ -1,0 +1,6 @@
+// `.` may start a line (SPEC §3.2 rule 2).
+let r = {inner: {value: 7}}
+let v = r
+  .inner
+  .value
+print(v) // expect: 7

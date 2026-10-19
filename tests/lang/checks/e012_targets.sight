@@ -1,0 +1,5 @@
+1 = 2 // expect compile error E012: invalid assignment target
+f() = 3 // expect compile error E012: invalid assignment target
+a + b = 1 // expect compile error E012: invalid assignment target
+[x] = [1] // expect compile error E012: invalid assignment target
+"s" += "t" // expect compile error E012: invalid assignment target

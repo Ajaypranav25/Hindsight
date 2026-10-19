@@ -1,0 +1,4 @@
+// The generator starts from seed 42 (SPEC §10.3).
+print(random()) // expect: 0.6011037519201636
+print(random()) // expect: 0.44829055899754167
+print(random()) // expect: 0.8524657934904099

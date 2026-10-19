@@ -1,0 +1,4 @@
+let xs = [10, 20]
+let y = xs
+[0]
+print(y) // expect: [10, 20]

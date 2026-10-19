@@ -1,0 +1,5 @@
+let bat = 1
+fn f() {
+  let cat = 2
+  hat // expect compile error E020: undefined variable 'hat' // hint: did you mean 'cat'?
+}

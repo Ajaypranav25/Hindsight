@@ -1,0 +1,4 @@
+fn f() {
+  let total = 1
+  totl // expect compile error E020: undefined variable 'totl' // hint: did you mean 'total'?
+}

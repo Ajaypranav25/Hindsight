@@ -1,0 +1,4 @@
+print(1)
+/* outer // expect compile error E005: unterminated block comment
+/* inner */
+still open

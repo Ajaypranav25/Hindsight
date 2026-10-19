@@ -1,0 +1,5 @@
+{
+  print(w) // expect compile error E026: 'w' is used before it is declared
+}
+if true { print(w) } // expect compile error E026: 'w' is used before it is declared
+let w = 1

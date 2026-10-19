@@ -1,0 +1,2 @@
+print(x) // expect compile error E026: 'x' is used before it is declared
+let x = 1

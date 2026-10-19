@@ -1,0 +1,3 @@
+print(qwertyuiop) // expect compile error E020: undefined variable 'qwertyuiop'
+let zzz_1 = 1
+print(qwertyuiop2) // expect compile error E020: undefined variable 'qwertyuiop2'

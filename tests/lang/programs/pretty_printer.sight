@@ -1,0 +1,26 @@
+fn pretty(v, indent) {
+  let pad = repeat("  ", indent)
+  match type(v) {
+    "list" => {
+      print("{pad}list of {len(v)}")
+      each(v, |item| pretty(item, indent + 1))
+    }
+    "record" => {
+      for k in v {
+        print("{pad}{k}:")
+        pretty(v[k], indent + 1)
+      }
+    }
+    _ => print("{pad}{repr(v)}")
+  }
+}
+pretty({name: "cfg", items: [1, "two"], nested: {ok: true}}, 0)
+// expect: name:
+// expect:   "cfg"
+// expect: items:
+// expect:   list of 2
+// expect:     1
+// expect:     "two"
+// expect: nested:
+// expect:   ok:
+// expect:     true

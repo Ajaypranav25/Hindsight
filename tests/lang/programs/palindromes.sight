@@ -1,0 +1,14 @@
+fn normalize(s) {
+  join(filter(chars(lower(s)), |c| contains("abcdefghijklmnopqrstuvwxyz", c)))
+}
+fn is_palindrome(s) {
+  let t = normalize(s)
+  t == reverse(t)
+}
+for s in ["A man, a plan, a canal: Panama", "hello", "Was it a car or a cat I saw?", ""] {
+  print("{repr(s)} -> {is_palindrome(s)}")
+}
+// expect: "A man, a plan, a canal: Panama" -> true
+// expect: "hello" -> false
+// expect: "Was it a car or a cat I saw?" -> true
+// expect: "" -> true

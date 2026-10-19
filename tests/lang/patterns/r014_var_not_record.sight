@@ -1,0 +1,1 @@
+var {x} = nil // expect runtime error R014: value nil does not match pattern {x}

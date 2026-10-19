@@ -1,0 +1,3 @@
+// The span of a binary operator error is the whole expression; its line is where it starts.
+let x = "a" + // expect runtime error R001: cannot apply '+' to string and number
+  1

@@ -1,0 +1,4 @@
+print(min_by(["ccc", "a", "bb"], len), max_by(["aa", "b", "cc"], len)) // expect: a aa
+print(min_by([], len), max_by([], len)) // expect: nil nil
+print(max_by([{v: 1, n: "first"}, {v: 1, n: "second"}], |r| r.v).n) // expect: first
+print(min_by(-2..3, |x| x * x)) // expect: 0

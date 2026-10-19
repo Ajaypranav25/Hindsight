@@ -1,0 +1,7 @@
+// The pipeline style of SPEC §3.2.
+let orders = [{paid: true, amount: 5}, {paid: false, amount: 7}, {paid: true, amount: 11}]
+let total = orders
+  |> filter(|o| o.paid)
+  |> map(|o| o.amount)
+  |> sum()
+print(total) // expect: 16

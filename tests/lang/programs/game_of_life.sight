@@ -1,0 +1,54 @@
+fn make_grid(rows) { map(rows, |row| map(chars(row), |c| c == "#")) }
+fn show_grid(grid) {
+  for row in grid {
+    print(join(map(row, |alive| if alive { "#" } else { "." })))
+  }
+}
+fn neighbors(grid, r, c) {
+  var n = 0
+  for dr in -1..=1 {
+    for dc in -1..=1 {
+      if dr == 0 and dc == 0 { continue }
+      let rr = r + dr
+      let cc = c + dc
+      if rr >= 0 and rr < len(grid) and cc >= 0 and cc < len(grid[0]) and grid[rr][cc] {
+        n += 1
+      }
+    }
+  }
+  n
+}
+fn step(grid) {
+  times(len(grid), |r| times(len(grid[0]), |c| {
+    let n = neighbors(grid, r, c)
+    match [grid[r][c], n] {
+      [true, 2 | 3] => true
+      [false, 3] => true
+      _ => false
+    }
+  }))
+}
+var grid = make_grid([".....", "..#..", "..#..", "..#..", "....."])
+for generation in 0..3 {
+  print("generation {generation}")
+  show_grid(grid)
+  grid = step(grid)
+}
+// expect: generation 0
+// expect: .....
+// expect: ..#..
+// expect: ..#..
+// expect: ..#..
+// expect: .....
+// expect: generation 1
+// expect: .....
+// expect: .....
+// expect: .###.
+// expect: .....
+// expect: .....
+// expect: generation 2
+// expect: .....
+// expect: ..#..
+// expect: ..#..
+// expect: ..#..
+// expect: .....

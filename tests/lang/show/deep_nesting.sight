@@ -1,0 +1,8 @@
+// A 100,000-deep list prints (SPEC §4.3).
+var deep = []
+for i in 0..100000 {
+  deep = [deep]
+}
+let s = str(deep)
+print(len(s)) // expect: 200002
+print(slice(s, 0, 5), slice(s, -5)) // expect: [[[[[ ]]]]]

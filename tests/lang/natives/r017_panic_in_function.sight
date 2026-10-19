@@ -1,0 +1,6 @@
+fn check(n) {
+  if n < 0 { panic("negative: {n}") } // expect runtime error R017: negative: -1
+  n
+}
+print(check(1)) // expect: 1
+check(-1)

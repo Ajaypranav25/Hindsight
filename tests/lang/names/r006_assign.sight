@@ -1,0 +1,3 @@
+fn set() { counter = 5 } // expect runtime error R006: 'counter' was used before it was defined
+set()
+var counter = 0

@@ -1,0 +1,15 @@
+// Cyclic structures compare without looping (SPEC §7.4).
+var a = [1]
+push(a, a)
+var b = [1]
+push(b, b)
+print(a == b, a == a) // expect: true true
+var c = [2]
+push(c, c)
+print(a == c) // expect: false
+var r1 = {}
+r1.me = r1
+var r2 = {}
+r2.me = r2
+print(r1 == r2) // expect: true
+print(contains([a], b)) // expect: true

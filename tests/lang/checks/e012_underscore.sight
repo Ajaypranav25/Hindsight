@@ -1,0 +1,2 @@
+_ = 1 // expect compile error E012: invalid assignment target
+_ += 1 // expect compile error E012: invalid assignment target

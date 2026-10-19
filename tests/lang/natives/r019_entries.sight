@@ -1,0 +1,1 @@
+entries(nil) // expect runtime error R019: 'entries' expects a record as argument 1, got nil

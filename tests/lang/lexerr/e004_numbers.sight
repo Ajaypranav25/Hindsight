@@ -1,0 +1,5 @@
+let a = 3abc // expect compile error E004: invalid number literal '3abc'
+let b = 1e // expect compile error E004: invalid number literal '1e'
+let c = 0x1F // expect compile error E004: invalid number literal '0x1F'
+let d = 12_ab // expect compile error E004: invalid number literal '12_ab'
+let e = 7z_9 // expect compile error E004: invalid number literal '7z_9'

@@ -1,0 +1,2 @@
+let x = 5
+x() // expect runtime error R004: cannot call a number

@@ -1,0 +1,5 @@
+// Characters that are errors outside strings are fine inside them.
+print("!@#$&'`") // expect: !@#$&'`
+print("// not a comment") // expect: // not a comment
+print("/* not a comment */") // expect: /* not a comment */
+print("") // expect:

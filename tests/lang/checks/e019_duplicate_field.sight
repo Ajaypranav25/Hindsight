@@ -1,0 +1,4 @@
+let r = {a: 1, b: 2, a: 3} // expect compile error E019: duplicate field 'a' in record literal
+let s = {"x y": 1, "x y": 2} // expect compile error E019: duplicate field 'x y' in record literal
+let base = {a: 1}
+let t = {...base, a: 2}

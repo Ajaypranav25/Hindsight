@@ -1,0 +1,18 @@
+// Alternatives at any depth in match arms (SPEC §6.3).
+fn kind(c) {
+  match c {
+    "a" | "e" | "i" | "o" | "u" => "vowel"
+    " " => "space"
+    _ => "consonant"
+  }
+}
+print(map(chars("hi you"), kind)) // expect: ["consonant", "vowel", "space", "consonant", "vowel", "vowel"]
+fn shape(v) {
+  match v {
+    [1 | 2, _] => "starts small"
+    {k: nil | false} => "falsy k"
+    0..3 | 7..9 => "in a band"
+    _ => "other"
+  }
+}
+print(shape([2, 0]), shape([3, 0]), shape({k: false}), shape(8), shape(5)) // expect: starts small other falsy k in a band other

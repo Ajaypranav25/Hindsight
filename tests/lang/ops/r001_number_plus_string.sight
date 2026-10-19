@@ -1,0 +1,1 @@
+let total = 5 + "x" // expect runtime error R001: cannot apply '+' to number and string // hint: convert with str() or use interpolation

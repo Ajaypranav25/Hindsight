@@ -1,0 +1,1 @@
+push("s", 1) // expect runtime error R019: 'push' expects a list as argument 1, got a string

@@ -1,0 +1,23 @@
+// Lambda syntax (SPEC §7.12).
+let add = |a, b| a + b
+print(add(2, 3)) // expect: 5
+let k = || 42
+print(k()) // expect: 42
+let blk = |x| {
+  let y = x * 2
+  y + 1
+}
+print(blk(5)) // expect: 11
+let rec = |x| ({x})
+print(rec(3)) // expect: {x: 3}
+let braces = |x| {x}
+print(braces(3)) // expect: 3
+let pat = |[a, b]| a * b
+print(pat([3, 4])) // expect: 12
+let recpat = |{name}| name
+print(recpat({name: "bo", age: 3})) // expect: bo
+let extends = |x| x + 1 |> str
+print(type(extends(1)), extends(1)) // expect: string 2
+print((|x| x * 3)(4)) // expect: 12
+let trailing = |a, b,| a - b
+print(trailing(9, 4)) // expect: 5

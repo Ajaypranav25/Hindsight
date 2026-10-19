@@ -142,7 +142,8 @@ export class MachineState {
   // Events
 
   recordLocal(kind: 'declare' | 'write', frameUid: number, slot: number, value: Value): void {
-    if (this.hooks !== null) this.hooks.write(this.time, kind, { kind: 'local', frameUid, slot }, value)
+    if (this.hooks !== null)
+      this.hooks.write(this.time, kind, { kind: 'local', frameUid, slot }, value)
   }
 
   recordGlobal(kind: 'declare' | 'write', name: string, value: Value): void {

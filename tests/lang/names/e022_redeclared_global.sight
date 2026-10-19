@@ -1,0 +1,9 @@
+let x = 1
+let x = 2 // expect compile error E022: 'x' is already declared on line 1 // hint: globals can be declared once; use 'var' and assign instead
+fn f() { 0 }
+fn f() { 1 } // expect compile error E022: 'f' is already declared on line 3
+let [a, b] = [1, 2]
+var {b} = {b: 3} // expect compile error E022: 'b' is already declared on line 5
+let
+  z = 1
+var z = 2 // expect compile error E022: 'z' is already declared on line 8

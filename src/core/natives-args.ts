@@ -4,14 +4,7 @@
  */
 import type { NativeName } from './builtin-names'
 import type { ListObj, NativeContext, NativeFn, RecordObj, Value } from './runtime-types'
-import {
-  SIZE_LIMIT,
-  articleType,
-  isList,
-  isRecord,
-  preview,
-  showWithin,
-} from './values'
+import { SIZE_LIMIT, articleType, isList, isRecord, preview, showWithin } from './values'
 import { normalizeIndex, type SequenceKind } from './values-index'
 
 export type Args = readonly Value[]
@@ -47,7 +40,12 @@ export function listArg(ctx: NativeContext, name: string, args: Args, position: 
   return isList(value) ? value : badArgument(ctx, name, 'a list', position, value)
 }
 
-export function recordArg(ctx: NativeContext, name: string, args: Args, position: number): RecordObj {
+export function recordArg(
+  ctx: NativeContext,
+  name: string,
+  args: Args,
+  position: number,
+): RecordObj {
   const value = args[position - 1] as Value
   return isRecord(value) ? value : badArgument(ctx, name, 'a record', position, value)
 }

@@ -1,0 +1,6 @@
+// \r\n line endings: newline flag and line numbers (SPEC §2.1).
+let a = 1
+-2
+print(a) // expect: 1
+let n = nil
+print(n.field) // expect runtime error R011: cannot read field 'field' of nil

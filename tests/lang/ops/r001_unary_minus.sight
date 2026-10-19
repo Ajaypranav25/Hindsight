@@ -1,0 +1,2 @@
+let s = "a"
+let x = -s // expect runtime error R001: cannot apply '-' to string

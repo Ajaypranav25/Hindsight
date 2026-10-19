@@ -1,0 +1,3 @@
+fn f() { later } // expect runtime error R006: 'later' was used before it was defined
+f()
+let later = 1

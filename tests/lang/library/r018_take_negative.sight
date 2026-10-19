@@ -1,0 +1,1 @@
+take([1], -1) // expect runtime error R018: assertion failed: 'take' expects a non-negative integer

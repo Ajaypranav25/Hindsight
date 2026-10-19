@@ -1,0 +1,22 @@
+// Display names (SPEC §7.12).
+fn named() {}
+let lam = |x| x
+var vlam = || 1
+let anon = fn(a) { a }
+let paren = (|x| x)
+print(named, lam, vlam, anon, paren) // expect: <fn named> <fn lam> <fn vlam> <fn anon> <fn paren>
+print([|x| x]) // expect: [<fn>]
+print(fn() {}) // expect: <fn>
+let first = [|x| x][0]
+print(first) // expect: <fn>
+let r = {f: |x| x}
+print(r.f) // expect: <fn>
+let chosen = if true { |x| x } else { nil }
+print(chosen) // expect: <fn>
+let alias = lam
+print(alias) // expect: <fn lam>
+fn outer() {
+  let inner = || 0
+  inner
+}
+print(outer()) // expect: <fn inner>

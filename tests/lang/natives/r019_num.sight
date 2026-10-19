@@ -1,0 +1,1 @@
+print(num(nil)) // expect runtime error R019: 'num' expects a number or string as argument 1, got nil

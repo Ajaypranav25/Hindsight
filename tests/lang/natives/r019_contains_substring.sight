@@ -1,0 +1,1 @@
+contains("abc", 1) // expect runtime error R019: 'contains' expects a string as argument 2, got a number

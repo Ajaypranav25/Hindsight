@@ -1,0 +1,5 @@
+print(contains([1, [2], "x"], [2]), contains([1], "1")) // expect: true false
+print(contains("hello", "ell"), contains("hello", ""), contains("hello", "L")) // expect: true true false
+print(contains({a: 1}, "a"), contains({a: 1}, "b"), contains({a: 1}, 1)) // expect: true false false
+let nan = INF - INF
+print(contains([nan], nan), contains([0], -0)) // expect: false true

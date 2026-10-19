@@ -1,0 +1,4 @@
+print(group_by([1, 2, 3, 4, 5], |x| x % 2)) // expect: {"1": [1, 3, 5], "0": [2, 4]}
+print(group_by(["apple", "avocado", "banana"], |s| slice(s, 0, 1))) // expect: {a: ["apple", "avocado"], b: ["banana"]}
+print(group_by([1, nil, "x"], type)) // expect: {number: [1], "nil": [nil], string: ["x"]}
+print(group_by([], |x| x)) // expect: {}

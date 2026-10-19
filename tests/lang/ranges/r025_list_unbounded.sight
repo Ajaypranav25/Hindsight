@@ -1,0 +1,1 @@
+let xs = list(0..INF) // expect runtime error R025: result too large

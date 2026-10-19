@@ -1,0 +1,10 @@
+// Equality on deeply nested data must not overflow the JavaScript stack (SPEC §7.4).
+var x = []
+var y = []
+for i in 0..100000 {
+  x = [x]
+  y = [y]
+}
+print(x == y) // expect: true
+y = [y]
+print(x == y) // expect: false

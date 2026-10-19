@@ -1,0 +1,3 @@
+fn f() {
+  let yy = yy + 1 // expect compile error E020: undefined variable 'yy'
+}

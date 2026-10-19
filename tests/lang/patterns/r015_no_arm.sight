@@ -1,0 +1,4 @@
+let v = match 7 { // expect runtime error R015: no match arm matched the value 7
+  1 => "one"
+  2 => "two"
+}

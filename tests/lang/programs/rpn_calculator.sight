@@ -1,0 +1,22 @@
+fn rpn(src) {
+  var stack = []
+  for tok in split(src, " ") {
+    match tok {
+      "+" | "-" | "*" | "/" => {
+        let b = pop(stack)
+        let a = pop(stack)
+        push(stack, match tok {
+          "+" => a + b
+          "-" => a - b
+          "*" => a * b
+          _ => a / b
+        })
+      }
+      _ => push(stack, num(tok))
+    }
+  }
+  pop(stack)
+}
+print(rpn("3 4 + 2 *")) // expect: 14
+print(rpn("5 1 2 + 4 * + 3 -")) // expect: 14
+print(rpn("10 4 /")) // expect: 2.5

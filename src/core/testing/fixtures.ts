@@ -26,7 +26,10 @@ export interface FixtureProtoOptions {
 }
 
 /** A code-less FunctionProto, enough for display names and type checks. */
-export function fixtureProto(name: string | null, options: FixtureProtoOptions = {}): FunctionProto {
+export function fixtureProto(
+  name: string | null,
+  options: FixtureProtoOptions = {},
+): FunctionProto {
   const library = options.library ?? false
   return {
     tag: 'proto',
@@ -56,7 +59,9 @@ export function makeList(...items: Value[]): ListObj {
   return { type: 'list', id: freshId(), items }
 }
 
-export function makeRecord(entries: Readonly<Record<string, Value>> | [string, Value][]): RecordObj {
+export function makeRecord(
+  entries: Readonly<Record<string, Value>> | [string, Value][],
+): RecordObj {
   const pairs = Array.isArray(entries) ? entries : Object.entries(entries)
   return { type: 'record', id: freshId(), fields: new Map(pairs) }
 }

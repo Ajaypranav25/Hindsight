@@ -1,0 +1,9 @@
+let text = "the quick brown fox jumps over the lazy dog the end"
+var freq = {}
+for w in split(text, " ") {
+  freq[w] = get(freq, w, 0) + 1
+}
+print(freq.the, len(keys(freq))) // expect: 3 9
+let ranked = sort_by(entries(freq), |e| -e[1])
+print(ranked[0]) // expect: ["the", 3]
+print(join(map(take(ranked, 3), |e| "{e[0]}={e[1]}"), ", ")) // expect: the=3, quick=1, brown=1

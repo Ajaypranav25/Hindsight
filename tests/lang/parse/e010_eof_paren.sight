@@ -1,0 +1,2 @@
+let x = (1 +
+  2 // expect compile error E010: expected ')' but found end of file

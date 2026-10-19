@@ -1,0 +1,4 @@
+fn f() {
+  print(later_local) // expect compile error E020: undefined variable 'later_local'
+  let later_local = 1
+}

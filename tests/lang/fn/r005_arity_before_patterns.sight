@@ -1,0 +1,2 @@
+fn two([a], b) { a }
+two(5) // expect runtime error R005: 'two' expects 2 arguments but got 1

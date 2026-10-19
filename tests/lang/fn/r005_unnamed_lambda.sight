@@ -1,0 +1,2 @@
+let fs = [|x| x]
+fs[0]() // expect runtime error R005: lambda expects 1 argument but got 0

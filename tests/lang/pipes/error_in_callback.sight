@@ -1,0 +1,4 @@
+// An error in a user callback is reported in the callback, not at the library call.
+let add_one = |x| x + 1 // expect runtime error R001: cannot apply '+' to string and number
+let total = ["a", 1]
+  |> map(add_one)

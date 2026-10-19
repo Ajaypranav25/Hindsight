@@ -1,0 +1,7 @@
+let a = @ // expect compile error E001: unexpected character '@'
+let = 5
+let b = "\q" // expect compile error E003: unknown escape sequence '\q'
+let c = 1 < 2 < 3
+let d = 9z // expect compile error E004: invalid number literal '9z'
+print(undefined_name)
+/* never closed // expect compile error E005: unterminated block comment

@@ -1,0 +1,6 @@
+fn pair(a, b) { [a, b] }
+let p = pair( // expect runtime error R005: 'pair' expects 2 arguments but got 3
+  1,
+  2,
+  3,
+)

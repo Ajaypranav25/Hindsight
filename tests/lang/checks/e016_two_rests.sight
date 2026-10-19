@@ -1,0 +1,5 @@
+let [a, ...b, ...c] = [1, 2] // expect compile error E016: a list pattern can contain at most one '...rest'
+let v = match [1] {
+  [...x, y, ...] => y // expect compile error E016: a list pattern can contain at most one '...rest'
+  _ => 0
+}

@@ -1,0 +1,14 @@
+fn g() {
+  let local = 1
+  local = 2 // expect compile error E021: cannot assign to 'local' because it was declared with 'let'
+  fn inner() { 0 }
+  inner = 1 // expect compile error E021: cannot assign to 'inner' because it is a function
+}
+let h = |q| { q = 1 } // expect compile error E021: cannot assign to 'q' because it is a parameter
+fn k() { glob = 5 } // expect compile error E021: cannot assign to 'glob' because it was declared with 'let'
+let glob = 0
+for [x, {y}] in [] {
+  y = 1 // expect compile error E021: cannot assign to 'y' because it is a loop variable
+}
+let [d1, d2] = [1, 2]
+d2 -= 1 // expect compile error E021: cannot assign to 'd2' because it was declared with 'let'

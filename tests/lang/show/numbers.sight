@@ -1,0 +1,8 @@
+// show/repr of numbers is JavaScript String(n) (SPEC §4.3).
+print(-0, repr(-0), str(-0)) // expect: 0 0 0
+print(0.5, -1.5, 1e21, 1e-7) // expect: 0.5 -1.5 1e+21 1e-7
+print(INF, -INF, INF - INF) // expect: Infinity -Infinity NaN
+print(0.1 * 3) // expect: 0.30000000000000004
+print(PI) // expect: 3.141592653589793
+print([-0, INF]) // expect: [0, Infinity]
+print("{-0}") // expect: 0

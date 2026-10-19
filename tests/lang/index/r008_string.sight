@@ -1,0 +1,2 @@
+let s = "abc"
+print(s[nil]) // expect runtime error R008: string index must be an integer, got nil

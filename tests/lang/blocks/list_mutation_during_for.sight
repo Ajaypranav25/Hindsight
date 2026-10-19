@@ -1,0 +1,17 @@
+// List iteration re-checks the current length (SPEC §8.3).
+var xs = [1, 2, 3]
+for x in xs {
+  if x == 1 { push(xs, 4) }
+  print(x)
+}
+// expect: 1
+// expect: 2
+// expect: 3
+// expect: 4
+var ys = [1, 2, 3, 4]
+for y in ys {
+  print(y)
+  pop(ys)
+}
+// expect: 1
+// expect: 2

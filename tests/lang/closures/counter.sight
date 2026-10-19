@@ -1,0 +1,11 @@
+// Closures capture variables (SPEC §5.6).
+fn make_counter() {
+  var n = 0
+  || {
+    n += 1
+    n
+  }
+}
+let c1 = make_counter()
+let c2 = make_counter()
+print(c1(), c1(), c2(), c1()) // expect: 1 2 1 3

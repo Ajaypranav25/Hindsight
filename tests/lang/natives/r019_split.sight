@@ -1,0 +1,1 @@
+split("a", 1) // expect runtime error R019: 'split' expects a string as argument 2, got a number

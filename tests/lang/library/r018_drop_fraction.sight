@@ -1,0 +1,1 @@
+drop([1], 1.5) // expect runtime error R018: assertion failed: 'drop' expects a non-negative integer

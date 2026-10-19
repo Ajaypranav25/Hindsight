@@ -33,7 +33,8 @@ function checkedIndex(index: Value, length: number, kind: SequenceKind): number 
 }
 
 function recordKey(index: Value): string {
-  if (typeof index !== 'string') raise('R012', `record keys must be strings, got ${articleType(index)}`)
+  if (typeof index !== 'string')
+    raise('R012', `record keys must be strings, got ${articleType(index)}`)
   return index
 }
 
@@ -56,7 +57,8 @@ export function getIndex(object: Value, index: Value): Value {
 }
 
 export function setIndex(m: MachineState, object: Value, index: Value, value: Value): void {
-  if (typeof object === 'string') raise('R022', 'cannot assign into a string: strings are immutable')
+  if (typeof object === 'string')
+    raise('R022', 'cannot assign into a string: strings are immutable')
   if (isList(object)) {
     const position = checkedIndex(index, object.items.length, 'list')
     object.items[position] = value

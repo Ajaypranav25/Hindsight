@@ -1,0 +1,1 @@
+let face = 😀 // expect compile error E001: unexpected character '😀'

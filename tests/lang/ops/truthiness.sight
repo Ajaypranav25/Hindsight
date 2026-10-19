@@ -1,0 +1,13 @@
+// Only nil and false are falsy (SPEC §4.2).
+for v in [nil, false, true, 0, "", [], {}, 0..0, print] {
+  print(if v { "truthy" } else { "falsy" })
+}
+// expect: falsy
+// expect: falsy
+// expect: truthy
+// expect: truthy
+// expect: truthy
+// expect: truthy
+// expect: truthy
+// expect: truthy
+// expect: truthy

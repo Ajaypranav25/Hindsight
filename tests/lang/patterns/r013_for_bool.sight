@@ -1,0 +1,1 @@
+for x in true {} // expect runtime error R013: cannot iterate over a bool

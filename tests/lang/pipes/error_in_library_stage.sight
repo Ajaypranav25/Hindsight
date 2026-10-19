@@ -1,0 +1,4 @@
+let words = ["a", "b"]
+let s = words
+  |> map(|w| w)
+  |> sum // expect runtime error R001: cannot apply '+' to number and string // hint: convert with str()

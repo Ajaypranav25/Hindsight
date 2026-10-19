@@ -1,0 +1,10 @@
+fn make_pair() {
+  var value = 0
+  let get = || value
+  let set = |v| { value = v }
+  [get, set]
+}
+let [get, set] = make_pair()
+print(get()) // expect: 0
+set(9)
+print(get()) // expect: 9

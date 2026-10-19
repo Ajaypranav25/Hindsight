@@ -1,0 +1,9 @@
+// Library functions behave as their Appendix A source (SPEC §9.3).
+print(map(1..4, |x| x * 2)) // expect: [2, 4, 6]
+print(map("ab", upper), map({a: 1, b: 2}, |k| k), map([], |x| x)) // expect: ["A", "B"] ["a", "b"] []
+print(filter([1, 2, 3, 4], |x| x % 2 == 0)) // expect: [2, 4]
+print(filter([0, nil, false, "", []], |x| x)) // expect: [0, "", []]
+print(reduce([1, 2, 3], |acc, x| acc + x, 0), reduce([], |acc, x| acc + x, "init")) // expect: 6 init
+print(reduce(["a", "b"], |acc, x| acc + x, ">")) // expect: >ab
+var seen = []
+print(each([1, 2], |x| push(seen, x * 10)), seen) // expect: nil [10, 20]

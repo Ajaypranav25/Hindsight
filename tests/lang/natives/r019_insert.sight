@@ -1,0 +1,1 @@
+insert(nil, 0, 0) // expect runtime error R019: 'insert' expects a list as argument 1, got nil

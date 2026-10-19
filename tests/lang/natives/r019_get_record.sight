@@ -1,0 +1,1 @@
+get(nil, "a") // expect runtime error R019: 'get' expects a record as argument 1, got nil

@@ -1,0 +1,4 @@
+// The 10,001st active call fails at that call (SPEC §7.10).
+fn d(n) { if n == 0 { 0 } else { 1 + d(n - 1) } } // expect runtime error R016: stack overflow: more than 10000 nested calls
+print("start") // expect: start
+print(d(10000))

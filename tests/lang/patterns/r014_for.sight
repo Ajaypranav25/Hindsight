@@ -1,0 +1,3 @@
+for [k, v] in [[1, 2], [3]] { // expect runtime error R014: value [3] does not match pattern [k, v]
+  print(k + v) // expect: 3
+}

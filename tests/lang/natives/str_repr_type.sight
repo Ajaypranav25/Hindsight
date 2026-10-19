@@ -1,0 +1,6 @@
+print(str(1), str(nil), str("s"), str([1, "s"])) // expect: 1 nil s [1, "s"]
+print(type(str(1))) // expect: string
+print(repr("s"), repr(1), repr([1])) // expect: "s" 1 [1]
+print(type(nil), type(true), type(1), type("s")) // expect: nil bool number string
+print(type([]), type({}), type(print), type(|x| x), type(0..1)) // expect: list record function function range
+print(type(map), type(PI), type(INF)) // expect: function number number

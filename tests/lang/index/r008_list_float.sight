@@ -1,0 +1,2 @@
+let xs = [1, 2]
+print(xs[1.5]) // expect runtime error R008: list index must be an integer, got 1.5

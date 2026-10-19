@@ -1,0 +1,10 @@
+print(nil, true, false) // expect: nil true false
+print(repr(nil), repr(true)) // expect: nil true
+print(print, map, len) // expect: <builtin print> <builtin map> <builtin len>
+print([abs], {f: sort_by}) // expect: [<builtin abs>] {f: <builtin sort_by>}
+print(str(len), repr(chunk)) // expect: <builtin len> <builtin chunk>
+fn user() {}
+print([user, |x| x]) // expect: [<fn user>, <fn>]
+print(0..2, repr(1..=2), str(range(0, 6, 2))) // expect: 0..2 1..=2 range(0, 6, 2)
+print(range(1.5, 3), range(0, -1, -0.5)) // expect: 1.5..3 range(0, -1, -0.5)
+print("{print} {[1, "a"]}") // expect: <builtin print> [1, "a"]

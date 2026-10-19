@@ -1,0 +1,3 @@
+let a = 5
+print(if a
+  > 3 { "big" } else { "small" }) // expect: big

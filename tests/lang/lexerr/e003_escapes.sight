@@ -1,0 +1,6 @@
+let a = "bad \q escape" // expect compile error E003: unknown escape sequence '\q'
+let b = "\x41" // expect compile error E003: unknown escape sequence '\x'
+let c = "\u{110000}" // expect compile error E003: invalid unicode escape
+let d = "\u41" // expect compile error E003: invalid unicode escape
+let e = "\u{1234567}" // expect compile error E003: invalid unicode escape
+let ok = "\u{10FFFF}"

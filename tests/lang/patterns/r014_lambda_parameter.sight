@@ -1,0 +1,2 @@
+let f = |[a]| a // expect runtime error R014: value 5 does not match pattern [a]
+f(5)

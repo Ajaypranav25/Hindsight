@@ -1,0 +1,1 @@
+random_int(1.5, 2) // expect runtime error R019: 'random_int' expects an integer as argument 1, got a number

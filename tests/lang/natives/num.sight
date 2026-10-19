@@ -1,0 +1,5 @@
+print(num(7), num(" 42 "), num("3.5"), num("-2")) // expect: 7 42 3.5 -2
+print(num(""), num("   "), num("abc"), num("12px")) // expect: nil nil nil nil
+print(num("1e3"), num("0x10"), num("Infinity"), num(".5")) // expect: 1000 16 Infinity 0.5
+print(num("\n 8 \t")) // expect: 8
+print(num(INF - INF)) // expect: NaN

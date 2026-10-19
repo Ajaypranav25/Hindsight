@@ -1,0 +1,1 @@
+print(len(5)) // expect runtime error R019: 'len' expects a list, string, record or range as argument 1, got a number

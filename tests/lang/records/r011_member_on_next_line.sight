@@ -1,0 +1,4 @@
+// The span of R010/R011 starts at the '.' (SPEC §10.4).
+let v = nil
+let w = v
+  .field // expect runtime error R011: cannot read field 'field' of nil

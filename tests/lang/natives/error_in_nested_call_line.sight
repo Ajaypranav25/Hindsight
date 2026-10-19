@@ -1,0 +1,6 @@
+// A native's error is reported at its call expression.
+fn wrapper(x) {
+  len(x) // expect runtime error R019: 'len' expects a list, string, record or range as argument 1, got nil
+}
+wrapper("ok")
+wrapper(nil)

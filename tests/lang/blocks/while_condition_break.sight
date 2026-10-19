@@ -1,0 +1,6 @@
+// The condition belongs to the loop: break inside it affects that loop (SPEC §8.2).
+var i = 0
+while if i >= 3 { break } else { true } {
+  i += 1
+}
+print(i) // expect: 3

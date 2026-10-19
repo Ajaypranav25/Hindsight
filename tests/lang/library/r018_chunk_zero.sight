@@ -1,0 +1,1 @@
+chunk([1], 0) // expect runtime error R018: assertion failed: 'chunk' expects a positive integer

@@ -59,11 +59,17 @@ export function declareTop(m: MachineState, frame: Frame, count: number): void {
 }
 
 /** A call whose callee is not a closure: run a native atomically, or R004. */
-export function callNonClosure(m: MachineState, callee: Value, calleeIndex: number, argc: number): void {
+export function callNonClosure(
+  m: MachineState,
+  callee: Value,
+  calleeIndex: number,
+  argc: number,
+): void {
   if (typeof callee !== 'object' || callee === null || callee.type !== 'native') {
     raise('R004', `cannot call ${articleType(callee)}`)
   }
-  if (argc < callee.minArgs || argc > callee.maxArgs) raise('R005', nativeArityMessage(callee, argc))
+  if (argc < callee.minArgs || argc > callee.maxArgs)
+    raise('R005', nativeArityMessage(callee, argc))
   const stack = m.stack
   const result = callee.fn(m.context, stack.slice(calleeIndex + 1))
   stack.length = calleeIndex

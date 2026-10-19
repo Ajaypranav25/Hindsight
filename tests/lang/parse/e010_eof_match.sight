@@ -1,0 +1,2 @@
+let v = match 1 {
+  1 => "one" // expect compile error E010: expected '}' but found end of file

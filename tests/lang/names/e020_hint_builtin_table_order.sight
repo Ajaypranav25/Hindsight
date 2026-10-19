@@ -1,0 +1,1 @@
+mix(1, 2) // expect compile error E020: undefined variable 'mix' // hint: did you mean 'min'?

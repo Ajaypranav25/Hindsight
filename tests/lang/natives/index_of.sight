@@ -1,0 +1,2 @@
+print(index_of([1, 2, 3, 2], 2), index_of([1], 5), index_of([[1]], [1])) // expect: 1 -1 0
+print(index_of("hello", "l"), index_of("hello", "z"), index_of("hello", "")) // expect: 2 -1 0

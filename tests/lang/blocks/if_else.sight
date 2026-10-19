@@ -1,0 +1,8 @@
+// if as an expression (SPEC §7.13).
+fn sign(n) {
+  if n < 0 { "negative" } else if n == 0 { "zero" } else { "positive" }
+}
+print(sign(-2), sign(0), sign(9)) // expect: negative zero positive
+let v = if nil { 1 }
+print(v) // expect: nil
+print(if 0 { "zero is truthy" } else { "no" }) // expect: zero is truthy

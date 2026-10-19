@@ -1,0 +1,3 @@
+print("outer { // expect compile error E006: unterminated string interpolation
+  "inner {
+  x

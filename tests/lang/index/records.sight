@@ -1,0 +1,8 @@
+var r = {a: 1}
+print(r["a"]) // expect: 1
+r["b"] = 2
+r["a"] = 10
+print(r) // expect: {a: 10, b: 2}
+let key = "dynamic key"
+r[key] = 3
+print(r[key], r) // expect: 3 {a: 10, b: 2, "dynamic key": 3}

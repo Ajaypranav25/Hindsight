@@ -1,0 +1,1 @@
+random_int(3, 1) // expect runtime error R019: 'random_int' expects lo <= hi

@@ -1,0 +1,9 @@
+print(find([1, 5, 10], |x| x > 3), find([1], |x| x > 3)) // expect: 5 nil
+print(find_index([1, 5, 10], |x| x > 3), find_index([1], |x| x > 3)) // expect: 1 -1
+print(find_index("abc", |c| c == "c")) // expect: 2
+var calls = 0
+find([1, 2, 3, 4], |x| {
+  calls += 1
+  x == 2
+})
+print(calls) // expect: 2

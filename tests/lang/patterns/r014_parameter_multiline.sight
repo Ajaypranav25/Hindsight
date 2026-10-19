@@ -1,0 +1,5 @@
+fn combine(
+  [a, b],
+  {c} // expect runtime error R014: value {d: 1} does not match pattern {c}
+) { a + b + c }
+combine([1, 2], {d: 1})

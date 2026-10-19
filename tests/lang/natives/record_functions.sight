@@ -1,0 +1,7 @@
+let r = {b: 1, a: [2]}
+print(keys(r), values(r), entries(r)) // expect: ["b", "a"] [1, [2]] [["b", 1], ["a", [2]]]
+print(keys({}), values({}), entries({})) // expect: [] [] []
+print(has(r, "a"), has(r, "z")) // expect: true false
+print(get(r, "b"), get(r, "z"), get(r, "z", 0), get(r, "b", 0)) // expect: 1 nil 0 1
+var m = {x: 1, y: 2}
+print(delete(m, "x"), delete(m, "nope"), m) // expect: 1 nil {y: 2}

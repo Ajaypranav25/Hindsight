@@ -1,0 +1,12 @@
+// Locals may be redeclared in the same scope (SPEC §5.2).
+fn f() {
+  let a = 1
+  let a = a + 1
+  a
+}
+print(f()) // expect: 2
+{
+  let g = 1
+  let g = g * 10
+  print(g) // expect: 10
+}

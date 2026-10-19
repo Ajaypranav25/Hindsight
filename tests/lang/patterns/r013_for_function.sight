@@ -1,0 +1,1 @@
+for x in print {} // expect runtime error R013: cannot iterate over a function

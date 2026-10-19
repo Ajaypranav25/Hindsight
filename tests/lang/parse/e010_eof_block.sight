@@ -1,0 +1,2 @@
+fn f() {
+  print(1) // expect compile error E010: expected '}' but found end of file

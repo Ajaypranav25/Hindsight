@@ -1,0 +1,16 @@
+// Blocks introduce scopes; shadowing (SPEC §5.2).
+let x = "global"
+{
+  let x = "block"
+  print(x) // expect: block
+}
+print(x) // expect: global
+fn f() {
+  let y = 1
+  {
+    let y = 2
+    print(y) // expect: 2
+  }
+  y
+}
+print(f()) // expect: 1

@@ -1,0 +1,11 @@
+// To modify a parameter, shadow it (SPEC §5.1).
+fn countdown(n) {
+  var n = n
+  var out = []
+  while n > 0 {
+    push(out, n)
+    n -= 1
+  }
+  out
+}
+print(countdown(3)) // expect: [3, 2, 1]

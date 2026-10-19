@@ -1,0 +1,14 @@
+// String interpolation (SPEC §2.6): expressions, nesting, show of values.
+let x = 3
+let y = 4
+print("x = {x}") // expect: x = 3
+print("{x}{y}") // expect: 34
+print("sum {x + y} done") // expect: sum 7 done
+print("nested {"inner {x * 2}"}") // expect: nested inner 6
+print("call {str(x)}") // expect: call 3
+print("{[1, "s"]}") // expect: [1, "s"]
+print("{"q"}") // expect: q
+print("{ {a: 1} }") // expect: {a: 1}
+print("{nil} {true}") // expect: nil true
+print("{x}" + "{y}") // expect: 34
+print("escaped \{x} braces") // expect: escaped {x} braces

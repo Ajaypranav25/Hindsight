@@ -1,0 +1,2 @@
+print("ok")
+print("never closed) // expect compile error E002: unterminated string

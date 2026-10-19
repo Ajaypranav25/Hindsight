@@ -1,0 +1,1 @@
+upper(1) // expect runtime error R019: 'upper' expects a string as argument 1, got a number

@@ -1,0 +1,2 @@
+let xs = [1]
+let x = xs[0 1] // expect compile error E010: expected ']' but found number 1

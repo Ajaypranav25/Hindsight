@@ -1,0 +1,2 @@
+let r = {a: 1}
+let x = r. // expect compile error E010: expected an identifier but found end of file

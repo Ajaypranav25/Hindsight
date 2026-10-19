@@ -1,0 +1,1 @@
+let ys = flat_map([1], |x| x) // expect runtime error R013: cannot iterate over a number

@@ -1,0 +1,6 @@
+let x = "outer"
+let v = match [1, 2] {
+  [x, y] if x > 5 => "big"
+  [x, y] => "x={x} y={y}"
+}
+print(v, x) // expect: x=1 y=2 outer

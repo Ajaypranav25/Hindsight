@@ -1,0 +1,2 @@
+﻿// A byte-order mark at offset 0 is ignored (SPEC §2.1).
+print("bom ok") // expect: bom ok

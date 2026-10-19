@@ -1,0 +1,1 @@
+let r = range(0, "5") // expect runtime error R019: 'range' expects a number as argument 2, got a string

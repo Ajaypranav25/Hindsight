@@ -1,0 +1,11 @@
+let nan = INF - INF
+print(len(0..INF)) // expect: Infinity
+print(len(0..nan), list(0..nan), len(range(0, 5, nan))) // expect: 0 [] 0
+print(contains(0..INF, 1000000), contains(0..INF, 0.5)) // expect: true false
+for i in 0..INF {
+  if i == 3 { break }
+  print(i)
+}
+// expect: 0
+// expect: 1
+// expect: 2

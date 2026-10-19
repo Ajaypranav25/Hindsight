@@ -1,0 +1,1 @@
+print("a { /* comment never closed // expect compile error E006: unterminated string interpolation

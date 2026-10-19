@@ -1,0 +1,2 @@
+let r = 0..5
+print(r[1]) // expect runtime error R009: cannot index a range

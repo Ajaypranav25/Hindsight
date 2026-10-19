@@ -1,0 +1,4 @@
+// Absolute step counts are implementation-defined (SPEC §10.3); only their order is tested.
+let a = steps()
+let b = steps()
+print(type(a), b > a, a >= 0) // expect: number true true

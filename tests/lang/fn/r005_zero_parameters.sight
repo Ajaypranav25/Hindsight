@@ -1,0 +1,2 @@
+fn z() { 0 }
+z(1) // expect runtime error R005: 'z' expects 0 arguments but got 1

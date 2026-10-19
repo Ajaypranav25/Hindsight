@@ -1,0 +1,1 @@
+floor(nil) // expect runtime error R019: 'floor' expects a number as argument 1, got nil

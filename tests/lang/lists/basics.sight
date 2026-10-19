@@ -1,0 +1,15 @@
+// Lists (SPEC §7.8).
+let xs = [1, "two", [3], nil, true]
+print(xs) // expect: [1, "two", [3], nil, true]
+print(len(xs)) // expect: 5
+print(xs[0], xs[1], xs[-1], xs[-5]) // expect: 1 two true 1
+print([], [1, 2,]) // expect: [] [1, 2]
+var ys = [1, 2, 3]
+ys[1] = 20
+print(ys) // expect: [1, 20, 3]
+ys[-1] = 30
+print(ys) // expect: [1, 20, 30]
+ys[0] += 5
+print(ys) // expect: [6, 20, 30]
+print(xs[2][0]) // expect: 3
+print([1, 2][1.0]) // expect: 2

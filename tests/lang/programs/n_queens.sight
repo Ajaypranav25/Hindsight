@@ -1,0 +1,27 @@
+fn solve(n) {
+  var count = 0
+  var cols = []
+  fn safe(col) {
+    let row = len(cols)
+    for [r, c] in enumerate(cols) {
+      if c == col or abs(c - col) == row - r { return false }
+    }
+    true
+  }
+  fn place() {
+    if len(cols) == n {
+      count += 1
+      return
+    }
+    for col in 0..n {
+      if safe(col) {
+        push(cols, col)
+        place()
+        pop(cols)
+      }
+    }
+  }
+  place()
+  count
+}
+print(solve(4), solve(5), solve(6)) // expect: 2 10 4

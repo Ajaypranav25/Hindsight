@@ -1,0 +1,2 @@
+print("before") // expect: before
+for x in nil {} // expect runtime error R013: cannot iterate over nil

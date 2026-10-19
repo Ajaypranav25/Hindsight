@@ -1,0 +1,20 @@
+// Precedence and associativity (SPEC §3.3).
+print(1 + 2 * 3) // expect: 7
+print((1 + 2) * 3) // expect: 9
+print(10 - 4 - 3) // expect: 3
+print(100 / 10 / 5) // expect: 2
+print(2 * 3 % 4) // expect: 2
+print(2 ** 3 ** 2) // expect: 512
+print(-2 ** 2) // expect: -4
+print((-2) ** 2) // expect: 4
+print(-2 ** 0) // expect: -1
+print(2 * -3) // expect: -6
+print(1 + 2 == 3) // expect: true
+print(not 1 == 2) // expect: true
+print(not true and false) // expect: false
+print(true or false and false) // expect: true
+print(false and true or true) // expect: true
+print(not not nil) // expect: false
+print(1 + 1..2 + 2) // expect: 2..4
+print(1..3 == 1..3) // expect: true
+print(1 < 2 and 2 < 3) // expect: true

@@ -1,0 +1,5 @@
+let 1 | 2 = 1 // expect compile error E015: alternatives ('|') are only allowed in match patterns
+for 1 | 2 in [1] {} // expect compile error E015: alternatives ('|') are only allowed in match patterns
+fn f(1 | 2) { 0 } // expect compile error E015: alternatives ('|') are only allowed in match patterns
+let g = |[1 | 2]| 0 // expect compile error E015: alternatives ('|') are only allowed in match patterns
+let [a | b] = [1] // expect compile error E015: alternatives ('|') are only allowed in match patterns

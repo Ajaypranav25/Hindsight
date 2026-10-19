@@ -81,7 +81,5 @@ function scheduleRecord(a: RecordObj, b: RecordObj, work: Value[], scheduled: Pa
 }
 
 function rangesEqual(a: RangeObj, b: RangeObj): boolean {
-  return (
-    a.start === b.start && a.end === b.end && a.step === b.step && a.inclusive === b.inclusive
-  )
+  return a.start === b.start && a.end === b.end && a.step === b.step && a.inclusive === b.inclusive
 }
