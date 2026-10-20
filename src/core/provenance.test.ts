@@ -271,6 +271,28 @@ describe('cells', () => {
   })
 })
 
+const MANY_CELL_WRITES = `fn make_counter() {
+  var n = 0
+  || { n += 1; n }
+}
+let tick = make_counter()
+for i in 0..130000 { tick() }
+print("done")`
+
+describe('history of a heavily written captured variable', () => {
+  test('130,000 cell writes give a truncated history instead of a stack overflow', () => {
+    const recording = recordSource(MANY_CELL_WRITES)
+    expect(recording.outcome.kind).toBe('finished')
+    const target = localTarget(recording, firstHit(recording, 3), 'n')
+    const result = recording.history(target, recording.length)
+    expect(result.total).toBe(130_001)
+    expect(result.truncated).toBe(true)
+    expect(result.events.length).toBeLessThanOrEqual(1000)
+    expect(result.events[0]).toMatchObject({ kind: 'declare', value: 0 })
+    expect(result.events.at(-1)).toMatchObject({ kind: 'write', value: 130_000 })
+  })
+})
+
 const LOOPS = `fn run() {
   for i in 0..3 {
     let sq = i * i

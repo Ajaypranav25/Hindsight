@@ -7,6 +7,7 @@ import {
   type Args,
   type NativeTable,
   badArgument,
+  fresh,
   indexArg,
   numberArg,
   stringArg,
@@ -17,7 +18,7 @@ import { SIZE_LIMIT } from './values'
 const MAX_SAFE_LENGTH = Number.MAX_SAFE_INTEGER
 
 function stringMethod(name: string, method: (s: string) => string): NativeFn {
-  return (ctx, args) => method(stringArg(ctx, name, args, 1))
+  return (ctx, args) => fresh(ctx, method(stringArg(ctx, name, args, 1)))
 }
 
 /** Number of pieces `s.split(separator)` produces, counted without building them. */
@@ -35,6 +36,7 @@ function split(ctx: NativeContext, args: Args): Value {
   const separator = stringArg(ctx, 'split', args, 2)
   // Fewer than SIZE_LIMIT code units can never produce more than SIZE_LIMIT pieces.
   if (s.length >= SIZE_LIMIT && pieceCount(s, separator) > SIZE_LIMIT) return tooLarge(ctx)
+  ctx.charge(s.length)
   return ctx.newList(s.split(separator))
 }
 
@@ -46,7 +48,7 @@ function replace(ctx: NativeContext, args: Args): Value {
   let length = Math.max(0, pieces.length - 1) * to.length
   for (const piece of pieces) length += piece.length
   if (length > SIZE_LIMIT) return tooLarge(ctx)
-  return pieces.join(to)
+  return fresh(ctx, pieces.join(to))
 }
 
 function repeat(ctx: NativeContext, args: Args): Value {
@@ -57,12 +59,13 @@ function repeat(ctx: NativeContext, args: Args): Value {
   }
   if (s.length === 0) return ''
   if (s.length * count > SIZE_LIMIT) return tooLarge(ctx)
-  return s.repeat(count)
+  return fresh(ctx, s.repeat(count))
 }
 
 function chars(ctx: NativeContext, args: Args): Value {
   const s = stringArg(ctx, 'chars', args, 1)
   if (s.length > SIZE_LIMIT) return tooLarge(ctx)
+  ctx.charge(s.length)
   return ctx.newList(s.split(''))
 }
 
@@ -93,7 +96,7 @@ function pad(name: 'pad_start' | 'pad_end'): NativeFn {
     const fill = args.length > 2 ? stringArg(ctx, name, args, 3) : ' '
     const target = toLength(width)
     if (target > s.length && fill !== '' && target > SIZE_LIMIT) return tooLarge(ctx)
-    return name === 'pad_start' ? s.padStart(target, fill) : s.padEnd(target, fill)
+    return fresh(ctx, name === 'pad_start' ? s.padStart(target, fill) : s.padEnd(target, fill))
   }
 }
 

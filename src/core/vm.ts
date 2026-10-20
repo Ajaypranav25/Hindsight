@@ -109,6 +109,7 @@ class MachineVM implements VM {
     m.nextObjectId = record.nextObjectId
     m.nextFrameUid = record.nextFrameUid
     m.rngState = record.rngState
+    m.allocated = record.allocated
     m.status = record.status
     m.error = record.error
   }
@@ -124,6 +125,7 @@ class MachineVM implements VM {
       nextObjectId: m.nextObjectId,
       nextFrameUid: m.nextFrameUid,
       rngState: m.rngState,
+      allocated: m.allocated,
       status: m.status,
       error: m.error,
     }

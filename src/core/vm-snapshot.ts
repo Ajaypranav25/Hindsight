@@ -29,6 +29,7 @@ export interface MachineRecord {
   readonly nextObjectId: number
   readonly nextFrameUid: number
   readonly rngState: number
+  readonly allocated: number
   readonly status: VMStatus
   readonly error: RuntimeErrorInfo | null
 }
@@ -65,6 +66,7 @@ export function copyRecord(source: MachineRecord): { record: MachineRecord; size
     nextObjectId: source.nextObjectId,
     nextFrameUid: source.nextFrameUid,
     rngState: source.rngState,
+    allocated: source.allocated,
     status: source.status,
     error: source.error,
   }

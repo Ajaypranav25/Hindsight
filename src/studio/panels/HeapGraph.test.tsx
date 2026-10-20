@@ -56,7 +56,7 @@ function fixture(heap: ObjectView[], truncated = false): StateView {
   }
 }
 
-async function renderWith(view: StateView) {
+async function renderWith(view: StateView | ((time: number) => StateView)) {
   const engine = scriptedEngine()
   const store = createStudioStore(
     { engine, storage: memoryStorage(), scheduler: new ManualScheduler(), examples: [] },
@@ -64,7 +64,7 @@ async function renderWith(view: StateView) {
   )
   const recording: Recording = {
     ...fakeRecording({ length: 5000 }),
-    stateAt: () => view,
+    stateAt: (time: number) => (typeof view === 'function' ? view(time) : view),
     allocationTime: (id: number) => (id === 1 ? 1204 : null),
   }
   render(
@@ -119,6 +119,20 @@ describe('HeapGraph', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }))
     fireEvent.click(screen.getByRole('button', { name: 'Fit graph to panel' }))
+  })
+
+  test('the row readout follows the pen while the row stays hovered', async () => {
+    const at = (t: number) =>
+      fixture([{ type: 'list', id: 1, offset: 0, items: [num(t * 10)], length: 1 }])
+    const store = await renderWith(at)
+    act(() => store.getState().seek(3))
+    const row = document.querySelector('.hp-row')!
+    fireEvent.mouseEnter(row)
+    expect(document.querySelector('.hp-readout')?.textContent).toContain('= 30')
+    act(() => store.getState().seek(7))
+    expect(document.querySelector('.hp-readout')?.textContent).toContain('= 70')
+    fireEvent.mouseLeave(document.querySelector('.hp-row')!)
+    expect(document.querySelector('.hp-readout')).toBeNull()
   })
 
   test('explains an empty heap', async () => {

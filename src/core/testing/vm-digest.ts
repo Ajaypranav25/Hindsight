@@ -44,13 +44,13 @@ function atom(value: Value): string {
 function contents(object: HeapObject, work: Value[]): string {
   switch (object.type) {
     case 'list':
-      work.push(...object.items)
+      for (const item of object.items) work.push(item)
       return `list[${object.items.map(atom).join(',')}]`
     case 'record':
-      work.push(...object.fields.values())
+      for (const field of object.fields.values()) work.push(field)
       return `record{${Array.from(object.fields, ([k, v]) => `${k}:${atom(v)}`).join(',')}}`
     case 'closure':
-      work.push(...object.upvalues)
+      for (const upvalue of object.upvalues) work.push(upvalue)
       return `closure ${object.proto.id} [${object.upvalues.map(atom).join(',')}]`
     case 'cell':
       work.push(object.value)

@@ -84,6 +84,11 @@ export interface StudioActions {
   loadExample(id: string): void
   /** Compiles and records the current source now (aborting any recording in progress). */
   run(): Promise<void>
+  /**
+   * The page-load run: records the opening program unless the previous page's run never finished
+   * (it froze or crashed the tab), in which case it only explains why nothing ran.
+   */
+  startup(): Promise<void>
   /** Continues a step-limited recording by another `settings.maxSteps` steps. */
   extend(): Promise<void>
   /** Moves the pen (clamped to the recording). */
@@ -97,6 +102,8 @@ export interface StudioActions {
   togglePlay(): void
   stopPlay(): void
   toggleBreakpoint(line: number): void
+  /** Replaces every breakpoint (the editor moves them as lines are inserted and deleted). */
+  setBreakpoints(lines: Iterable<number>): void
   selectFrame(uid: number | null): void
   /**
    * Moves the pen just after the step that produced the target's current value and marks that
@@ -139,6 +146,7 @@ export interface Example {
 export interface KeyValueStorage {
   read(key: string): string | null
   write(key: string, value: string): void
+  remove(key: string): void
 }
 
 /** Timers, injectable so tests can drive debounce and playback deterministically. */

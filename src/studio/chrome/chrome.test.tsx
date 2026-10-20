@@ -239,6 +239,18 @@ describe('global shortcuts', () => {
     expect(s.engine.recorded).toHaveLength(2)
   })
 
+  test('shortcuts are off while the modal help dialog is open, even with focus on the body', async () => {
+    const s = setup()
+    await finishRun(s, 10)
+    act(() => s.store.getState().seek(4))
+    fireEvent.click(screen.getByRole('button', { name: 'Help and shortcuts' }))
+    expect(screen.getByRole('dialog', { name: 'Help' })).toBeTruthy()
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    fireEvent.keyDown(document.body, { key: 'F11' })
+    fireEvent.keyDown(document.body, { key: 'Home' })
+    expect(s.store.getState().time).toBe(4)
+  })
+
   test('F9 toggles a breakpoint on the editor cursor line', () => {
     const s = setup()
     setEditorCursorLine(3)

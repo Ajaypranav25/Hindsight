@@ -141,7 +141,8 @@ function useObjectView(id: number, limit: number): ObjectView | null {
     const cached = view?.heap.get(id) ?? null
     if (cached && loadedCount(cached) >= Math.min(limit, totalCount(cached))) return cached
     if (!recording) return cached
-    return recording.objectAt(time, id, { offset: 0, limit }) ?? cached
+    const at = Math.max(0, Math.min(time, recording.length))
+    return recording.objectAt(at, id, { offset: 0, limit }) ?? cached
   }, [recording, time, view, id, limit])
 }
 

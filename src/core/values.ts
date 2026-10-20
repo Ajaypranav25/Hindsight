@@ -4,6 +4,7 @@
  */
 export {
   SIZE_LIMIT,
+  MEMORY_LIMIT,
   articleType,
   isBuiltinValue,
   isCallable,

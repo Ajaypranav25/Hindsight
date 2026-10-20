@@ -1,5 +1,5 @@
 import { compile, run } from '../core/index'
-import { formatDiagnostic, formatRuntimeError, makeStyle } from './format'
+import { formatDiagnostic, formatRuntimeError, makeStyle, sanitize } from './format'
 import type { CliIO } from './io'
 
 export const REPL_HELP = `Type Hindsight statements. Each entry is added to the program, which is re-run
@@ -32,7 +32,7 @@ export class ReplSession {
     if (entry === '') return true
     if (entry === ':quit' || entry === ':q') return false
     if (entry === ':help') this.io.stdout(`${REPL_HELP}\n`)
-    else if (entry === ':source') this.io.stdout(this.accepted || '(empty)\n')
+    else if (entry === ':source') this.io.stdout(sanitize(this.accepted) || '(empty)\n')
     else if (entry === ':reset') this.reset()
     else this.evaluate(line)
     return true
@@ -55,6 +55,7 @@ export class ReplSession {
     }
     const result = run(compiled.program, { seed: this.seed })
     const fresh = result.outputs.slice(this.printed)
+    // Program output is the program's own and is passed through raw, as `run` does.
     for (const event of fresh) this.io.stdout(`${event.text}\n`)
     if (result.outcome.kind === 'error') {
       this.io.stderr(

@@ -147,6 +147,17 @@ describe('Console', () => {
     expect(lines[1]!.querySelector('[aria-current="step"]')).toBeTruthy()
   })
 
+  test('cuts very long printed lines to a readable prefix', () => {
+    const huge = 'x'.repeat(16_000_000)
+    const long = viewRecording(4, (t) => stateView({ time: t }), {
+      outputs: [{ time: 1, text: huge }],
+    })
+    renderWithRecording(<Console />, long, 4)
+    const text = document.querySelector('.pn-out')?.textContent ?? ''
+    expect(text.length).toBeLessThan(10_100)
+    expect(text.endsWith('… (15,990,000 more characters)')).toBe(true)
+  })
+
   test('clicking a line moves the pen to when it was printed', () => {
     const { store } = renderWithRecording(<Console />, recording, 5)
     fireEvent.click(screen.getByRole('button', { name: /last/ }))

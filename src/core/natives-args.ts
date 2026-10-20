@@ -30,6 +30,12 @@ export function badArgument(
   return ctx.fail('R019', message)
 }
 
+/** A string the native just built, charged against the allocation budget (SPEC §10.5). */
+export function fresh(ctx: NativeContext, text: string): string {
+  ctx.charge(text.length)
+  return text
+}
+
 /** R025 (SPEC §10.5). */
 export function tooLarge(ctx: NativeContext): never {
   return ctx.fail('R025', 'result too large')
@@ -88,5 +94,5 @@ export function messageShow(value: Value): string {
 /** `show(value)`, raising R025 when it is longer than `budget` code units. */
 export function showOrFail(ctx: NativeContext, value: Value, budget = SIZE_LIMIT): string {
   const text = showWithin(value, budget)
-  return text === null ? tooLarge(ctx) : text
+  return text === null ? tooLarge(ctx) : fresh(ctx, text)
 }

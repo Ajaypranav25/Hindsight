@@ -217,3 +217,56 @@ describe('format', () => {
     expect(io.out.join('')).toContain('hindsight 0.2.0')
   })
 })
+
+describe('terminal safety', () => {
+  const OSC = '\u001b]0;pwned\u0007'
+  // eslint-disable-next-line no-control-regex
+  const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/
+
+  test('check escapes control characters from source text in code frames', () => {
+    const source = `// ${OSC}\nprint(nope ${OSC})\n`
+    const io = fakeIO({ 'osc.sight': source })
+    expect(main(['check', 'osc.sight'], io)).toBe(1)
+    const err = io.err.join('')
+    expect(err).not.toMatch(CONTROL)
+    expect(err).toContain(String.raw`print(nope \x1b]0;pwned\x07)`)
+    // The caret still sits under the escaped token.
+    const lines = err.split('\n')
+    const frame = lines.findIndex((line) => line.includes('print(nope'))
+    const caret = lines[frame + 1]!
+    expect(caret.indexOf('^')).toBe(lines[frame]!.indexOf(String.raw`\x1b`))
+  })
+
+  test('runtime messages and record keys are escaped; run output stays raw', () => {
+    const source = `print("\u{1b}[2Jraw")\nlet r = { "k\u{1b}": 1 }\nprint(r["k\u{9b}"])\n`
+    const io = fakeIO({ 'keys.sight': source })
+    expect(main(['run', 'keys.sight'], io)).toBe(1)
+    expect(io.out.join('')).toBe('\u001b[2Jraw\n')
+    const err = io.err.join('')
+    expect(err).toContain(String.raw`record has no field 'k\x9b'`)
+    expect(err).toContain(String.raw`did you mean 'k\x1b'?`)
+    expect(err).not.toMatch(CONTROL)
+  })
+
+  test('replay escapes strings in values and output', () => {
+    const source = `let s = "a\u{9b}b"\nprint("x\u{1b}y")\nprint(s)\n`
+    const io = fakeIO({ 'replay.sight': source })
+    expect(main(['replay', 'replay.sight', '--at', '100'], io)).toBe(0)
+    const out = io.out.join('')
+    expect(out).toContain(String.raw`s = "a\x9bb"`)
+    expect(out).toContain(String.raw`x\x1by`)
+    expect(out).not.toMatch(CONTROL)
+  })
+})
+
+describe('memory limit', () => {
+  test('a runaway allocation loop ends with a clean R025 report', () => {
+    const source =
+      'let row = list(0..100000)\nlet grid = []\nvar i = 0\nwhile i < 10 {\n  push(grid, copy(row))\n}\nprint(len(grid))\n'
+    const io = fakeIO({ 'grid.sight': source })
+    expect(main(['run', 'grid.sight'], io)).toBe(1)
+    const err = io.err.join('')
+    expect(err).toContain('runtime error[R025]: memory limit exceeded')
+    expect(err).toContain('--> grid.sight:5:14')
+  })
+})

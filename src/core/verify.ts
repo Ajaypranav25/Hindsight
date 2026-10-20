@@ -249,7 +249,7 @@ export function verifyProgram(program: Program): string[] {
         errors.push(`proto #${proto.id} references proto #${constant.id} outside the program`)
       }
     }
-    errors.push(...verifyProto(proto))
+    for (const error of verifyProto(proto)) errors.push(error)
   })
   if (program.protos[0] !== program.script) errors.push('the script is not the first proto')
   if (program.script.kind !== 'script') errors.push("the script proto's kind is not 'script'")

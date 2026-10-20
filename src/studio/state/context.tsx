@@ -32,7 +32,11 @@ export function useStudioActions(): StudioActions {
 export function useStateView(): StateView | null {
   const recording = useStudio((s) => s.recording)
   const time = useStudio((s) => s.time)
-  return useMemo(() => (recording ? recording.stateAt(time) : null), [recording, time])
+  // The store keeps the pen inside the recording; clamping guards a render between updates.
+  return useMemo(
+    () => (recording ? recording.stateAt(Math.max(0, Math.min(time, recording.length))) : null),
+    [recording, time],
+  )
 }
 
 /** The selected frame (the innermost one unless the user picked another). */
@@ -47,6 +51,7 @@ export function pickActions(s: StudioStore): StudioActions {
     setSource: s.setSource,
     loadExample: s.loadExample,
     run: s.run,
+    startup: s.startup,
     extend: s.extend,
     seek: s.seek,
     stepNav: s.stepNav,
@@ -57,6 +62,7 @@ export function pickActions(s: StudioStore): StudioActions {
     togglePlay: s.togglePlay,
     stopPlay: s.stopPlay,
     toggleBreakpoint: s.toggleBreakpoint,
+    setBreakpoints: s.setBreakpoints,
     selectFrame: s.selectFrame,
     jumpToOrigin: s.jumpToOrigin,
     setWatch: s.setWatch,

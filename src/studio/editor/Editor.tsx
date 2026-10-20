@@ -11,7 +11,7 @@ import { LibraryChip } from './LibraryChip'
 import { diagnosticsTransaction } from './lint'
 import { computeOverlay, EMPTY_OVERLAY, originSpanAt, type EditorOverlay } from './overlay'
 import { editorExtensions, fromStore } from './setup'
-import { setStudio, type EditorStudio } from './studio-field'
+import { studioEffects, type EditorStudio } from './studio-field'
 import './editor.css'
 
 /** After a user edit, the editor does not scroll to follow the pen for this long. */
@@ -92,7 +92,7 @@ export function Editor() {
       overlay,
     }
     editor.dispatch(diagnosticsTransaction(editor.state, diagnostics, source), {
-      effects: setStudio.of(studio),
+      effects: studioEffects(editor.state, studio),
     })
   }, [
     source,

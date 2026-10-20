@@ -33,6 +33,8 @@ export function raiseTooLarge(): never {
   return raise('R025', RESULT_TOO_LARGE)
 }
 
+export const MEMORY_LIMIT_EXCEEDED = 'memory limit exceeded'
+
 /** The debug span of code index `ip` in `proto` (operand indices repeat their instruction's span). */
 export function spanAt(proto: FunctionProto, ip: number): Span {
   const debug = proto.debug

@@ -33,6 +33,15 @@ test('Copy link carries the program to a new page', async ({ studio: page, conte
   await expect(editorContent(other)).toContainText('print("shared {n}")')
   await expect(outputLines(other).first()).toContainText('shared 42')
   await expect(other.getByRole('button', { name: /Examples/ })).toContainText('Your program')
+
+  // The link is used once: the fragment is gone and edits persist, so a reload keeps them. (The
+  // fixture clears storage on every load, so the stored source is checked directly.)
+  expect(new URL(other.url()).hash).toBe('')
+  const stored = () => other.evaluate(() => localStorage.getItem('hindsight:source'))
+  expect(await stored()).toBe(program)
+  await replaceProgram(other, 'print("edited after sharing")\n')
+  await expect(outputLines(other).first()).toContainText('edited after sharing')
+  expect(await stored()).toBe('print("edited after sharing")\n')
 })
 
 test('the examples menu loads and records an example', async ({ studio: page }) => {

@@ -256,7 +256,10 @@ function bindingRows(
     (cell) => cell.slot === slot && cellBelongs(index, rows, cell, isDeclare, sameSite),
   )
   if (cells.length === 0) return result
-  for (const cell of cells) result.push(...(index.byCell.get(cell.cellId) ?? []))
+  // A loop, not `push(...rows)`: a cell can hold more writes than a call accepts arguments.
+  for (const cell of cells) {
+    for (const row of index.byCell.get(cell.cellId) ?? []) result.push(row)
+  }
   return result.sort((x, y) => x - y)
 }
 

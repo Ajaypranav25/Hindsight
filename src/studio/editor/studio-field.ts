@@ -1,7 +1,9 @@
 /** The studio data the editor extensions read, pushed in from React with `setStudio`. */
 import { Facet, StateEffect, StateField, type EditorState } from '@codemirror/state'
+import { closeHoverTooltips } from '@codemirror/view'
 import type { Recording, StateView } from '../../core/index'
 import type { StudioActions } from '../state/types'
+import { mapBreakpointLines } from './breakpoint-map'
 import { EMPTY_OVERLAY, type EditorOverlay } from './overlay'
 
 export interface EditorStudio {
@@ -41,9 +43,32 @@ export const studioField = StateField.define<FieldValue>({
   update(value, tr) {
     for (const effect of tr.effects)
       if (effect.is(setStudio)) return { studio: effect.value, dirty: false }
-    return tr.docChanged && !value.dirty ? { ...value, dirty: true } : value
+    if (!tr.docChanged) return value
+    // Breakpoints follow their lines until the store (told by the editor) pushes them back.
+    const breakpoints = mapBreakpointLines(
+      value.studio.breakpoints,
+      tr.startState.doc,
+      tr.changes,
+      tr.newDoc,
+    )
+    if (breakpoints === value.studio.breakpoints && value.dirty) return value
+    return { studio: { ...value.studio, breakpoints }, dirty: true }
   },
 })
+
+/**
+ * The effects that push `next` into the editor. A value hover shows the value at the pen, so it
+ * closes when the pen, the recording or the selected frame changes (hovering again shows the new
+ * value).
+ */
+export function studioEffects(state: EditorState, next: EditorStudio): StateEffect<unknown>[] {
+  const previous = studioOf(state)
+  const moved =
+    previous.time !== next.time ||
+    previous.recording !== next.recording ||
+    previous.selectedFrameUid !== next.selectedFrameUid
+  return moved ? [setStudio.of(next), closeHoverTooltips] : [setStudio.of(next)]
+}
 
 /** The store's actions, for gutter clicks and tooltip buttons. */
 export const studioActions = Facet.define<StudioActions, StudioActions | null>({

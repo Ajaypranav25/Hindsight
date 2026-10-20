@@ -53,6 +53,7 @@ export function listExtend(m: MachineState): void {
   if (!isIterable(iterable)) raise('R013', `cannot iterate over ${articleType(iterable)}`)
   const count = elementCount(iterable)
   if (list.items.length + count > SIZE_LIMIT) raiseTooLarge()
+  m.charge(count)
   const first = list.items.length
   const items = list.items
   for (const element of collectElements(iterable)) items.push(element)
@@ -75,7 +76,10 @@ export function recordSet(m: MachineState): void {
   const value = m.stack.pop() as Value
   const key = m.stack.pop() as string
   const record = recordUnder(m.stack)
-  if (record.fields.size >= SIZE_LIMIT && !record.fields.has(key)) raiseTooLarge()
+  if (!record.fields.has(key)) {
+    if (record.fields.size >= SIZE_LIMIT) raiseTooLarge()
+    m.charge(1)
+  }
   record.fields.set(key, value)
   m.recordField(record.id, key, value)
 }
@@ -88,6 +92,7 @@ export function recordMerge(m: MachineState): void {
   let added = 0
   for (const key of other.fields.keys()) if (!record.fields.has(key)) added++
   if (record.fields.size + added > SIZE_LIMIT) raiseTooLarge()
+  m.charge(added)
   for (const [key, value] of Array.from(other.fields)) {
     record.fields.set(key, value)
     m.recordField(record.id, key, value)
@@ -104,6 +109,7 @@ export function interpolate(m: MachineState, count: number): void {
     if (piece === null) raiseTooLarge()
     text += piece
   }
+  m.charge(text.length)
   stack.length = start
   stack.push(text)
 }

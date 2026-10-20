@@ -50,6 +50,10 @@ export class MachineContext implements NativeContext {
     return this.machine.deleteField(record, key)
   }
 
+  charge(units: number): void {
+    this.machine.charge(units)
+  }
+
   random(): number {
     return this.machine.nextRandom()
   }

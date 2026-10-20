@@ -9,6 +9,13 @@ export interface Startup {
 
 const FALLBACK_SOURCE = 'print("Hello, Hindsight!")\n'
 
+export const UNFINISHED_RUN_NOTICE = 'The last run did not finish. Press Run to try again.'
+
+/** True when the previous page's recording never completed (it froze or crashed the tab). */
+export function lastRunUnfinished(storage: KeyValueStorage): boolean {
+  return storage.read(STORAGE_KEYS.runInProgress) !== null
+}
+
 /** Chooses the opening program: a shared link wins, then the last session, then the first example. */
 export function initialState(
   storage: KeyValueStorage,
@@ -33,7 +40,7 @@ export function initialState(
     playing: false,
     settings: readJson(storage, STORAGE_KEYS.settings, isSettings) ?? DEFAULT_SETTINGS,
     hintDismissed: storage.read(STORAGE_KEYS.hintDismissed) === 'true',
-    notice: null,
+    notice: lastRunUnfinished(storage) ? { text: UNFINISHED_RUN_NOTICE, tone: 'error' } : null,
     originMark: null,
   }
 }

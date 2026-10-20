@@ -16,6 +16,12 @@ import type {
 /** SPEC §10.5: the largest list, record or string any operation may create. */
 export const SIZE_LIMIT = 2 ** 24
 
+/**
+ * SPEC §10.5: the cumulative allocation budget of one run, in list items, record entries and string
+ * code units created by allocating operations.
+ */
+export const MEMORY_LIMIT = 2 ** 26
+
 export function isHeapObject(value: Value): value is HeapObject {
   return typeof value === 'object' && value !== null
 }

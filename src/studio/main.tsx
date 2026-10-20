@@ -27,7 +27,7 @@ function mount(): void {
       </StudioProvider>
     </StrictMode>,
   )
-  void studioStore.getState().run()
+  void studioStore.getState().startup()
 }
 
 mount()

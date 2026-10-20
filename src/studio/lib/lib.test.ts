@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import {
+  clipText,
+  DISPLAY_TEXT_LIMIT,
   formatCount,
   formatSteps,
   formatValue,
@@ -14,6 +16,9 @@ import {
   MAX_SHARED_SOURCE_LENGTH,
   shareFragment,
   sourceFromFragment,
+  takeSharedSource,
+  watchSharedLinks,
+  type ShareHost,
 } from './share'
 import { browserStorage, memoryStorage, readJson, writeJson } from './storage'
 
@@ -68,6 +73,20 @@ describe('format', () => {
   })
 })
 
+describe('display limits', () => {
+  test('clipText keeps short text and cuts long text with a count of the rest', () => {
+    expect(clipText('short')).toBe('short')
+    expect(clipText('abcdef', 4)).toBe('abcd… (2 more characters)')
+    expect(clipText('abcde', 4)).toBe('abcd… (1 more character)')
+    expect(clipText('ab\u{1F680}', 3)).toBe('ab… (2 more characters)')
+  })
+
+  test('formatValue cuts long strings before quoting them', () => {
+    const text = formatValue({ kind: 'string', value: 'y'.repeat(DISPLAY_TEXT_LIMIT + 5) })
+    expect(text).toBe(`"${'y'.repeat(DISPLAY_TEXT_LIMIT)}"… (5 more characters)`)
+  })
+})
+
 describe('share links', () => {
   test('round-trips unicode source through base64url', () => {
     const source = 'print("héllo {name} ✓ 🚀")\n// done'
@@ -92,6 +111,55 @@ describe('share links', () => {
   test('refuses programs too large for a link', () => {
     expect(shareFragment('x'.repeat(MAX_SHARED_SOURCE_LENGTH + 1))).toBeNull()
   })
+
+  function fakeHost(hash: string) {
+    const listeners = new Set<() => void>()
+    const urls: (string | undefined)[] = []
+    const location = { hash, pathname: '/studio/', search: '?x=1' }
+    const host: ShareHost & { location: typeof location } = {
+      location,
+      history: {
+        replaceState: (_data, _unused, url) => {
+          urls.push(url)
+          location.hash = ''
+        },
+      },
+      addEventListener: (_type, listener) => listeners.add(listener),
+      removeEventListener: (_type, listener) => listeners.delete(listener),
+    }
+    const fire = () => listeners.forEach((listener) => listener())
+    return { host, urls, listeners, fire }
+  }
+
+  test('uses a share link once: the fragment is removed after reading it', () => {
+    const { host, urls } = fakeHost(shareFragment('print(1)')!)
+    expect(takeSharedSource(host)).toBe('print(1)')
+    expect(urls).toEqual(['/studio/?x=1'])
+    expect(takeSharedSource(host)).toBeNull()
+  })
+
+  test('leaves other fragments alone and tolerates hosts without history or location', () => {
+    const { host, urls } = fakeHost('#section')
+    expect(takeSharedSource(host)).toBeNull()
+    expect(urls).toEqual([])
+    expect(takeSharedSource({})).toBeNull()
+    expect(
+      takeSharedSource({ location: { hash: shareFragment('x')!, pathname: '/', search: '' } }),
+    ).toBe('x')
+  })
+
+  test('loads a share link pasted while the studio is open', () => {
+    const { host, urls, listeners, fire } = fakeHost('')
+    const loaded: string[] = []
+    const stop = watchSharedLinks(host, (source) => loaded.push(source))
+    fire()
+    host.location.hash = shareFragment('print(2)')!
+    fire()
+    expect(loaded).toEqual(['print(2)'])
+    expect(urls).toHaveLength(1)
+    stop()
+    expect(listeners.size).toBe(0)
+  })
 })
 
 describe('storage', () => {
@@ -101,6 +169,8 @@ describe('storage', () => {
     expect(storage.read('a')).toBe('1')
     expect(storage.read('b')).toBe('2')
     expect(storage.read('c')).toBeNull()
+    storage.remove('a')
+    expect(storage.read('a')).toBeNull()
   })
 
   test('readJson validates and tolerates garbage', () => {

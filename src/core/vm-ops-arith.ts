@@ -25,6 +25,7 @@ export function binaryOperandError(op: string, a: Value, b: Value): never {
 export function addSlow(m: MachineState, a: Value, b: Value): Value {
   if (typeof a === 'string' && typeof b === 'string') {
     if (a.length + b.length > SIZE_LIMIT) raiseTooLarge()
+    m.charge(a.length + b.length)
     return a + b
   }
   if (isList(a) && isList(b)) {

@@ -88,40 +88,91 @@ export class InternalError extends Error {
   }
 }
 
-/** Optimal-string-alignment (restricted Damerau–Levenshtein) edit distance. */
-export function editDistance(a: string, b: string): number {
-  const rows = a.length + 1
-  const cols = b.length + 1
-  const d: number[][] = Array.from({ length: rows }, (_, i) =>
-    Array.from({ length: cols }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)),
-  )
-  for (let i = 1; i < rows; i++) {
-    for (let j = 1; j < cols; j++) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1
-      let best = Math.min(d[i - 1]![j]! + 1, d[i]![j - 1]! + 1, d[i - 1]![j - 1]! + cost)
-      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
-        best = Math.min(best, d[i - 2]![j - 2]! + 1)
+/** The largest edit distance a "did you mean" hint accepts (SPEC §5.3). */
+const MAX_HINT_DISTANCE = 2
+
+/** Stands for "more than the limit" in the banded table; far above any real distance compared. */
+const FAR = 0x3fffffff
+
+/** Scratch rows for `editDistanceWithin`, grown on demand and reused across calls. */
+let rowTwoBack = new Int32Array(32)
+let rowBack = new Int32Array(32)
+let rowNow = new Int32Array(32)
+
+function ensureRows(length: number): void {
+  if (rowNow.length >= length) return
+  const size = Math.max(length, rowNow.length * 2)
+  rowTwoBack = new Int32Array(size)
+  rowBack = new Int32Array(size)
+  rowNow = new Int32Array(size)
+}
+
+/**
+ * The optimal-string-alignment (restricted Damerau–Levenshtein) distance between `a` and `b` when it
+ * is at most `limit`, otherwise `limit + 1`. Only the diagonal band of width `limit` is computed, and
+ * the scan stops as soon as a whole row exceeds `limit` (no later cell can come back under it).
+ */
+export function editDistanceWithin(a: string, b: string, limit: number): number {
+  const n = a.length
+  const m = b.length
+  const over = limit + 1
+  if (limit < 0 || Math.abs(n - m) > limit) return over
+  if (n === 0 || m === 0) return Math.max(n, m)
+  ensureRows(m + 2)
+  let twoBack = rowTwoBack
+  let back = rowBack
+  let now = rowNow
+  for (let j = 0; j <= m + 1; j++) back[j] = j <= limit ? j : FAR
+  for (let i = 1; i <= n; i++) {
+    const lo = Math.max(1, i - limit)
+    const hi = Math.min(m, i + limit)
+    now[lo - 1] = lo === 1 && i <= limit ? i : FAR
+    let rowMin = now[lo - 1]!
+    const ai = a.charCodeAt(i - 1)
+    for (let j = lo; j <= hi; j++) {
+      const bj = b.charCodeAt(j - 1)
+      let best = back[j - 1]! + (ai === bj ? 0 : 1)
+      const deletion = back[j]! + 1
+      if (deletion < best) best = deletion
+      const insertion = now[j - 1]! + 1
+      if (insertion < best) best = insertion
+      if (i > 1 && j > 1 && ai === b.charCodeAt(j - 2) && a.charCodeAt(i - 2) === bj) {
+        const transposition = twoBack[j - 2]! + 1
+        if (transposition < best) best = transposition
       }
-      d[i]![j] = best
+      now[j] = best
+      if (best < rowMin) rowMin = best
     }
+    if (hi < m) now[hi + 1] = FAR
+    if (rowMin > limit) return over
+    const spare = twoBack
+    twoBack = back
+    back = now
+    now = spare
   }
-  return d[a.length]![b.length]!
+  const distance = back[m]!
+  return distance > limit ? over : distance
 }
 
 /**
  * The closest candidate to `name` for a "did you mean" hint: distance <= 2 and smaller than
  * `name.length`. Earlier candidates win ties, so callers pass candidates in priority order.
- * Compiler-internal names (starting with `$`) are never suggested.
+ * Compiler-internal names (starting with `$`) are never suggested. Each candidate is only measured
+ * up to the distance that could still beat the best so far, and skipped outright when the length
+ * difference alone rules it out.
  */
 export function closestName(name: string, candidates: Iterable<string>): string | undefined {
   let best: string | undefined
-  let bestDistance = Infinity
+  let cutoff = Math.min(MAX_HINT_DISTANCE, name.length - 1)
   for (const candidate of candidates) {
+    // Distance 0 means the same name, which is never suggested: nothing can be accepted any more.
+    if (cutoff < 1) break
+    if (Math.abs(candidate.length - name.length) > cutoff) continue
     if (candidate === name || candidate.startsWith('$')) continue
-    const distance = editDistance(name, candidate)
-    if (distance <= 2 && distance < name.length && distance < bestDistance) {
+    const distance = editDistanceWithin(name, candidate, cutoff)
+    if (distance <= cutoff) {
       best = candidate
-      bestDistance = distance
+      cutoff = distance - 1
     }
   }
   return best

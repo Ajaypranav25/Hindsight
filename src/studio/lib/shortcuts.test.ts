@@ -19,8 +19,8 @@ function key(name: string, mods: Partial<KeyInput> = {}): KeyInput {
   return { key: name, shiftKey: false, ctrlKey: false, metaKey: false, altKey: false, ...mods }
 }
 
-const EDITING: FocusContext = { editable: true, control: false, inDialog: false }
-const ON_BUTTON: FocusContext = { editable: false, control: true, inDialog: false }
+const EDITING: FocusContext = { ...NO_FOCUS, editable: true }
+const ON_BUTTON: FocusContext = { ...NO_FOCUS, control: true }
 
 describe('commandForKey', () => {
   test.each([
@@ -178,6 +178,30 @@ describe('focusContextOf', () => {
   test('anything inside a dialog or menu', () => {
     expect(focusContextOf(target('BUTTON', {}, ['[role="dialog"]'])).inDialog).toBe(true)
     expect(focusContextOf(target('BUTTON', {}, ['[role="menu"]'])).inDialog).toBe(true)
+  })
+
+  test('an open modal dialog switches shortcuts off wherever focus is', () => {
+    const open = { querySelector: (s: string) => (s.includes('aria-modal') ? {} : null) }
+    const closed = { querySelector: () => null }
+    expect(focusContextOf(null, open).inDialog).toBe(true)
+    expect(focusContextOf(target('BODY'), open).inDialog).toBe(true)
+    expect(focusContextOf(target('BODY'), closed).inDialog).toBe(false)
+    expect(commandForKey(key('F11'), focusContextOf(null, open))).toBeNull()
+  })
+
+  test('Home and End belong to tab strips and sliders that handle them', () => {
+    const onTab = focusContextOf(target('BUTTON', { role: 'tab' }, ['[role="tablist"]']))
+    expect(onTab.keyWidget).toBe(true)
+    expect(commandForKey(key('Home'), onTab)).toBeNull()
+    expect(commandForKey(key('End'), onTab)).toBeNull()
+    expect(commandForKey(key('F11'), onTab)).toEqual({
+      kind: 'step',
+      step: 'into',
+      direction: 'forward',
+    })
+    const onSlider = focusContextOf(target('CANVAS', { role: 'slider' }, ['[role="slider"]']))
+    expect(commandForKey(key('End'), onSlider)).toBeNull()
+    expect(focusContextOf(target('BUTTON', {}, ['[role="toolbar"]'])).keyWidget).toBe(false)
   })
 })
 

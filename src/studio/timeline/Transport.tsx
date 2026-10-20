@@ -177,18 +177,12 @@ function InstructionButton(props: {
 function SpeedControl(props: { disabled: boolean }) {
   const id = useId()
   const speed = useStudio((s) => s.settings.playbackSpeed)
-  const playing = useStudio((s) => s.playing)
   const actions = useStudioActions()
   const options: readonly number[] = PLAYBACK_SPEEDS.includes(speed as never)
     ? PLAYBACK_SPEEDS
     : [...PLAYBACK_SPEEDS, speed].sort((a, b) => a - b)
-  const change = (value: number) => {
-    actions.updateSettings({ playbackSpeed: value })
-    if (playing) {
-      actions.stopPlay()
-      actions.togglePlay()
-    }
-  }
+  // The store restarts playback at the new speed itself (from here or from Settings).
+  const change = (value: number) => actions.updateSettings({ playbackSpeed: value })
   return (
     <div className="tl-speed">
       <label className="tl-speed__label" htmlFor={id}>

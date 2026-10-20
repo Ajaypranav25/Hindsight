@@ -4,6 +4,7 @@ import { memoryStorage } from '../lib/storage'
 import { DEFAULT_SETTINGS, interestingTime, isSettings, penTime, STORAGE_KEYS } from './defaults'
 import { ManualScheduler } from './scheduler'
 import { currentDiagnostics, isStale, selectedFrame, visibleFrames } from './selectors'
+import { UNFINISHED_RUN_NOTICE } from './initial-state'
 import { createStudioStore, describeOrigin } from './store'
 import { fakeRecording, scriptedEngine } from './testing'
 import type { Example, KeyValueStorage } from './types'
@@ -345,6 +346,97 @@ describe('navigation', () => {
     store.getState().dismissHint()
     expect(store.getState().hintDismissed).toBe(true)
     expect(storage.read(STORAGE_KEYS.hintDismissed)).toBe('true')
+  })
+})
+
+describe('review regressions', () => {
+  test('a shared program is stored at once, so a reload without the fragment keeps it', () => {
+    const storage = memoryStorage({ [STORAGE_KEYS.source]: 'print("stored")' })
+    setup({ storage, shared: 'print("shared")' })
+    expect(storage.read(STORAGE_KEYS.source)).toBe('print("shared")')
+  })
+
+  test('marks a run in progress in storage and clears the mark when it completes', async () => {
+    const { store, engine, storage } = setup()
+    const running = store.getState().startup()
+    expect(storage.read(STORAGE_KEYS.runInProgress)).not.toBeNull()
+    await engine.resolveNext(fakeRecording({ length: 3 }))
+    await running
+    expect(storage.read(STORAGE_KEYS.runInProgress)).toBeNull()
+  })
+
+  test('an aborted run keeps the mark until its replacement completes', async () => {
+    const { store, engine, storage } = setup()
+    void store.getState().run()
+    void store.getState().run()
+    await engine.resolveNext(fakeRecording({ length: 3 }))
+    expect(storage.read(STORAGE_KEYS.runInProgress)).not.toBeNull()
+    await engine.resolveNext(fakeRecording({ length: 3 }))
+    expect(storage.read(STORAGE_KEYS.runInProgress)).toBeNull()
+  })
+
+  test('does not repeat a run that never finished; Run tries again and clears the notice', async () => {
+    const storage = memoryStorage({
+      [STORAGE_KEYS.source]: 'print("freezes")',
+      [STORAGE_KEYS.runInProgress]: 'true',
+    })
+    const { store, engine } = setup({ storage })
+    expect(store.getState().notice).toEqual({ text: UNFINISHED_RUN_NOTICE, tone: 'error' })
+    await store.getState().startup()
+    expect(engine.recorded).toHaveLength(0)
+    expect(store.getState().source).toBe('print("freezes")')
+    expect(store.getState().status).toEqual({ kind: 'idle' })
+    const running = store.getState().run()
+    expect(store.getState().notice).toBeNull()
+    await engine.resolveNext(fakeRecording({ length: 2 }))
+    await running
+    expect(storage.read(STORAGE_KEYS.runInProgress)).toBeNull()
+  })
+
+  test('a compile error typed during a recording outlasts its progress and completion', async () => {
+    const { store, engine } = setup()
+    void store.getState().run()
+    store.getState().setSource('print(ERROR)')
+    engine.recorded[0]!.options.onProgress?.(50)
+    expect(store.getState().status.kind).toBe('compile-error')
+    await engine.resolveNext(fakeRecording({ length: 4 }))
+    expect(store.getState().status.kind).toBe('compile-error')
+    expect(store.getState().recording?.length).toBe(4)
+    expect(isStale(store.getState())).toBe(true)
+  })
+
+  test('fixing the compile error while still recording shows the recording again', () => {
+    const { store, engine } = setup()
+    void store.getState().run()
+    engine.recorded[0]!.options.onProgress?.(10)
+    store.getState().setSource('print(ERROR)')
+    store.getState().setSource('print(8)')
+    expect(store.getState().status).toEqual({ kind: 'recording', progress: 10 })
+  })
+
+  test('setBreakpoints replaces the set and ignores invalid lines', () => {
+    const { store } = setup()
+    store.getState().toggleBreakpoint(3)
+    store.getState().setBreakpoints([4, 9, 0, 2.5])
+    expect([...store.getState().breakpoints]).toEqual([4, 9])
+    const same = store.getState().breakpoints
+    store.getState().setBreakpoints([9, 4])
+    expect(store.getState().breakpoints).toBe(same)
+  })
+
+  test('changing the playback speed while playing restarts the interval at the new speed', async () => {
+    const { store, engine, scheduler } = setup()
+    void store.getState().run()
+    await engine.resolveNext(fakeRecording({ length: 100 }))
+    store.getState().updateSettings({ playbackSpeed: 1 })
+    store.getState().seek(0)
+    store.getState().togglePlay()
+    scheduler.advance(1000)
+    expect(store.getState().time).toBe(1)
+    store.getState().updateSettings({ playbackSpeed: 10 })
+    scheduler.advance(1000)
+    expect(store.getState().time).toBe(11)
+    expect(scheduler.pending).toBe(1)
   })
 })
 

@@ -133,14 +133,14 @@ describe('Transport', () => {
     expect(screen.getByLabelText('Current instruction').textContent).toContain('Add')
   })
 
-  test('changing speed while playing restarts playback at the new speed', async () => {
+  test('changing speed while playing only updates the setting (the store restarts playback)', async () => {
     const { store, spies } = await setup(recordingWithLocations(10))
     act(() => store.setState({ playing: true }))
     expect(screen.getByRole('button', { name: 'Pause' }).getAttribute('aria-pressed')).toBe('true')
     fireEvent.change(screen.getByLabelText('Speed'), { target: { value: '30' } })
     expect(spies.updateSettings).toHaveBeenCalledWith({ playbackSpeed: 30 })
-    expect(spies.stopPlay).toHaveBeenCalledTimes(1)
-    expect(spies.togglePlay).toHaveBeenCalledTimes(1)
+    expect(spies.stopPlay).not.toHaveBeenCalled()
+    expect(spies.togglePlay).not.toHaveBeenCalled()
   })
 })
 
@@ -183,6 +183,26 @@ describe('StripChart', () => {
     ])
     expect(spies.jumpToStart).toHaveBeenCalledTimes(1)
     expect(spies.jumpToEnd).toHaveBeenCalledTimes(1)
+  })
+
+  test('a hover from a longer recording never queries past the end of a shorter one', async () => {
+    const strict = (length: number): Recording => ({
+      ...recordingWithLocations(length),
+      locationAt: (t: number) => {
+        if (t < 0 || t > length) throw new Error(`step ${t} is outside the recording`)
+        return t < length ? location : null
+      },
+    })
+    const { store } = await setup(strict(1000))
+    const slider = screen.getByRole('slider', { name: 'Time' })
+    fireEvent.pointerMove(slider, { clientX: 5000 })
+    expect(document.querySelector('.tl-chart__tooltip')?.textContent).toContain('step 1,000')
+    await act(async () => {
+      store.setState({ recording: strict(10), time: 10 })
+    })
+    expect(document.querySelector('.tl-chart__tooltip')).toBeNull()
+    fireEvent.pointerMove(slider, { clientX: 5000 })
+    expect(document.querySelector('.tl-chart__tooltip')?.textContent).toContain('step 10')
   })
 
   test('shows an empty state without a recording', async () => {

@@ -34,6 +34,8 @@ interface ChartInputOptions {
   readonly length: number
   readonly enabled: boolean
   readonly actions: StudioActions
+  /** The hover is dropped when this changes (a new recording may be shorter than its step). */
+  readonly resetKey: unknown
 }
 
 type Drag =
@@ -50,9 +52,12 @@ function localPoint(canvas: HTMLCanvasElement, clientX: number, clientY: number)
 }
 
 export function useChartInput(options: ChartInputOptions) {
-  const { canvasRef, view, setView, width, height, length, enabled, actions } = options
+  const { canvasRef, view, setView, width, height, length, enabled, actions, resetKey } = options
   const drag = useRef<Drag | null>(null)
-  const [hover, setHover] = useState<Hover | null>(null)
+  const [hoverState, setHoverState] = useState<{ key: unknown; hover: Hover } | null>(null)
+  const hover = hoverState !== null && hoverState.key === resetKey ? hoverState.hover : null
+  const setHover = (next: Hover | null) =>
+    setHoverState(next ? { key: resetKey, hover: next } : null)
 
   useWheel(canvasRef, setView, width, length, enabled)
 

@@ -1,13 +1,16 @@
 import { describe, expect, test } from 'vitest'
 import { compile, record } from '../../core/index'
 import type { FrameView, Location, Recording, StateView, Token } from '../../core/index'
-import { Text } from '@codemirror/state'
+import { EditorState, Text, type TransactionSpec } from '@codemirror/state'
+import { closeHoverTooltips } from '@codemirror/view'
+import { mapBreakpointLines } from './breakpoint-map'
 import { tintLineRange } from './decorations'
 import { minimalChange } from './doc-sync'
 import { heatLevel, heatTitle, maxHitCount, nextHit } from './gutter-math'
 import { classifyToken, highlightRanges, identifierAt, tokenRanges } from './highlight'
 import { computeOverlay, EMPTY_OVERLAY, MAX_HINTS, originSpanAt } from './overlay'
 import { resolveName } from './resolve'
+import { EMPTY_STUDIO, studioEffects, studioField, type EditorStudio } from './studio-field'
 
 function token(kind: Token['kind'], start: number, end: number, value?: string): Token {
   return { kind, start, end, newlineBefore: false, value }
@@ -331,5 +334,53 @@ describe('origin span', () => {
     expect(originSpanAt(recording, mark, t, source.length)).toBeNull()
     expect(originSpanAt(recording, null, t + 1, source.length)).toBeNull()
     expect(originSpanAt(null, mark, t + 1, source.length)).toBeNull()
+  })
+})
+
+describe('breakpoints follow edits', () => {
+  const DOC = 'a\nb\nc\nd\n'
+  function after(lines: number[], spec: TransactionSpec): number[] {
+    const state = EditorState.create({ doc: DOC })
+    const tr = state.update(spec)
+    return [...mapBreakpointLines(new Set(lines), state.doc, tr.changes, tr.newDoc)].sort()
+  }
+
+  test('lines inserted above push breakpoints down; edits below leave them', () => {
+    expect(after([2, 3], { changes: { from: 0, insert: 'x\ny\n' } })).toEqual([4, 5])
+    expect(after([2], { changes: { from: 2, insert: '\n' } })).toEqual([3])
+    expect(after([2], { changes: { from: 6, insert: 'zz\n' } })).toEqual([2])
+    expect(after([2], { changes: { from: 2, insert: 'pre ' } })).toEqual([2])
+  })
+
+  test('deleting a line drops its breakpoint and pulls later ones up', () => {
+    // Delete "b\n" (line 2) as deleteLine does.
+    expect(after([2, 3], { changes: { from: 2, to: 4 } })).toEqual([2])
+    // Delete the last line with the break before it.
+    const last = EditorState.create({ doc: 'a\nb' })
+    const tr = last.update({ changes: { from: 1, to: 3 } })
+    expect([...mapBreakpointLines(new Set([2]), last.doc, tr.changes, tr.newDoc)]).toEqual([])
+  })
+
+  test('joining a line into the previous one moves its breakpoint up', () => {
+    expect(after([3], { changes: { from: 3, to: 4 } })).toEqual([2])
+  })
+
+  test('returns the same set when nothing moved', () => {
+    const lines = new Set([1])
+    const state = EditorState.create({ doc: DOC })
+    const tr = state.update({ changes: { from: 4, insert: 'q' } })
+    expect(mapBreakpointLines(lines, state.doc, tr.changes, tr.newDoc)).toBe(lines)
+  })
+})
+
+describe('studio pushes into the editor', () => {
+  test('close value hovers when the pen, recording or frame changes', () => {
+    const state = EditorState.create({ extensions: [studioField] })
+    const hasClose = (next: EditorStudio) =>
+      studioEffects(state, next).some((effect) => effect === closeHoverTooltips)
+    expect(hasClose({ ...EMPTY_STUDIO, breakpoints: new Set([1]) })).toBe(false)
+    expect(hasClose({ ...EMPTY_STUDIO, time: 3 })).toBe(true)
+    expect(hasClose({ ...EMPTY_STUDIO, selectedFrameUid: 2 })).toBe(true)
+    expect(hasClose({ ...EMPTY_STUDIO, recording: {} as Recording })).toBe(true)
   })
 })

@@ -6,12 +6,26 @@ import { normalizeIndex, type SequenceKind } from './values-index'
 import { raise, raiseTooLarge } from './vm-errors'
 import type { MachineState } from './vm-state'
 
-function missingField(record: RecordObj, key: string): never {
-  return raise('R010', `record has no field '${key}'`, didYouMean(key, record.fields.keys()))
+/** SPEC §7.9: the R010 hint considers only this many keys, in insertion order. */
+export const HINT_KEY_LIMIT = 10_000
+
+function* firstKeys(record: RecordObj): Generator<string> {
+  let count = 0
+  for (const key of record.fields.keys()) {
+    if (count++ >= HINT_KEY_LIMIT) return
+    yield key
+  }
 }
 
-function checkNewKey(record: RecordObj, key: string): void {
-  if (record.fields.size >= SIZE_LIMIT && !record.fields.has(key)) raiseTooLarge()
+function missingField(record: RecordObj, key: string): never {
+  return raise('R010', `record has no field '${key}'`, didYouMean(key, firstKeys(record)))
+}
+
+/** SPEC §10.5: a new key must fit the size limit and is charged against the allocation budget. */
+function checkNewKey(m: MachineState, record: RecordObj, key: string): void {
+  if (record.fields.has(key)) return
+  if (record.fields.size >= SIZE_LIMIT) raiseTooLarge()
+  m.charge(1)
 }
 
 export function getField(object: Value, name: string): Value {
@@ -22,7 +36,7 @@ export function getField(object: Value, name: string): Value {
 
 export function setField(m: MachineState, object: Value, name: string, value: Value): void {
   if (!isRecord(object)) raise('R011', `cannot set field '${name}' on ${articleType(object)}`)
-  checkNewKey(object, name)
+  checkNewKey(m, object, name)
   object.fields.set(name, value)
   m.recordField(object.id, name, value)
 }
@@ -67,7 +81,7 @@ export function setIndex(m: MachineState, object: Value, index: Value, value: Va
   }
   if (isRecord(object)) {
     const key = recordKey(index)
-    checkNewKey(object, key)
+    checkNewKey(m, object, key)
     object.fields.set(key, value)
     m.recordField(object.id, key, value)
     return

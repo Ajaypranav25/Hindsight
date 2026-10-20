@@ -20,6 +20,8 @@ export const STORAGE_KEYS = {
   source: 'hindsight:source',
   settings: 'hindsight:settings',
   hintDismissed: 'hindsight:hint-dismissed',
+  /** Set while a recording runs; still set on load means that run froze or crashed the tab. */
+  runInProgress: 'hindsight:run-in-progress',
 } as const
 
 /** Accepts stored settings only when every field has the right type and a sane value. */

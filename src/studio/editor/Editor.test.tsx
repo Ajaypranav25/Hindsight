@@ -117,6 +117,24 @@ describe('Editor', () => {
     expect(container.querySelector('.ed-bp-dot')).not.toBeNull()
   })
 
+  test('breakpoints move with typed edits and vanish with deleted lines', () => {
+    const { store, editor } = setup()
+    act(() => store.getState().setBreakpoints([2, 5]))
+    act(() => editor.dispatch({ changes: { from: 0, insert: '// note\n' } }))
+    expect([...store.getState().breakpoints].sort()).toEqual([3, 6])
+    const line3 = editor.state.doc.line(3)
+    act(() => editor.dispatch({ changes: { from: line3.from, to: line3.to + 1 } }))
+    expect([...store.getState().breakpoints]).toEqual([5])
+    expect(editor.state.doc.lineAt(editor.state.doc.line(5).from).text).toBe('let a = sq(3)')
+  })
+
+  test('source replaced by the store keeps the store breakpoints', () => {
+    const { store } = setup()
+    act(() => store.getState().setBreakpoints([2]))
+    act(() => store.getState().setSource('\n\n\nprint(1)\n'))
+    expect([...store.getState().breakpoints]).toEqual([2])
+  })
+
   test('the library chip explains library code', async () => {
     const source = 'let xs = map([1, 2], fn(x) { x * 2 })\nprint(xs)\n'
     const { engine, store } = setup()

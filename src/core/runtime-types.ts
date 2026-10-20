@@ -115,6 +115,11 @@ export interface NativeContext {
   listPop(list: ListObj): Value
   /** Removes `key` if present and returns its old value (or nil). */
   recordDelete(record: RecordObj, key: string): Value
+  /**
+   * Charges a freshly built string's code units (or other allocation units) against the run's
+   * allocation budget (SPEC §10.5); raises R025 when it runs out.
+   */
+  charge(units: number): void
   /** The deterministic generator (SPEC §10.3). */
   random(): number
   seed(n: number): void

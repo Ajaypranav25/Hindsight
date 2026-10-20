@@ -112,7 +112,8 @@ function HeapCanvas(props: { layout: HeapLayout; recording: Recording; truncated
   const { layout, recording } = props
   const [hover, setHover] = useState<Hover | null>(null)
   const [selected, setSelected] = useState<number | null>(null)
-  const [readout, setReadout] = useState<string | null>(null)
+  // The hovered row by identity: its text is derived each render, so it follows the pen.
+  const [readout, setReadout] = useState<RowRef | null>(null)
   const container = useRef<HTMLDivElement>(null)
   const viewport = useViewport(container, layout, recording)
   const ids = useId().replace(/:/g, '')
@@ -195,7 +196,7 @@ function HeapCanvas(props: { layout: HeapLayout; recording: Recording; truncated
         layout={layout}
         recording={recording}
         selected={selected}
-        readout={readout}
+        readout={readoutText(layout, readout)}
         truncated={props.truncated}
         onClose={() => setSelected(null)}
       />
@@ -313,7 +314,7 @@ function Box(props: {
   selected: boolean
   onSelect: (id: number) => void
   onHover: (hover: Hover | null) => void
-  onReadout: (text: string | null) => void
+  onReadout: (row: RowRef | null) => void
 }) {
   const { box } = props
   const hover = () => props.onHover({ kind: 'box', id: box.id })
@@ -354,6 +355,20 @@ function Box(props: {
   )
 }
 
+/** A row of a heap box, by identity (box id and row key) rather than by its current text. */
+interface RowRef {
+  readonly boxId: number
+  readonly rowKey: string
+}
+
+/** The footer readout for the hovered row at the current pen (null once the row is gone). */
+function readoutText(layout: HeapLayout, ref: RowRef | null): string | null {
+  if (!ref) return null
+  const box = layout.boxes.find((candidate) => candidate.id === ref.boxId)
+  const row = box?.rows.find((candidate) => candidate.key === ref.rowKey)
+  return box && row ? rowTip(box, row) : null
+}
+
 function rowTip(box: HeapBox, row: BoxRow): string {
   if (row.value === null) return row.text
   const full = formatValue(row.value)
@@ -365,7 +380,7 @@ function Row(props: {
   box: HeapBox
   row: BoxRow
   first: boolean
-  onReadout: (text: string | null) => void
+  onReadout: (row: RowRef | null) => void
 }) {
   const { box, row } = props
   const tip = rowTip(box, row)
@@ -376,7 +391,7 @@ function Row(props: {
   return (
     <g
       className={row.more ? 'hp-row is-more' : 'hp-row'}
-      onMouseEnter={() => props.onReadout(tip)}
+      onMouseEnter={() => props.onReadout({ boxId: box.id, rowKey: row.key })}
       onMouseLeave={() => props.onReadout(null)}
     >
       <title>{tip}</title>

@@ -14,7 +14,12 @@ import {
   PERSIST_DELAY_MS,
   STORAGE_KEYS,
 } from './defaults'
-import { initialState, type Startup } from './initial-state'
+import {
+  initialState,
+  lastRunUnfinished,
+  UNFINISHED_RUN_NOTICE,
+  type Startup,
+} from './initial-state'
 import type {
   Engine,
   Example,
@@ -49,6 +54,9 @@ type Set = StoreApi<StudioStore>['setState']
 type Get = StoreApi<StudioStore>['getState']
 
 export function createStudioStore(deps: StoreDeps, startup: Startup): StoreApi<StudioStore> {
+  // A shared program becomes the session's program, so a reload (after the link's fragment has
+  // been removed) keeps it rather than reverting to the previously stored source.
+  if (startup.sharedSource !== null) deps.storage.write(STORAGE_KEYS.source, startup.sharedSource)
   return createStore<StudioStore>()((set, get) => {
     const controller = new Controller(deps, set, get)
     return { ...initialState(deps.storage, deps.examples, startup), ...controller.actions() }
@@ -63,18 +71,25 @@ class Controller {
   private persistTimer: number | null = null
   private noticeTimer: number | null = null
   private playTimer: number | null = null
+  /** Steps recorded so far by the run in flight (for the status after a compile error clears). */
+  private progress = 0
+  /** The previous page's run never finished, so the page-load run is skipped. */
+  private readonly unfinishedAtLoad: boolean
 
   constructor(
     private readonly deps: StoreDeps,
     private readonly set: Set,
     private readonly get: Get,
-  ) {}
+  ) {
+    this.unfinishedAtLoad = lastRunUnfinished(deps.storage)
+  }
 
   actions(): StudioActions {
     return {
       setSource: (source) => this.setSource(source),
       loadExample: (id) => this.loadExample(id),
       run: () => this.run(),
+      startup: () => this.startup(),
       extend: () => this.extend(),
       seek: (time) => this.seek(time),
       stepNav: (kind, direction) => this.stepNav(kind, direction),
@@ -86,6 +101,7 @@ class Controller {
       togglePlay: () => (this.get().playing ? this.stopPlay() : this.startPlay()),
       stopPlay: () => this.stopPlay(),
       toggleBreakpoint: (line) => this.toggleBreakpoint(line),
+      setBreakpoints: (lines) => this.setBreakpoints(lines),
       selectFrame: (uid) => this.set({ selectedFrameUid: uid }),
       jumpToOrigin: (target, label) => this.jumpToOrigin(target, label),
       setWatch: (target, label) => this.setWatch(target, label),
@@ -139,27 +155,40 @@ class Controller {
     void this.run()
   }
 
+  private async startup(): Promise<void> {
+    if (!this.unfinishedAtLoad) return this.run()
+    // Show the program (and its diagnostics) but do not run it again: it may freeze the tab anew.
+    const compile = this.deps.engine.compile(this.get().source)
+    this.set({
+      compile,
+      status: compile.ok
+        ? { kind: 'idle' }
+        : { kind: 'compile-error', diagnostics: compile.diagnostics },
+    })
+  }
+
   private async run(): Promise<void> {
     this.cancelAutoRun()
-    const { source, settings } = this.get()
+    const { source, settings, notice } = this.get()
     const compile = this.deps.engine.compile(source)
     if (!compile.ok) {
       this.set({ compile, status: { kind: 'compile-error', diagnostics: compile.diagnostics } })
       return
     }
     if (this.current) this.current.aborted = true
-    const token = new RunToken()
-    this.current = token
-    this.set({ compile, status: { kind: 'recording', progress: 0 }, originMark: null })
+    const token = this.beginRecording(0)
+    this.set({
+      compile,
+      status: { kind: 'recording', progress: 0 },
+      originMark: null,
+      notice: notice?.text === UNFINISHED_RUN_NOTICE ? null : notice,
+    })
     const recording = await this.deps.engine.recordAsync(compile.program, {
       maxSteps: settings.maxSteps,
       signal: token,
-      onProgress: (progress) => {
-        if (this.current === token) this.set({ status: { kind: 'recording', progress } })
-      },
+      onProgress: (progress) => this.reportProgress(token, progress),
     })
-    if (this.current !== token || token.aborted) return
-    this.current = null
+    if (!this.finishRecording(token)) return
     this.stopPlay()
     const previous = this.get()
     const time = this.placePen(recording)
@@ -167,7 +196,7 @@ class Controller {
     this.set({
       recording,
       recordedSource: source,
-      status: { kind: 'ready' },
+      status: this.completedStatus(),
       time,
       selectedFrameUid: null,
       watch: previous.recordedSource === source ? previous.watch : null,
@@ -195,24 +224,55 @@ class Controller {
       (recording.outcome.kind !== 'step-limit' && recording.outcome.kind !== 'aborted')
     )
       return
-    const token = new RunToken()
-    this.current = token
+    const token = this.beginRecording(recording.length)
     this.set({ status: { kind: 'recording', progress: recording.length } })
     const extended = await recording.extendAsync(settings.maxSteps, {
       signal: token,
-      onProgress: (progress) => {
-        if (this.current === token) this.set({ status: { kind: 'recording', progress } })
-      },
+      onProgress: (progress) => this.reportProgress(token, progress),
     })
-    if (this.current !== token || token.aborted) return
+    if (!this.finishRecording(token)) return
+    this.set({ recording: extended, status: this.completedStatus() })
+  }
+
+  /**
+   * Starts tracking a recording. The storage marker is written before the VM starts, so a run that
+   * freezes or crashes the tab leaves it behind and the next page load does not repeat the run.
+   */
+  private beginRecording(progress: number): RunToken {
+    const token = new RunToken()
+    this.current = token
+    this.progress = progress
+    this.deps.storage.write(STORAGE_KEYS.runInProgress, 'true')
+    return token
+  }
+
+  /** True when `token` is still the live run; it then stops being in flight. */
+  private finishRecording(token: RunToken): boolean {
+    if (this.current !== token || token.aborted) return false
     this.current = null
-    this.set({ recording: extended, status: { kind: 'ready' } })
+    this.deps.storage.remove(STORAGE_KEYS.runInProgress)
+    return true
+  }
+
+  private reportProgress(token: RunToken, progress: number): void {
+    if (this.current !== token) return
+    this.progress = progress
+    // A compile error typed while recording keeps the status line until the source compiles.
+    if (!this.compileFailed()) this.set({ status: { kind: 'recording', progress } })
+  }
+
+  private compileFailed(): boolean {
+    return this.get().compile?.ok === false
+  }
+
+  /** The status once a recording lands: ready, unless the newest source no longer compiles. */
+  private completedStatus(): StudioState['status'] {
+    return this.compileFailed() ? this.get().status : { kind: 'ready' }
   }
 
   private settledStatus(): StudioState['status'] {
-    const { status, recording } = this.get()
-    if (status.kind === 'recording') return status
-    return recording ? { kind: 'ready' } : { kind: 'idle' }
+    if (this.current) return { kind: 'recording', progress: this.progress }
+    return this.get().recording ? { kind: 'ready' } : { kind: 'idle' }
   }
 
   private cancelAutoRun(): void {
@@ -253,7 +313,13 @@ class Controller {
     if (!recording) return
     if (time >= recording.length) this.seek(0)
     this.set({ playing: true })
-    const interval = Math.max(16, Math.round(1000 / settings.playbackSpeed))
+    this.schedulePlay(settings.playbackSpeed)
+  }
+
+  /** (Re)starts the playback interval at `speed` statements per second. */
+  private schedulePlay(speed: number): void {
+    if (this.playTimer !== null) this.deps.scheduler.clearInterval(this.playTimer)
+    const interval = Math.max(16, Math.round(1000 / speed))
     this.playTimer = this.deps.scheduler.setInterval(() => this.playTick(), interval)
   }
 
@@ -275,6 +341,13 @@ class Controller {
     const next = new Set(this.get().breakpoints)
     if (next.has(line)) next.delete(line)
     else next.add(line)
+    this.set({ breakpoints: next })
+  }
+
+  private setBreakpoints(lines: Iterable<number>): void {
+    const next = new Set([...lines].filter((line) => Number.isInteger(line) && line >= 1))
+    const current = this.get().breakpoints
+    if (next.size === current.size && [...next].every((line) => current.has(line))) return
     this.set({ breakpoints: next })
   }
 
@@ -309,9 +382,13 @@ class Controller {
   // --- settings -----------------------------------------------------------------------------
 
   private updateSettings(patch: Partial<Settings>): void {
-    const settings = { ...this.get().settings, ...patch }
+    const previous = this.get().settings
+    const settings = { ...previous, ...patch }
     this.set({ settings })
     writeJson(this.deps.storage, STORAGE_KEYS.settings, settings)
+    if (this.get().playing && settings.playbackSpeed !== previous.playbackSpeed) {
+      this.schedulePlay(settings.playbackSpeed)
+    }
   }
 }
 

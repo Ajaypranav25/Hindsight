@@ -30,11 +30,18 @@ export interface FocusContext {
   readonly editable: boolean
   /** A button, link, checkbox, tab or menu item: Space activates it. */
   readonly control: boolean
-  /** Inside a dialog or popover: shortcuts are off. */
+  /** Inside a dialog or popover, or a modal dialog is open: shortcuts are off. */
   readonly inDialog: boolean
+  /** Inside a widget that moves with Home, End and the arrows itself (tabs, sliders, lists). */
+  readonly keyWidget: boolean
 }
 
-export const NO_FOCUS: FocusContext = { editable: false, control: false, inDialog: false }
+export const NO_FOCUS: FocusContext = {
+  editable: false,
+  control: false,
+  inDialog: false,
+  keyWidget: false,
+}
 
 const STEP_KEYS: Readonly<Record<string, StepKind>> = { F11: 'into', F10: 'over', F7: 'out' }
 
@@ -51,8 +58,8 @@ export function commandForKey(input: KeyInput, focus: FocusContext): ShortcutCom
   if (input.shiftKey) return null
   if (input.key === 'F9') return { kind: 'toggle-breakpoint' }
   if (focus.editable) return null
-  if (input.key === 'Home') return { kind: 'start' }
-  if (input.key === 'End') return { kind: 'end' }
+  if (input.key === 'Home' && !focus.keyWidget) return { kind: 'start' }
+  if (input.key === 'End' && !focus.keyWidget) return { kind: 'end' }
   if (input.key === ' ' && !focus.control) return { kind: 'toggle-play' }
   return null
 }
@@ -122,10 +129,27 @@ const CONTROL_ROLES = new Set([
   'link',
 ])
 const DIALOG_SELECTOR = '[role="dialog"], [role="menu"], [role="alertdialog"], dialog'
+/**
+ * Composite widgets whose own key handlers use Home and End (the strip chart slider, the panel
+ * tab strip). The transport toolbar is not one: its buttons advertise Home and End as shortcuts.
+ */
+const KEY_WIDGET_SELECTOR = '[role="tablist"], [role="listbox"], [role="menu"], [role="slider"]'
+const MODAL_SELECTOR = '[aria-modal="true"]'
 
-/** Classifies the focused element (null or a non-element when nothing is focused). */
-export function focusContextOf(target: FocusTarget | null): FocusContext {
-  if (!target || typeof target.tagName !== 'string') return NO_FOCUS
+/** The document surface `focusContextOf` reads to see whether a modal dialog is open. */
+export interface ModalRoot {
+  querySelector(selector: string): unknown
+}
+
+/**
+ * Classifies the focused element (null or a non-element when nothing is focused). With `root`,
+ * an open `aria-modal` dialog switches shortcuts off even when focus has fallen out of it (a click
+ * on its non-focusable title moves focus to the body).
+ */
+export function focusContextOf(target: FocusTarget | null, root?: ModalRoot): FocusContext {
+  const modal = root ? root.querySelector(MODAL_SELECTOR) !== null : false
+  if (!target || typeof target.tagName !== 'string')
+    return modal ? { ...NO_FOCUS, inDialog: true } : NO_FOCUS
   const tag = target.tagName.toLowerCase()
   const role = target.getAttribute('role')
   const type = (target.getAttribute('type') ?? 'text').toLowerCase()
@@ -143,7 +167,12 @@ export function focusContextOf(target: FocusTarget | null): FocusContext {
     tag === 'summary' ||
     tag === 'input' ||
     (role !== null && CONTROL_ROLES.has(role))
-  return { editable, control, inDialog: target.closest(DIALOG_SELECTOR) !== null }
+  return {
+    editable,
+    control,
+    inDialog: modal || target.closest(DIALOG_SELECTOR) !== null,
+    keyWidget: target.closest(KEY_WIDGET_SELECTOR) !== null,
+  }
 }
 
 // --- editor cursor registry -----------------------------------------------------------------

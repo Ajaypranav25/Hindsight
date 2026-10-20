@@ -579,8 +579,8 @@ non-iterable is **R013**.
   literal, in any spelling (`{a, a: 1}`, `{a: 1, "a": 2}`), is **E019**; keys supplied by a spread
   never count.
 - `r.k` reads a field; a missing key is **R010**, with the hint `did you mean 'k2'?` chosen from the
-  record's keys by the §5.3 rule (insertion order breaks ties). On a non-record, `.k` is **R011**
-  `cannot read field 'k' of AT`.
+  record's first 10,000 keys by the §5.3 rule (insertion order breaks ties). On a non-record, `.k`
+  is **R011** `cannot read field 'k' of AT`.
 - `r.k = v` creates or updates the field (new keys go last). On a non-record it is **R011**
   `cannot set field 'k' on AT`.
 
@@ -835,6 +835,14 @@ An error's **line** is the line where its span starts. The span is that of the f
   literals and spreads, `push`/`insert`, field creation, `list`, `repeat`, `pad_start`/`pad_end`,
   `replace`, `join`, `split`, `chars`, `str`, `repr` and `print`. Unbounded ranges remain legal for
   `for` and `contains`.
+- **Memory**: a run may allocate at most 2^26 units in total, counting each list item, record entry
+  and string code unit that an allocating operation creates: list and record literals, spreads,
+  field creation, `+` on strings and lists, interpolation, rest bindings, `push`/`insert`, `list`,
+  `copy`, `slice`, `reverse`, `sort`, `keys`/`values`/`entries`, `split`, `chars`, `join`,
+  `repeat`, `pad_start`/`pad_end`, `replace`, `upper`/`lower`/`trim`, `str`, `repr` and `print`.
+  The budget is cumulative (it is never refunded); an operation that would exceed it fails with
+  **R025** `memory limit exceeded` instead of producing its result. It is part of the VM state, so
+  replays fail at the same step.
 - **Steps**: chosen by the host (the studio defaults to 2,000,000). Reaching the limit is not an
   error; the run ends with outcome _step limit_ and can be resumed by tools that support it.
 
@@ -929,7 +937,7 @@ has no warnings.
 | R021 | `range step cannot be zero`                                                                                                                                                                                    |                                                                                                          |
 | R022 | `cannot assign into a string: strings are immutable`                                                                                                                                                           |                                                                                                          |
 | R024 | `cannot spread AT into a record`                                                                                                                                                                               |                                                                                                          |
-| R025 | `result too large`                                                                                                                                                                                             |                                                                                                          |
+| R025 | `result too large` / `memory limit exceeded` (§10.5)                                                                                                                                                           |                                                                                                          |
 
 (There is no R003 or R023.)
 

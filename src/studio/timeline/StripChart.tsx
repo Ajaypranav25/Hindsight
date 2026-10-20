@@ -80,9 +80,13 @@ export function StripChart() {
     length,
     enabled: recording !== null,
     actions,
+    resetKey: recording,
   })
 
-  const location = useMemo(() => recording?.locationAt(time) ?? null, [recording, time])
+  const location = useMemo(
+    () => (recording ? recording.locationAt(Math.min(time, recording.length)) : null),
+    [recording, time],
+  )
   const speed = chartSpeedText(axisTicks(view, size.width, CHART_LAYOUT.tickSpacing).major)
   const zoomed = recording !== null && isZoomed(view, length)
   const className = ['tl-chart', stale ? 'tl-chart--stale' : '', recording ? '' : 'tl-chart--empty']
@@ -144,7 +148,8 @@ export function StripChart() {
 
 function ChartTooltip(props: { hover: Hover; recording: Recording; width: number }) {
   const { hover, recording, width } = props
-  const location = recording.locationAt(hover.step)
+  const step = Math.max(0, Math.min(recording.length, hover.step))
+  const location = recording.locationAt(step)
   const flip = hover.x > width - 160
   return (
     <div
@@ -152,7 +157,7 @@ function ChartTooltip(props: { hover: Hover; recording: Recording; width: number
       style={{ left: `${Math.round(hover.x)}px` }}
       aria-hidden="true"
     >
-      <span className="tl-chart__tooltip-step">step {formatCount(hover.step)}</span>
+      <span className="tl-chart__tooltip-step">step {formatCount(step)}</span>
       <span>{locationText(location)}</span>
     </div>
   )

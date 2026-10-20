@@ -12,7 +12,7 @@ export function TapeCounter() {
   const width = tapeWidth(length)
   const where = useMemo(() => {
     if (!recording) return null
-    const location = recording.locationAt(time)
+    const location = recording.locationAt(Math.min(Math.max(0, time), length))
     if (!location) return recording.outcome.kind === 'finished' ? 'finished' : 'end of run'
     const error = time === length && recording.outcome.kind === 'error' ? 'error · ' : ''
     return `${error}${locationText(location)} · depth ${location.depth}`

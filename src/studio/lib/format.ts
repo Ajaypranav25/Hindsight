@@ -44,6 +44,30 @@ export function reprString(text: string): string {
   return `${out}"`
 }
 
+/**
+ * The most code units of one printed line or one string value the panels render. Programs can
+ * build strings of many millions of characters; laying those out (or putting them in `title`
+ * attributes) freezes the tab.
+ */
+export const DISPLAY_TEXT_LIMIT = 10_000
+
+/** Where to cut `text` to keep at most `max` code units without splitting a surrogate pair. */
+function cutAt(text: string, max: number): number {
+  const code = text.charCodeAt(max - 1)
+  return code >= 0xd800 && code <= 0xdbff ? max - 1 : max
+}
+
+function moreCharacters(n: number): string {
+  return `… (${formatCount(n)} more ${n === 1 ? 'character' : 'characters'})`
+}
+
+/** `text`, or its first `max` code units followed by "… (N more characters)". */
+export function clipText(text: string, max: number = DISPLAY_TEXT_LIMIT): string {
+  if (text.length <= max) return text
+  const end = cutAt(text, max)
+  return text.slice(0, end) + moreCharacters(text.length - end)
+}
+
 /** One-line text for a value as tools show it: primitives in repr form, objects by preview. */
 export function formatValue(value: ValueView): string {
   switch (value.kind) {
@@ -53,8 +77,12 @@ export function formatValue(value: ValueView): string {
       return value.value ? 'true' : 'false'
     case 'number':
       return String(value.value)
-    case 'string':
-      return reprString(value.value)
+    case 'string': {
+      const text = value.value
+      if (text.length <= DISPLAY_TEXT_LIMIT) return reprString(text)
+      const end = cutAt(text, DISPLAY_TEXT_LIMIT)
+      return reprString(text.slice(0, end)) + moreCharacters(text.length - end)
+    }
     case 'ref':
       return value.preview
   }

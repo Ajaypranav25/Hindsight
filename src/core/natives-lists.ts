@@ -7,6 +7,7 @@ import {
   type Args,
   type NativeTable,
   badArgument,
+  fresh,
   indexArg,
   listArg,
   numberArg,
@@ -54,13 +55,13 @@ function slice(ctx: NativeContext, args: Args): Value {
   const sequence = sequenceArg(ctx, 'slice', args)
   const start = numberArg(ctx, 'slice', args, 2)
   const end = args.length > 2 ? numberArg(ctx, 'slice', args, 3) : undefined
-  if (typeof sequence === 'string') return sequence.slice(start, end)
+  if (typeof sequence === 'string') return fresh(ctx, sequence.slice(start, end))
   return ctx.newList(sequence.items.slice(start, end))
 }
 
 function reverse(ctx: NativeContext, args: Args): Value {
   const sequence = sequenceArg(ctx, 'reverse', args)
-  if (typeof sequence === 'string') return sequence.split('').reverse().join('')
+  if (typeof sequence === 'string') return fresh(ctx, sequence.split('').reverse().join(''))
   return ctx.newList(sequence.items.slice().reverse())
 }
 
@@ -109,6 +110,8 @@ function join(ctx: NativeContext, args: Args): Value {
     }
     text += showOrFail(ctx, items[i] as Value, SIZE_LIMIT - text.length)
   }
+  // The pieces were charged by showOrFail; the separators are charged here.
+  ctx.charge(Math.max(0, items.length - 1) * separator.length)
   return text
 }
 

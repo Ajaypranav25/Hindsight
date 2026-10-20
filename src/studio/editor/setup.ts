@@ -18,7 +18,7 @@ import { penDecorations } from './decorations'
 import { breakpointGutterExtension, heatGutterExtension } from './gutters'
 import { valueHover } from './hover'
 import { hindsightLanguage } from './language'
-import { studioActions, studioField } from './studio-field'
+import { studioActions, studioField, studioOf } from './studio-field'
 import { hindsightTheme } from './theme'
 
 /** Marks transactions that apply the store's source, so they are not echoed back to it. */
@@ -36,7 +36,13 @@ function listeners(options: SetupOptions): Extension {
   return EditorView.updateListener.of((update) => {
     const fromUser =
       update.docChanged && update.transactions.some((tr) => !tr.annotation(fromStore))
-    if (fromUser) options.onUserEdit(update.state.doc.toString())
+    if (fromUser) {
+      const breakpoints = studioOf(update.state).breakpoints
+      if (breakpoints !== studioOf(update.startState).breakpoints) {
+        options.actions.setBreakpoints(breakpoints)
+      }
+      options.onUserEdit(update.state.doc.toString())
+    }
     if (update.selectionSet || update.docChanged) {
       const head = update.state.selection.main.head
       options.onCursorLine(update.state.doc.lineAt(head).number)

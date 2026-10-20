@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import type { Diagnostic, OutputEvent, Recording } from '../../core/index'
 import { LineIndex } from '../../core/index'
-import { formatCount } from '../lib/format'
+import { clipText, formatCount } from '../lib/format'
 import { useStudio, useStudioActions } from '../state/context'
 import { consoleWindow } from './panel-logic'
 import './panels.css'
@@ -102,7 +102,7 @@ function OutputLine(props: {
         onClick={() => onSeek(event.time)}
       >
         <span className="pn-stamp">{formatCount(event.time)}</span>
-        <span className="pn-out">{event.text}</span>
+        <span className="pn-out">{clipText(event.text)}</span>
       </button>
     </li>
   )

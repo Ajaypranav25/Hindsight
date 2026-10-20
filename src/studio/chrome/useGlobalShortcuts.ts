@@ -19,7 +19,8 @@ export function useGlobalShortcuts(): void {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing) return
       const target = event.target instanceof Element ? event.target : document.activeElement
-      const command = commandForKey(event, focusContextOf(target as FocusTarget | null))
+      const focus = focusContextOf(target as FocusTarget | null, document)
+      const command = commandForKey(event, focus)
       if (!command || !runCommand(command, actions, getEditorCursorLine())) return
       event.preventDefault()
       event.stopPropagation()

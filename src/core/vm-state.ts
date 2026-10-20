@@ -24,7 +24,9 @@ import type {
   VMOptions,
   VMStatus,
 } from './runtime-types'
+import { MEMORY_LIMIT } from './values-guards'
 import { MachineContext } from './vm-context'
+import { MEMORY_LIMIT_EXCEEDED, raise } from './vm-errors'
 
 /** A pending rest binding of a list pattern: materialized only when the whole pattern matched. */
 export class RestSlice {
@@ -57,6 +59,8 @@ export class MachineState {
   nextObjectId = 2
   nextFrameUid = 2
   rngState: number
+  /** Units charged against the allocation budget so far (SPEC §10.5); never decreases. */
+  allocated = 0
   /** Scratch buffer for pattern bindings, reused to keep matching allocation-free. */
   readonly bindings: Binding[] = []
 
@@ -75,27 +79,39 @@ export class MachineState {
   // -------------------------------------------------------------------------------------------
   // Allocation
 
+  /**
+   * Charges `units` (list items, record entries or string code units) against the run's allocation
+   * budget, raising R025 `memory limit exceeded` before the allocation when it would run out.
+   */
+  charge(units: number): void {
+    const total = this.allocated + units
+    if (total > MEMORY_LIMIT) raise('R025', MEMORY_LIMIT_EXCEEDED)
+    this.allocated = total
+  }
+
   newList(items: Value[]): ListObj {
-    return this.allocated({ type: 'list', id: this.nextObjectId++, items })
+    this.charge(items.length)
+    return this.emitted({ type: 'list', id: this.nextObjectId++, items })
   }
 
   newRecord(fields: Map<string, Value>): RecordObj {
-    return this.allocated({ type: 'record', id: this.nextObjectId++, fields })
+    this.charge(fields.size)
+    return this.emitted({ type: 'record', id: this.nextObjectId++, fields })
   }
 
   newRange(start: number, end: number, step: number, inclusive: boolean): RangeObj {
-    return this.allocated({ type: 'range', id: this.nextObjectId++, start, end, step, inclusive })
+    return this.emitted({ type: 'range', id: this.nextObjectId++, start, end, step, inclusive })
   }
 
   newClosure(proto: FunctionProto): ClosureObj {
-    return this.allocated({ type: 'closure', id: this.nextObjectId++, proto, upvalues: [] })
+    return this.emitted({ type: 'closure', id: this.nextObjectId++, proto, upvalues: [] })
   }
 
   newIterator(source: Value, keys: readonly string[] | null): IteratorObj {
-    return this.allocated({ type: 'iterator', id: this.nextObjectId++, source, position: 0, keys })
+    return this.emitted({ type: 'iterator', id: this.nextObjectId++, source, position: 0, keys })
   }
 
-  private allocated<T extends HeapObject>(object: T): T {
+  private emitted<T extends HeapObject>(object: T): T {
     if (this.hooks !== null) this.hooks.alloc(this.time, object)
     return object
   }
@@ -120,7 +136,7 @@ export class MachineState {
       slot,
     }
     cells.splice(i + 1, 0, cell)
-    return this.allocated(cell)
+    return this.emitted(cell)
   }
 
   /** Closes every open cell whose stack index is `>= stackIndex`, highest first. */
@@ -182,12 +198,14 @@ export class MachineState {
 
   appendItem(list: ListObj, value: Value): void {
     const index = list.items.length
+    this.charge(1)
     list.items.push(value)
     this.recordListOp(list.id, 'append', index, 1, value)
   }
 
   insertItem(list: ListObj, index: number, value: Value): void {
     if (!(index >= 0 && index <= list.items.length)) throw new InternalError('insert out of range')
+    this.charge(1)
     list.items.splice(index, 0, value)
     this.recordListOp(list.id, 'insert', index, 1, value)
   }

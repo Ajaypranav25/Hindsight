@@ -3,6 +3,7 @@ import type { KeyValueStorage } from '../state/types'
 interface StorageLike {
   getItem(key: string): string | null
   setItem(key: string, value: string): void
+  removeItem(key: string): void
 }
 
 /**
@@ -33,6 +34,13 @@ export function browserStorage(): KeyValueStorage {
         // Persistence is optional; the in-memory state stays authoritative.
       }
     },
+    remove(key) {
+      try {
+        resolve()?.removeItem(key)
+      } catch {
+        // As for writes: storage is optional.
+      }
+    },
   }
 }
 
@@ -43,6 +51,9 @@ export function memoryStorage(initial: Readonly<Record<string, string>> = {}): K
     read: (key) => data.get(key) ?? null,
     write: (key, value) => {
       data.set(key, value)
+    },
+    remove: (key) => {
+      data.delete(key)
     },
   }
 }

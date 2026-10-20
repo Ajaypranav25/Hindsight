@@ -325,7 +325,8 @@ Stack effects are written `( before -- after )`, top of stack on the right.
 
 `stack`, `frames` (`{closure, ip, base, uid}`), `openCells` (sorted by stack index), `globals`
 (insertion order = definition order), `time` (steps executed), `nextObjectId`, `nextFrameUid` (the
-script frame is uid 1), the generator state (SPEC §10.3), `status`, `error`.
+script frame is uid 1), the generator state (SPEC §10.3), `allocated` (units charged against the
+allocation budget, SPEC §10.5; it only grows), `status`, `error`.
 
 `createVM(program, { builtins, libraryProtos, seed })` (exported from `vm.ts`) returns a `VM`
 (`runtime-types.ts`). The VM receives the builtins and library protos from `library.ts` via
@@ -398,7 +399,7 @@ the index of the executing step.
 ### 6.8 Snapshots
 
 `snapshot()` copies the **whole** VM record: stack, frames, open cells, globals, `time`,
-`nextObjectId`, `nextFrameUid`, generator state, status, plus all mutable heap objects reachable from
+`nextObjectId`, `nextFrameUid`, generator state, `allocated`, status, plus all mutable heap objects reachable from
 them (lists, records, closures with their cells, cells, iterators with their position and key
 snapshot), preserving object identity and ids. Strings, numbers, ranges, natives, library closures
 and `FunctionProto`s are shared, never copied. `restore(s)` copies again, so a snapshot can be
@@ -688,12 +689,16 @@ tabbed panels); the page may scroll vertically, never horizontally.
 - **Run**: compiles and records with `recordAsync` (abortable; a new run aborts the old). While
   recording, the strip chart fills in left to right and the status shows the step count. Auto-run
   (default on) re-records 600 ms after the last edit when the program compiles; compile errors show
-  as squiggles and in the console, and the previous recording stays visible but marked stale.
+  as squiggles and in the console, and the previous recording stays visible but marked stale (a
+  compile error typed while a recording is in flight keeps the status line; the finished recording
+  lands as the stale one).
 - **Navigation**: transport buttons and shortcuts: F11 / Shift+F11 step into forward / back;
   F10 / Shift+F10 step over; F7 / Shift+F7 step out; F8 / Shift+F8 continue to breakpoint;
   Home / End; Space toggles playback (statement by statement at an adjustable speed); F9 toggles a
   breakpoint on the cursor line; Ctrl/⌘+Enter runs. With the strip chart focused, ←/→ step into and
-  Shift+←/→ step over. Just-my-code (default on) skips library frames.
+  Shift+←/→ step over. Home / End inside the tab strip or the slider belong to that widget, and
+  shortcuts are off while a modal dialog is open. Just-my-code (default on) skips library frames.
+  Breakpoints follow their lines through edits (dropped with deleted lines).
 - **Editor**: Hindsight highlighting from the real lexer (including comments); diagnostics as lint
   squiggles; the current statement's lines tinted and the current instruction's span outlined; the
   selected caller frame's call span marked differently; clickable breakpoint gutter; a heat gutter
@@ -725,9 +730,16 @@ tabbed panels); the page may scroll vertically, never horizontally.
   (click to jump); "Step limit reached · Record 2M more" (calls `extendAsync`).
 - **Settings**: step budget (500 k / 2 M / 10 M), just-my-code, auto-run, instruction-level
   stepping (adds a step-instruction button, shows `opName` and operand temps), theme.
-- **Sharing**: "Copy link" puts the program in the URL fragment (`#src=` + base64url of the
-  deflate-raw-compressed UTF-8 source). Opening such a link loads that program. The current source
-  and settings persist in `localStorage` (every access wrapped in try/catch).
+- **Sharing**: "Copy link" puts the program in the URL fragment (`#src=` + base64url of the UTF-8
+  source, uncompressed; programs over 60,000 characters are not linked). Opening such a link loads
+  that program, stores it as the current source and removes the fragment (`history.replaceState`),
+  so the link is used once and later edits survive a reload; a link pasted into an open studio
+  loads on `hashchange`. The current source and settings persist in `localStorage` (every access
+  wrapped in try/catch).
+- **Crash guard**: a "run in progress" marker is stored while a recording runs and cleared when it
+  completes. If it is still set on page load (the last run froze or crashed the tab), the studio
+  loads the program without running it and says "The last run did not finish. Press Run to try
+  again."
 - **Help**: a dialog with the shortcuts and a one-page language cheat sheet.
 
 ### 11.4 Visual identity

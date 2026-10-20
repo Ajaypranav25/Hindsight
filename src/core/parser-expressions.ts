@@ -465,7 +465,7 @@ export abstract class ExpressionParser extends PatternParser {
     while (!this.at(close)) {
       const parsed = this.parseCheckedPattern('binding', close !== '|')
       params.push(parsed.pattern)
-      binders.push(...parsed.binders)
+      for (const binder of parsed.binders) binders.push(binder)
       this.endListItem(close)
     }
     this.next()

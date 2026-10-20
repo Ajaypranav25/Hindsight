@@ -40,3 +40,39 @@ export function sourceFromFragment(fragment: string): string | null {
   if (!body.startsWith(PREFIX)) return null
   return decodeSource(body.slice(PREFIX.length))
 }
+
+/** The parts of `window` the share-link handling uses (absent outside browsers). */
+export interface ShareHost {
+  readonly location?: { readonly hash: string; readonly pathname: string; readonly search: string }
+  readonly history?: { replaceState(data: unknown, unused: string, url?: string): void }
+  addEventListener?(type: 'hashchange', listener: () => void): void
+  removeEventListener?(type: 'hashchange', listener: () => void): void
+}
+
+/**
+ * Reads the program from a `#src=` fragment and removes the fragment, so a link is used once:
+ * afterwards edits persist and a reload shows them rather than the linked program.
+ */
+export function takeSharedSource(host: ShareHost): string | null {
+  try {
+    const location = host.location
+    if (!location) return null
+    const hash = location.hash
+    const body = hash.startsWith('#') ? hash.slice(1) : hash
+    if (!body.startsWith(PREFIX)) return null
+    host.history?.replaceState(null, '', location.pathname + location.search)
+    return sourceFromFragment(hash)
+  } catch {
+    return null
+  }
+}
+
+/** Calls `load` with each program pasted into the address bar as a share link; returns a stop. */
+export function watchSharedLinks(host: ShareHost, load: (source: string) => void): () => void {
+  const listener = () => {
+    const source = takeSharedSource(host)
+    if (source !== null) load(source)
+  }
+  host.addEventListener?.('hashchange', listener)
+  return () => host.removeEventListener?.('hashchange', listener)
+}

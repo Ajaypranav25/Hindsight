@@ -54,13 +54,14 @@ export abstract class PatternParser extends ParserBase {
     this.firstBar = null
     const pattern = topLevelBars ? this.parsePattern() : this.parseAltPattern()
     const binders = patternBinders(pattern)
-    this.checks.push(...alternativeDiagnostics(role, binders, this.firstBar))
+    for (const check of alternativeDiagnostics(role, binders, this.firstBar))
+      this.checks.push(check)
     return { pattern, binders }
   }
 
   /** Records E023 for names repeated across `binders` (one pattern or a parameter list). */
   protected checkDuplicateBindings(binders: readonly Binder[]): void {
-    this.checks.push(...duplicateBindingDiagnostics(binders))
+    for (const check of duplicateBindingDiagnostics(binders)) this.checks.push(check)
   }
 
   /** `pattern = altPattern { "|" altPattern }`. */

@@ -29,16 +29,37 @@ export function makeStyle(color: boolean): Style {
   }
 }
 
+/** C0 controls other than tab and newline, DEL, and C1 controls. */
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARACTERS = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g
+
+function escapeControl(character: string): string {
+  return `\\x${character.charCodeAt(0).toString(16).padStart(2, '0')}`
+}
+
+/**
+ * Text from the program (source lines, messages, record keys, names, values) made safe for a
+ * terminal: control characters other than tab and newline become visible `\xNN` escapes, so a
+ * program cannot move the cursor, retitle the window or restyle the CLI's own output.
+ */
+export function sanitize(text: string): string {
+  return text.replace(CONTROL_CHARACTERS, escapeControl)
+}
+
 /** A Rust-style code frame: the span's first line with a caret underline. */
 export function codeFrame(source: string, span: Span, style: Style): string[] {
   const index = new LineIndex(source)
   const { line, col } = index.lineCol(span.start)
-  const text = index.lineText(line).replace(/\t/g, ' ')
+  const raw = index.lineText(line).replace(/\t/g, ' ')
+  const text = sanitize(raw)
   const lineEnd = index.lineEnd(line)
   const width = Math.max(1, Math.min(span.end, lineEnd) - span.start)
+  // Escapes widen the line, so the caret is placed by the sanitized prefix and span.
+  const start = sanitize(raw.slice(0, col - 1)).length
+  const shownWidth = Math.max(1, sanitize(raw.slice(col - 1, col - 1 + width)).length)
   const gutter = String(line).length
   const pad = ' '.repeat(gutter)
-  const marker = `${' '.repeat(col - 1)}${'^'.repeat(width)}${span.end > lineEnd ? ' …' : ''}`
+  const marker = `${' '.repeat(start)}${'^'.repeat(shownWidth)}${span.end > lineEnd ? ' …' : ''}`
   return [
     `${pad} ${style.dim('|')}`,
     `${style.dim(String(line))} ${style.dim('|')} ${text}`,
@@ -48,7 +69,7 @@ export function codeFrame(source: string, span: Span, style: Style): string[] {
 
 function location(file: string, source: string, span: Span): string {
   const { line, col } = new LineIndex(source).lineCol(span.start)
-  return `${file}:${line}:${col}`
+  return `${sanitize(file)}:${line}:${col}`
 }
 
 /** Formats a compile diagnostic: `error[E020]: …`, location, code frame, hint. */
@@ -59,11 +80,11 @@ export function formatDiagnostic(
   style: Style,
 ): string {
   const lines = [
-    `${style.error(style.bold(`error[${diagnostic.code}]`))}${style.bold(`: ${diagnostic.message}`)}`,
+    `${style.error(style.bold(`error[${diagnostic.code}]`))}${style.bold(`: ${sanitize(diagnostic.message)}`)}`,
     `  ${style.accent('-->')} ${location(file, source, diagnostic.span)}`,
     ...codeFrame(source, diagnostic.span, style).map((frameLine) => `  ${frameLine}`),
   ]
-  if (diagnostic.hint) lines.push(`  ${style.accent('= hint:')} ${diagnostic.hint}`)
+  if (diagnostic.hint) lines.push(`  ${style.accent('= hint:')} ${sanitize(diagnostic.hint)}`)
   return lines.join('\n')
 }
 
@@ -76,23 +97,27 @@ export function formatRuntimeError(
 ): string {
   const index = new LineIndex(source)
   const lines = [
-    `${style.error(style.bold(`runtime error[${error.code}]`))}${style.bold(`: ${error.message}`)}`,
+    `${style.error(style.bold(`runtime error[${error.code}]`))}${style.bold(`: ${sanitize(error.message)}`)}`,
     `  ${style.accent('-->')} ${location(file, source, error.span)}`,
     ...codeFrame(source, error.span, style).map((frameLine) => `  ${frameLine}`),
   ]
-  if (error.hint) lines.push(`  ${style.accent('= hint:')} ${error.hint}`)
+  if (error.hint) lines.push(`  ${style.accent('= hint:')} ${sanitize(error.hint)}`)
   lines.push(
     `  ${style.dim(`after ${error.time.toLocaleString('en-US')} steps; stack (innermost first):`)}`,
   )
   for (const entry of error.stack) {
-    const where = entry.library ? 'library' : `${file}:${index.lineOf(entry.span.start)}`
-    lines.push(`    at ${entry.name} ${style.dim(`(${where})`)}`)
+    const where = entry.library ? 'library' : `${sanitize(file)}:${index.lineOf(entry.span.start)}`
+    lines.push(`    at ${sanitize(entry.name)} ${style.dim(`(${where})`)}`)
   }
   return lines.join('\n')
 }
 
-/** Primitives in `repr` form, objects by their preview. */
+/** Primitives in `repr` form, objects by their preview; sanitized for the terminal. */
 export function formatValueView(value: ValueView): string {
+  return sanitize(valueViewText(value))
+}
+
+function valueViewText(value: ValueView): string {
   switch (value.kind) {
     case 'nil':
       return 'nil'

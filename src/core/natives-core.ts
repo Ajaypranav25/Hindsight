@@ -7,6 +7,7 @@ import {
   type Args,
   type NativeTable,
   badArgument,
+  fresh,
   messageShow,
   numberArg,
   showOrFail,
@@ -39,7 +40,7 @@ function print(ctx: NativeContext, args: Args): Value {
 
 function repr(ctx: NativeContext, args: Args): Value {
   const text = reprWithin(args[0] as Value, SIZE_LIMIT)
-  return text === null ? tooLarge(ctx) : text
+  return text === null ? tooLarge(ctx) : fresh(ctx, text)
 }
 
 function len(ctx: NativeContext, args: Args): Value {

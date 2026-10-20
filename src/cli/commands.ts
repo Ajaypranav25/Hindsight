@@ -15,6 +15,7 @@ import {
   formatRuntimeError,
   formatValueView,
   makeStyle,
+  sanitize,
   type Style,
 } from './format'
 import type { CliIO } from './io'
@@ -33,7 +34,9 @@ function load(io: CliIO, style: Style, file: string): Loaded | null {
   try {
     source = io.readFile(file)
   } catch (error) {
-    io.stderr(`${style.error('error')}: cannot read '${file}': ${(error as Error).message}\n`)
+    io.stderr(
+      `${style.error('error')}: cannot read '${sanitize(file)}': ${sanitize((error as Error).message)}\n`,
+    )
     return null
   }
   const result = compile(source)
@@ -41,7 +44,7 @@ function load(io: CliIO, style: Style, file: string): Loaded | null {
     for (const diagnostic of result.diagnostics)
       io.stderr(`${formatDiagnostic(file, source, diagnostic, style)}\n\n`)
     const count = result.diagnostics.length
-    io.stderr(`${style.error(`${count} error${count === 1 ? '' : 's'}`)} in ${file}\n`)
+    io.stderr(`${style.error(`${count} error${count === 1 ? '' : 's'}`)} in ${sanitize(file)}\n`)
     return null
   }
   return { file, source, program: result.program }
@@ -55,13 +58,13 @@ export function runCommand(command: Command, io: CliIO): ExitCode {
     case 'check': {
       const loaded = load(io, style, command.file)
       if (!loaded) return 1
-      io.stdout(`${style.ok('ok')}: ${command.file} compiles without errors\n`)
+      io.stdout(`${style.ok('ok')}: ${sanitize(command.file)} compiles without errors\n`)
       return 0
     }
     case 'disasm': {
       const loaded = load(io, style, command.file)
       if (!loaded) return 1
-      io.stdout(`${disassemble(loaded.program)}\n`)
+      io.stdout(`${sanitize(disassemble(loaded.program))}\n`)
       return 0
     }
     case 'replay':
@@ -78,6 +81,7 @@ export function runCommand(command: Command, io: CliIO): ExitCode {
 function runFile(io: CliIO, style: Style, file: string, maxSteps: number, seed: number): ExitCode {
   const loaded = load(io, style, file)
   if (!loaded) return 1
+  // Program output is the program's own: it is passed through raw, like any program's stdout.
   const result = run(loaded.program, { maxSteps, seed, onOutput: (text) => io.stdout(`${text}\n`) })
   switch (result.outcome.kind) {
     case 'finished':
@@ -121,7 +125,8 @@ function replay(
 
 function outcomeText(recording: Recording): string {
   const outcome = recording.outcome
-  if (outcome.kind === 'error') return `ends with ${outcome.error.code}: ${outcome.error.message}`
+  if (outcome.kind === 'error')
+    return `ends with ${outcome.error.code}: ${sanitize(outcome.error.message)}`
   if (outcome.kind === 'finished') return 'finishes normally'
   return `stops at the step limit`
 }
@@ -130,10 +135,10 @@ function describeLocation(view: StateView, source: string, style: Style): string
   const location = view.location
   if (!location) return [style.dim('the program has finished')]
   if (location.source !== 'main')
-    return [`inside library function ${location.functionName} (${location.opName})`]
+    return [`inside library function ${sanitize(location.functionName)} (${location.opName})`]
   const { line, col } = new LineIndex(source).lineCol(location.span.start)
   return [
-    `line ${line}, column ${col} · in ${location.functionName} · next instruction ${location.opName}`,
+    `line ${line}, column ${col} · in ${sanitize(location.functionName)} · next instruction ${location.opName}`,
     ...codeFrame(source, location.span, style),
   ]
 }
@@ -144,12 +149,12 @@ function describeFrames(view: StateView, source: string, style: Style): string[]
   const lines = [style.bold('frames (innermost first):')]
   for (const frame of [...view.frames].reverse()) {
     const where = frame.library ? 'library' : `line ${index.lineOf(frame.span.start)}`
-    lines.push(`  ${frame.name} ${style.dim(`(${where})`)}`)
+    lines.push(`  ${sanitize(frame.name)} ${style.dim(`(${where})`)}`)
     for (const local of frame.locals)
-      lines.push(`    ${local.name} = ${formatValueView(local.value)}`)
+      lines.push(`    ${sanitize(local.name)} = ${formatValueView(local.value)}`)
     for (const capture of frame.captures)
       lines.push(
-        `    ${capture.name} = ${formatValueView(capture.value)} ${style.dim('(captured)')}`,
+        `    ${sanitize(capture.name)} = ${formatValueView(capture.value)} ${style.dim('(captured)')}`,
       )
   }
   return lines
@@ -159,7 +164,7 @@ function describeGlobals(view: StateView, style: Style): string[] {
   if (view.globals.length === 0) return []
   return [
     style.bold('globals:'),
-    ...view.globals.map((g) => `  ${g.name} = ${formatValueView(g.value)}`),
+    ...view.globals.map((g) => `  ${sanitize(g.name)} = ${formatValueView(g.value)}`),
   ]
 }
 
@@ -168,7 +173,8 @@ function describeOutput(recording: Recording, view: StateView, style: Style): st
   if (printed.length === 0) return [style.dim('no output yet')]
   const shown = printed.slice(-10)
   const header = `output so far (${printed.length} line${printed.length === 1 ? '' : 's'}${printed.length > shown.length ? ', last 10 shown' : ''}):`
-  return [style.bold(header), ...shown.map((event) => `  ${event.text}`)]
+  // Unlike `run`, replay shows output inside the debugger's own report, so it is sanitized.
+  return [style.bold(header), ...shown.map((event) => `  ${sanitize(event.text)}`)]
 }
 
 // --- why ----------------------------------------------------------------------------------------
@@ -219,7 +225,7 @@ export function findBinding(
 function tracedText(value: TracedValue): string {
   if (value === null) return 'nil'
   if (typeof value === 'object') return `<object #${value.ref}>`
-  return typeof value === 'string' ? JSON.stringify(value) : String(value)
+  return typeof value === 'string' ? sanitize(JSON.stringify(value)) : String(value)
 }
 
 function eventLine(recording: Recording, source: string, event: ProvenanceEvent): string {
@@ -235,20 +241,20 @@ function why(io: CliIO, style: Style, command: Extract<Command, { kind: 'why' }>
   const binding = findBinding(recording, loaded.source, command.line, command.name)
   if (!binding) {
     io.stderr(
-      `${style.error('error')}: no variable '${command.name}' declared on line ${command.line} was ever live in this run\n`,
+      `${style.error('error')}: no variable '${sanitize(command.name)}' declared on line ${command.line} was ever live in this run\n`,
     )
     return 1
   }
   const history = recording.history(binding.target, binding.at, { limit: 200 })
   const lines = [
     style.bold(
-      `history of '${command.name}' (declared on line ${command.line}, ${binding.where}):`,
+      `history of '${sanitize(command.name)}' (declared on line ${command.line}, ${sanitize(binding.where)}):`,
     ),
   ]
   for (const event of history.events) {
     const step = `step ${event.time.toLocaleString('en-US')}`.padEnd(14)
     lines.push(
-      `  ${style.dim(step)} ${event.kind.padEnd(8)} ${command.name} = ${tracedText(event.value)}  ${style.dim(eventLine(recording, loaded.source, event))}`,
+      `  ${style.dim(step)} ${event.kind.padEnd(8)} ${sanitize(command.name)} = ${tracedText(event.value)}  ${style.dim(eventLine(recording, loaded.source, event))}`,
     )
   }
   if (history.truncated) lines.push(style.dim(`  (${history.total} events in all; evenly sampled)`))
@@ -263,7 +269,9 @@ function test(io: CliIO, style: Style, dir: string): ExitCode {
   try {
     files = io.listFiles(dir, '.sight')
   } catch (error) {
-    io.stderr(`${style.error('error')}: cannot list '${dir}': ${(error as Error).message}\n`)
+    io.stderr(
+      `${style.error('error')}: cannot list '${sanitize(dir)}': ${sanitize((error as Error).message)}\n`,
+    )
     return 1
   }
   let failed = 0
@@ -271,12 +279,12 @@ function test(io: CliIO, style: Style, dir: string): ExitCode {
     const path = `${dir.replace(/\/$/, '')}/${file}`
     const result = checkSource(io.readFile(path), { compile, run, record })
     if (result.ok) {
-      io.stdout(`${style.ok('✓')} ${file}\n`)
+      io.stdout(`${style.ok('✓')} ${sanitize(file)}\n`)
       continue
     }
     failed++
-    io.stdout(`${style.error('✗')} ${file}\n`)
-    for (const failure of result.failures) io.stdout(`    ${failure}\n`)
+    io.stdout(`${style.error('✗')} ${sanitize(file)}\n`)
+    for (const failure of result.failures) io.stdout(`    ${sanitize(failure)}\n`)
   }
   const passed = files.length - failed
   io.stdout(`\n${passed} passed, ${failed} failed (${files.length} files)\n`)
