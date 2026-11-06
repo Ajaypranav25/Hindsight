@@ -1,6 +1,7 @@
 import { createInterface } from 'node:readline'
 import { parseArgs, USAGE } from './args'
 import { runCommand } from './commands'
+import { type DebugCommand, openDebugSession } from './debug'
 import { isEntryPoint } from './entry'
 import { sanitize } from './format'
 import { exitQuietlyOnClosedPipe, nodeIO, type CliIO } from './io'
@@ -24,6 +25,25 @@ function startRepl(io: CliIO, seed: number): void {
   })
 }
 
+/**
+ * The bug finder's interview: answers are read line by line from stdin, whether it is a terminal
+ * or a pipe. The exit code is set when the input ends or the interview does.
+ */
+function startDebug(io: CliIO, command: DebugCommand): number | null {
+  const session = openDebugSession(io, command)
+  if (typeof session === 'number') return session
+  if (session.finished) return session.exitCode
+  const input = createInterface({ input: process.stdin, terminal: false })
+  input.on('line', (line) => {
+    if (!session.handle(line)) input.close()
+  })
+  input.on('close', () => {
+    session.end()
+    process.exitCode = session.exitCode
+  })
+  return null
+}
+
 /** Entry point; returns the process exit code (the REPL keeps the process alive instead). */
 export function main(argv: readonly string[], io: CliIO = nodeIO): number | null {
   const parsed = parseArgs(argv)
@@ -45,6 +65,7 @@ export function main(argv: readonly string[], io: CliIO = nodeIO): number | null
     startRepl(io, command.seed)
     return null
   }
+  if (command.kind === 'debug') return startDebug(io, command)
   return runCommand(command, io)
 }
 
