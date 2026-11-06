@@ -46,6 +46,21 @@ Usage:
 
 const VALUE_FLAGS = new Set(['--max-steps', '--seed', '--at', '--line', '--name'])
 
+/** What each command accepts: its options, and how many arguments may follow its name. */
+const COMMANDS: ReadonlyMap<string, { readonly flags: readonly string[]; readonly arity: number }> =
+  new Map([
+    ['run', { flags: ['--max-steps', '--seed'], arity: 1 }],
+    ['check', { flags: [], arity: 1 }],
+    ['disasm', { flags: [], arity: 1 }],
+    ['replay', { flags: ['--at', '--max-steps', '--seed'], arity: 1 }],
+    ['why', { flags: ['--line', '--name', '--max-steps', '--seed'], arity: 1 }],
+    ['test', { flags: [], arity: 1 }],
+    ['repl', { flags: ['--seed'], arity: 0 }],
+  ])
+
+/** Plain decimal integers only: no exponents, hex, signs other than '-', or spaces. */
+const INTEGER_TEXT = /^-?\d+$/
+
 interface Split {
   readonly positional: readonly string[]
   readonly flags: ReadonlyMap<string, string>
@@ -79,10 +94,21 @@ function integerFlag(
 ): number | string {
   const raw = flags.get(name)
   if (raw === undefined) return fallback
-  const value = Number(raw)
-  if (!Number.isInteger(value) || value < min)
+  const value = INTEGER_TEXT.test(raw) ? Number(raw) : Number.NaN
+  if (!Number.isSafeInteger(value) || value < min)
     return `option '${name}' must be an integer >= ${min}, got '${raw}'`
   return value
+}
+
+/** An error for options or arguments that `command` does not take, or null. */
+function unexpected(command: string, parts: Split): string | null {
+  const accepts = COMMANDS.get(command)
+  if (accepts === undefined) return command ? `unknown command '${command}'` : 'missing command'
+  for (const flag of parts.flags.keys()) {
+    if (!accepts.flags.includes(flag)) return `option '${flag}' does not apply to '${command}'`
+  }
+  const extra = parts.positional[1 + accepts.arity]
+  return extra === undefined ? null : `unexpected argument '${extra}'`
 }
 
 function needFile(positional: readonly string[], command: string): string | { error: string } {
@@ -99,8 +125,10 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
   if (typeof parts === 'string') return { ok: false, error: parts }
   const { positional, flags } = parts
   const name = positional[0] ?? ''
+  const problem = unexpected(name, parts)
+  if (problem !== null) return { ok: false, error: problem }
   const maxSteps = integerFlag(flags, '--max-steps', DEFAULT_MAX_STEPS, 1)
-  const seed = integerFlag(flags, '--seed', DEFAULT_SEED, -(2 ** 53))
+  const seed = integerFlag(flags, '--seed', DEFAULT_SEED, Number.MIN_SAFE_INTEGER)
   if (typeof maxSteps === 'string') return { ok: false, error: maxSteps }
   if (typeof seed === 'string') return { ok: false, error: seed }
 
@@ -136,6 +164,6 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     case 'repl':
       return { ok: true, command: { kind: 'repl', seed } }
     default:
-      return { ok: false, error: name ? `unknown command '${name}'` : 'missing command' }
+      return { ok: false, error: `unknown command '${name}'` }
   }
 }

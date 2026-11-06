@@ -1,8 +1,15 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 import type { CliIO } from './io'
 import { codeFrame, formatDiagnostic, makeStyle } from './format'
-import { main } from './main'
+import { main, VERSION } from './main'
 import { ReplSession } from './repl'
+
+const PACKAGE_VERSION = (
+  JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as {
+    version: string
+  }
+).version
 
 interface FakeIO extends CliIO {
   readonly out: string[]
@@ -135,6 +142,42 @@ describe('hindsight replay and why', () => {
     const io = fakeIO({ 'fib.sight': FIB })
     expect(main(['why', 'fib.sight', '--line', '1', '--name', 'nope'], io)).toBe(1)
   })
+
+  test('why lists the changes made in every call of a function, not only the first', () => {
+    const source =
+      'fn f(n) {\n  var a = n\n  a += 1\n  a\n}\nprint(f(1))\nprint(f(10))\nprint(f(100))\n'
+    const io = fakeIO({ 'm.sight': source })
+    expect(main(['why', 'm.sight', '--line', '2', '--name', 'a'], io)).toBe(0)
+    const out = io.out.join('')
+    expect(out).toContain("history of 'a' (declared on line 2, f; 3 calls):")
+    expect(out).toMatch(/call 1\n\s+step \d+\s+declare\s+a = 1 /)
+    expect(out).toMatch(/write\s+a = 2 /)
+    expect(out).toMatch(/call 2\n\s+step \d+\s+declare\s+a = 10 /)
+    expect(out).toMatch(/write\s+a = 11 /)
+    expect(out).toMatch(/call 3\n\s+step \d+\s+declare\s+a = 100 /)
+    expect(out).toMatch(/write\s+a = 101 /)
+  })
+
+  test('why keeps recursive calls apart', () => {
+    const source =
+      'fn fact(n) {\n  var r = 1\n  if n > 1 { r = n * fact(n - 1) }\n  r\n}\nprint(fact(4))\n'
+    const io = fakeIO({ 'r.sight': source })
+    expect(main(['why', 'r.sight', '--line', '2', '--name', 'r'], io)).toBe(0)
+    const out = io.out.join('')
+    expect(out).toContain('4 calls')
+    for (const value of [2, 6, 24]) expect(out).toMatch(new RegExp(`write\\s+r = ${value} `))
+    expect(out.match(/declare\s+r = 1 /g)).toHaveLength(4)
+  })
+
+  test('why shows a single call exactly as before', () => {
+    const source =
+      'fn sum(xs) {\n  var acc = 0\n  for x in xs { acc += x }\n  acc\n}\nprint(sum([1, 2, 3]))\n'
+    const io = fakeIO({ 's.sight': source })
+    expect(main(['why', 's.sight', '--line', '2', '--name', 'acc'], io)).toBe(0)
+    const out = io.out.join('')
+    expect(out).toContain("history of 'acc' (declared on line 2, sum):\n  step ")
+    expect(out).not.toContain('call 1')
+  })
 })
 
 describe('hindsight test', () => {
@@ -214,11 +257,31 @@ describe('format', () => {
     expect(io.err.join('')).toContain('Usage:')
     expect(main(['--help'], io)).toBe(0)
     expect(main(['--version'], io)).toBe(0)
-    expect(io.out.join('')).toContain('hindsight 0.2.0')
+    expect(io.out.join('')).toContain(`hindsight ${PACKAGE_VERSION}\n`)
+  })
+
+  test('the reported version is the one in package.json', () => {
+    expect(VERSION).toBe(PACKAGE_VERSION)
+  })
+
+  test('extra files are an error, not silently skipped', () => {
+    const io = fakeIO({ 'ok.sight': 'print(1)\n', 'bad.sight': 'print(nope)\n' })
+    expect(main(['check', 'ok.sight', 'bad.sight'], io)).toBe(2)
+    expect(io.err.join('')).toContain("error: unexpected argument 'bad.sight'")
+    expect(io.out).toEqual([])
   })
 })
 
 describe('terminal safety', () => {
+  test('usage errors escape control characters from arguments', () => {
+    const io = fakeIO({})
+    expect(main(['run', 'a.sight', 'x\u001b]0;pwned\u0007'], io)).toBe(2)
+    const err = io.err.join('')
+    expect(err).toContain('unexpected argument')
+    expect(err).not.toContain('\u001b')
+    expect(err).not.toContain('\u0007')
+  })
+
   const OSC = '\u001b]0;pwned\u0007'
   // eslint-disable-next-line no-control-regex
   const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/
