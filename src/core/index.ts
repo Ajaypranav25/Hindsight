@@ -38,6 +38,8 @@ export type { Value } from './runtime-types'
 export { disassemble } from './disasm'
 export { verifyProgram } from './verify'
 export { repr, show } from './values'
+export * from './calls'
+export * from './bug-finder'
 
 /** The prelude source (SPEC Appendix A). */
 export function getLibrarySource(): string {
