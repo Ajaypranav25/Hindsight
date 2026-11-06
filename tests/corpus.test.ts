@@ -7,7 +7,7 @@ import { join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, test } from 'vitest'
 import { checkSource, type ConformanceApi } from '../src/conformance/check'
-import { compile, record, run } from '../src/core/index'
+import { compile, record, run, verifyProgram } from '../src/core/index'
 
 const CORPUS_DIR = fileURLToPath(new URL('./lang', import.meta.url))
 
@@ -37,5 +37,7 @@ describe('conformance corpus', () => {
     // Assert
     expect(result.failures).toEqual([])
     expect(result.ok).toBe(true)
+    const compiled = compile(source)
+    if (compiled.ok) expect(verifyProgram(compiled.program)).toEqual([])
   })
 })

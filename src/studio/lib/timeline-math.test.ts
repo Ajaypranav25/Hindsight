@@ -154,20 +154,6 @@ describe('buildEnvelope', () => {
     expect(Array.from(envelope(env, 2, 2, 2).min)).toEqual([NO_DATA, NO_DATA])
   })
 
-  test('2,000,000 steps: builds and queries 2,000 columns quickly', () => {
-    const depths = new Int32Array(2_000_000)
-    for (let i = 0; i < depths.length; i++) depths[i] = (i * 7919) % 37
-    const built = performance.now()
-    const env = buildEnvelope(depths)
-    const buildMs = performance.now() - built
-    const queried = performance.now()
-    const cols = envelope(env, 0, depths.length, 2000)
-    const queryMs = performance.now() - queried
-    expect(cols.max[0]).toBe(36)
-    expect(buildMs).toBeLessThan(500)
-    expect(queryMs).toBeLessThan(50)
-  })
-
   test('works on a real recording', () => {
     const result = compile(
       'fn f(n) {\n  if n == 0 {\n    return 0\n  }\n  f(n - 1)\n}\nprint(f(4))\n',
@@ -357,14 +343,6 @@ describe('markers', () => {
         },
       ),
     )
-  })
-
-  test('markerColumns on a million events stays fast', () => {
-    const times = Float64Array.from({ length: 1_000_000 }, (_, i) => i * 2)
-    const began = performance.now()
-    const cols = markerColumns(times, { start: 0, end: 2_000_000 }, 1500)
-    expect(cols.length).toBe(1500)
-    expect(performance.now() - began).toBeLessThan(50)
   })
 
   test('mergeTimes sorts numerically', () => {

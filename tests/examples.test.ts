@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, test } from 'vitest'
-import { compile, record, run } from '../src/core/index'
+import { compile, record, run, verifyProgram } from '../src/core/index'
 import { parseExample } from '../src/studio/examples'
 
 const dir = fileURLToPath(new URL('../examples/', import.meta.url))
@@ -18,6 +18,7 @@ describe('gallery examples', () => {
     // Act
     const compiled = compile(source)
     if (!compiled.ok) throw new Error(JSON.stringify(compiled.diagnostics, null, 2))
+    expect(verifyProgram(compiled.program)).toEqual([])
     const result = run(compiled.program, { maxSteps: 2_000_000 })
 
     // Assert
