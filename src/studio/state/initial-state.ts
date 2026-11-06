@@ -5,6 +5,8 @@ import type { Example, KeyValueStorage, StudioState } from './types'
 export interface Startup {
   /** A program carried by a share link, if the page was opened with one. */
   readonly sharedSource: string | null
+  /** The pen's step from a moment link (`#src=...&t=N`), placed after the first recording. */
+  readonly sharedTime?: number | null
 }
 
 const FALLBACK_SOURCE = 'print("Hello, Hindsight!")\n'
@@ -43,5 +45,6 @@ export function initialState(
     notice: lastRunUnfinished(storage) ? { text: UNFINISHED_RUN_NOTICE, tone: 'error' } : null,
     originMark: null,
     previousSource: storage.read(STORAGE_KEYS.previousSource),
+    whatIf: null,
   }
 }

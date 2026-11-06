@@ -14,11 +14,12 @@ import {
 import { useStudio, useStudioActions } from '../state/context'
 import { isStale } from '../state/selectors'
 import type { RunStatus } from '../state/types'
-import { useChartData, useViewport } from './chart-data'
+import { useChartData, useChartWhatIf, useViewport } from './chart-data'
 import { CHART_LAYOUT } from './chart-draw'
 import { useChartInput, type Hover } from './chart-input'
 import { useChartPaint } from './chart-paint'
 import { useElementSize, usePrefersReducedMotion, useThemeVersion } from './hooks'
+import { WhatIfBanner } from './WhatIfBanner'
 import './timeline.css'
 
 /** Progress toward the step budget; extensions continue past earlier multiples of it. */
@@ -41,6 +42,7 @@ export function StripChart() {
   const maxSteps = useStudio((s) => s.settings.maxSteps)
   const actions = useStudioActions()
   const data = useChartData(recording)
+  const whatIf = useChartWhatIf()
   const helpId = useId()
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -66,8 +68,22 @@ export function StripChart() {
       progress,
       reducedMotion,
       themeVersion,
+      whatIf,
     }),
-    [size, data, view, length, time, depth, errorAt, stale, progress, reducedMotion, themeVersion],
+    [
+      size,
+      data,
+      view,
+      length,
+      time,
+      depth,
+      errorAt,
+      stale,
+      progress,
+      reducedMotion,
+      themeVersion,
+      whatIf,
+    ],
   )
   useChartPaint(canvasRef, paintInput)
 
@@ -95,6 +111,7 @@ export function StripChart() {
 
   return (
     <div className={className}>
+      <WhatIfBanner />
       <div className="tl-chart__paper" ref={wrapRef}>
         <canvas
           ref={canvasRef}

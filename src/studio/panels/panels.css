@@ -611,3 +611,49 @@
   font: var(--text-sm) / 1.45 var(--font-ui);
   color: var(--ink);
 }
+
+/* What if: the inline editor of a value and the console's changed lines (ARCHITECTURE §11.3). */
+.pn-whatif {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--space-2);
+  max-width: 100%;
+}
+
+.pn-whatif-input {
+  min-width: 6ch;
+  max-width: 100%;
+  padding: 0 var(--space-1);
+  border: 1px solid var(--whatif);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-family: var(--font-mono);
+}
+
+.pn-whatif-input:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--whatif-soft);
+}
+
+.pn-whatif-input[aria-invalid='true'] {
+  border-color: var(--error);
+}
+
+.pn-whatif-error {
+  font: var(--text-xs) / 1.45 var(--font-ui);
+  color: var(--error);
+}
+
+.pn-whatif-error:empty {
+  display: none;
+}
+
+.pn-badge--whatif {
+  margin-left: var(--space-2);
+  border-color: var(--whatif);
+  background: var(--whatif-soft);
+  color: var(--whatif);
+}

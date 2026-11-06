@@ -25,8 +25,8 @@ export function pageAddress(location: Pick<Location, 'origin' | 'pathname' | 'hr
   return location.href.split('#')[0] ?? ''
 }
 
-function linkTo(source: string): string | null {
-  const fragment = shareFragment(source)
+function linkTo(source: string, time: number | null): string | null {
+  const fragment = shareFragment(source, time)
   return fragment === null ? null : pageAddress(window.location) + fragment
 }
 
@@ -36,6 +36,8 @@ function linkTo(source: string): string | null {
  */
 export function Share() {
   const source = useStudio((s) => s.source)
+  // A moment link: the pen's step, when the shown recording is of the program in the editor.
+  const time = useStudio((s) => (s.recording && s.recordedSource === s.source ? s.time : null))
   const { open, show, rootRef, triggerRef } = usePopover()
   const [result, setResult] = useState<ShareResult>({ kind: 'none' })
 
@@ -46,7 +48,7 @@ export function Share() {
   }, [result])
 
   const copy = () => {
-    const text = COPY_SOURCE ? source : linkTo(source)
+    const text = COPY_SOURCE ? source : linkTo(source, time)
     if (text === null) {
       setResult({ kind: 'too-large' })
       show()

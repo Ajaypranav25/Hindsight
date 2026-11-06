@@ -3,6 +3,7 @@ import type { ObjectView, ValueView, WriteTarget } from '../../core/index'
 import { formatCount, formatValue, reprString, truncate } from '../lib/format'
 import { useStateView, useStudio, useStudioActions } from '../state/context'
 import { formatRange, PAGE_SIZE } from './panel-logic'
+import { useCanWhatIf, WhatIfButton, WhatIfInput } from './WhatIfEdit'
 import './panels.css'
 
 const EXPANDABLE = new Set(['list', 'record', 'function', 'iterator'])
@@ -30,15 +31,29 @@ export interface ValueRowProps {
 export function ValueRow(props: ValueRowProps) {
   const { name, value, label, target, badge, path = [], actions, flash = null } = props
   const [expanded, setExpanded] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const canWhatIf = useCanWhatIf()
   const cycle = value.kind === 'ref' && path.includes(value.id)
   const expandable = isExpandable(value) && !cycle
+  // Primitive values of variables, elements and fields can be changed in a what-if.
+  const editTarget = canWhatIf && value.kind !== 'ref' ? (target ?? null) : null
   return (
     <li className="pn-row" data-changed={flash !== null ? 'true' : undefined}>
       {flash !== null && <span key={flash} className="pn-flash" aria-hidden="true" />}
       {name !== '' && <span className="pn-name">{name}</span>}
       {badge && <span className="pn-badge">{badge}</span>}
-      <span className="pn-value-cell">
-        {expandable ? (
+      <span
+        className="pn-value-cell"
+        onDoubleClick={editTarget ? () => setEditing(true) : undefined}
+      >
+        {editing && editTarget ? (
+          <WhatIfInput
+            value={value}
+            target={editTarget}
+            label={label}
+            onDone={() => setEditing(false)}
+          />
+        ) : expandable ? (
           <button
             type="button"
             className="pn-toggle"
@@ -58,6 +73,9 @@ export function ValueRow(props: ValueRowProps) {
       {(target || actions) && (
         <span className="pn-actions">
           {target && <OriginButton target={target} label={label} />}
+          {editTarget && !editing && (
+            <WhatIfButton label={label} onClick={() => setEditing(true)} />
+          )}
           {actions}
         </span>
       )}

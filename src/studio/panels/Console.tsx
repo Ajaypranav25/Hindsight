@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react'
-import type { Diagnostic, OutputEvent, Recording } from '../../core/index'
+import type { Diagnostic, OutputEvent, Recording, RecordingComparison } from '../../core/index'
 import { LineIndex } from '../../core/index'
 import { clipText, formatCount } from '../lib/format'
 import { useStudio, useStudioActions } from '../state/context'
@@ -53,6 +53,8 @@ function Output(props: { readonly recording: Recording }) {
   const { recording } = props
   const time = useStudio((s) => s.time)
   const { seek } = useStudioActions()
+  const comparison = useStudio((s) => s.whatIf?.comparison ?? null)
+  const changed = useMemo(() => changedLines(comparison), [comparison])
   const outputs = recording.outputs
   const { start, end, printed } = consoleWindow(outputs, time)
   const listRef = useLastPrintedInView(printed)
@@ -69,6 +71,7 @@ function Output(props: { readonly recording: Recording }) {
               event={event}
               time={time}
               lastPrinted={start + i === printed - 1}
+              changed={changed?.has(start + i) ?? false}
               onSeek={seek}
             />
           ))}
@@ -76,6 +79,12 @@ function Output(props: { readonly recording: Recording }) {
       )}
       {end < outputs.length && (
         <p className="pn-note pn-pad">{formatCount(outputs.length - end)} later lines not shown</p>
+      )}
+      {comparison !== null && comparison.removed > 0 && (
+        <p className="pn-note pn-pad">
+          {formatCount(comparison.removed)} {comparison.removed === 1 ? 'line' : 'lines'} of the
+          real run {comparison.removed === 1 ? 'is' : 'are'} not printed in this what-if
+        </p>
       )}
       <RunEnd recording={recording} time={time} onSeek={seek} />
     </>
@@ -86,9 +95,11 @@ function OutputLine(props: {
   readonly event: OutputEvent
   readonly time: number
   readonly lastPrinted: boolean
+  /** Not printed by the real run (in what-if mode). */
+  readonly changed: boolean
   readonly onSeek: (time: number) => void
 }) {
-  const { event, time, lastPrinted, onSeek } = props
+  const { event, time, lastPrinted, changed, onSeek } = props
   const atPen = event.time === time
   const future = event.time >= time
   const className = `pn-line${future ? ' pn-line--future' : ''}${atPen ? ' pn-line--now' : ''}`
@@ -103,6 +114,11 @@ function OutputLine(props: {
       >
         <span className="pn-stamp">{formatCount(event.time)}</span>
         <span className="pn-out">{clipText(event.text)}</span>
+        {changed && (
+          <span className="pn-badge pn-badge--whatif" title="The real run did not print this line">
+            changed
+          </span>
+        )}
       </button>
     </li>
   )
@@ -158,4 +174,14 @@ function RunEnd(props: {
       )}
     </div>
   )
+}
+
+/** Indexes of the what-if's output lines that the real run did not print. */
+function changedLines(comparison: RecordingComparison | null): ReadonlySet<number> | null {
+  if (comparison === null) return null
+  const indexes = new Set<number>()
+  for (const line of comparison.lines) {
+    if (line.kind === 'added' && line.indexB !== null) indexes.add(line.indexB)
+  }
+  return indexes
 }

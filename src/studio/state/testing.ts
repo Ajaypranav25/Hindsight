@@ -6,6 +6,7 @@ import type {
   ForkResult,
   Outcome,
   OutputEvent,
+  RecordingComparison,
   ProvenanceEvent,
   Recording,
   StateView,
@@ -86,6 +87,9 @@ export function fakeRecording(options: FakeRecordingOptions): Recording {
 export interface ScriptedEngine extends Engine {
   readonly compiled: string[]
   readonly recorded: { source: string; options: AsyncRecordOptions }[]
+  /** What `compare` returns (tests may replace it). */
+  comparison: RecordingComparison
+  readonly compared: (readonly [Recording, Recording])[]
   /** Resolves the oldest pending recordAsync with the given recording. */
   resolveNext(recording: Recording): Promise<void>
   readonly pendingCount: number
@@ -96,9 +100,16 @@ export function scriptedEngine(): ScriptedEngine {
   const compiled: string[] = []
   const recorded: { source: string; options: AsyncRecordOptions }[] = []
   const pending: ((recording: Recording) => void)[] = []
+  const compared: (readonly [Recording, Recording])[] = []
   return {
     compiled,
     recorded,
+    compared,
+    comparison: { divergence: null, lines: [], removed: 0, added: 0 },
+    compare(a: Recording, b: Recording): RecordingComparison {
+      compared.push([a, b])
+      return this.comparison
+    },
     get pendingCount() {
       return pending.length
     },

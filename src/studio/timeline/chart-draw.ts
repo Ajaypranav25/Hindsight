@@ -12,6 +12,7 @@ import {
   type DepthScale,
   type Viewport,
 } from '../lib/timeline-math'
+import { drawGhost, drawWhatIfMarks, type ChartWhatIf, type WhatIfLayout } from './chart-whatif'
 
 /** Chart layout in CSS pixels. */
 export const CHART_LAYOUT = {
@@ -42,6 +43,7 @@ const COLOR_TOKENS = {
   surface: '--surface',
   rule: '--rule',
   fontMono: '--font-mono',
+  whatIf: '--whatif',
 } as const
 
 export type ChartColors = { readonly [K in keyof typeof COLOR_TOKENS]: string }
@@ -75,6 +77,8 @@ export interface ChartScene {
   /** Share of the step budget recorded so far while a run records, else null. */
   readonly progress: number | null
   readonly colors: ChartColors
+  /** Set while a what-if is shown: the real run's ghost and the fork and divergence marks. */
+  readonly whatIf?: ChartWhatIf | null
 }
 
 interface Frame {
@@ -97,7 +101,7 @@ export function drawChart(ctx: CanvasRenderingContext2D, scene: ChartScene): voi
   const baseline = plotBottom - CHART_LAYOUT.baselineGap * px
   const top = CHART_LAYOUT.topMargin * px
   const scale = depthScale(
-    scene.env?.maxDepth ?? 0,
+    Math.max(scene.env?.maxDepth ?? 0, scene.whatIf?.ghost.maxDepth ?? 0),
     top + 4 * px,
     baseline,
     CHART_LAYOUT.maxDepthUnit * px,
@@ -106,8 +110,12 @@ export function drawChart(ctx: CanvasRenderingContext2D, scene: ChartScene): voi
   ctx.clearRect(0, 0, w, h)
   drawGrid(frame)
   ctx.globalAlpha = scene.stale ? 0.4 : 1
+  const whatIf = scene.whatIf ?? null
+  const layout: WhatIfLayout = { view: scene.view, w, px, top, scale, color: scene.colors.whatIf }
+  if (whatIf) drawGhost(ctx, whatIf, { ...layout, color: scene.colors.inkMuted })
   drawTrace(frame)
   drawMarkers(frame)
+  if (whatIf) drawWhatIfMarks(ctx, whatIf, layout)
   ctx.globalAlpha = 1
   drawScale(frame)
   if (scene.progress !== null) drawProgress(frame, scene.progress)

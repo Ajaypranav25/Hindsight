@@ -25,6 +25,7 @@ function state(patch: Partial<StudioState> = {}): StudioState {
     notice: null,
     originMark: null,
     previousSource: null,
+    whatIf: null,
     ...patch,
   }
 }
