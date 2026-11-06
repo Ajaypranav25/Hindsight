@@ -1,6 +1,7 @@
 import { defineConfig } from '@playwright/test'
 
-const PORT = 5199
+/** E2E_PORT lets several checkouts (git worktrees) run their suites side by side. */
+const PORT = Number(process.env.E2E_PORT ?? 5199)
 
 export default defineConfig({
   testDir: 'e2e',
