@@ -20,6 +20,7 @@ import {
   type Style,
 } from './format'
 import type { CliIO } from './io'
+import { whatIf } from './whatif'
 
 export type ExitCode = 0 | 1 | 2
 
@@ -74,6 +75,10 @@ export function runCommand(command: Command, io: CliIO): ExitCode {
       return why(io, style, command)
     case 'test':
       return test(io, style, command.dir)
+    case 'whatif': {
+      const loaded = load(io, style, command.file)
+      return loaded ? whatIf(io, style, loaded, command) : 1
+    }
     default:
       return 0
   }
