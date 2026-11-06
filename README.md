@@ -1,5 +1,7 @@
 # Hindsight
 
+[![CI](https://github.com/Ajaypranav25/Hindsight/actions/workflows/ci.yml/badge.svg)](https://github.com/Ajaypranav25/Hindsight/actions/workflows/ci.yml)
+
 **A tiny programming language with a time machine built in.**
 
 Run a program, then drag a red pen backwards through its execution. Step into, over and out of
@@ -13,6 +15,9 @@ records its own execution, so the studio can rebuild the complete program state 
 call stack, every variable, every list and record — in under a millisecond.
 
 ## Try it
+
+**In your browser:** [ajaypranav25.github.io/Hindsight](https://ajaypranav25.github.io/Hindsight/),
+nothing to install. Or run it locally:
 
 ```sh
 npm install
@@ -76,6 +81,9 @@ Keyboard: **F11** / **Shift+F11** step into forward/back, **F10** / **Shift+F10*
 
 ## The command line
 
+Run it through npm as below, or build it once with `npm run build:cli && npm link` to get a
+`hindsight` command.
+
 ```sh
 npm run sight -- run examples/03-fibonacci.sight
 npm run sight -- replay examples/03-fibonacci.sight --at 3500     # the program state at step 3,500
@@ -123,20 +131,25 @@ Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ## Quality
 
 - **About 2,500 automated tests** across unit, property, conformance and end-to-end suites.
-- **A 501-program conformance corpus** (`tests/lang`) written from the spec alone, before the
-  implementation existed, with expected output, compile errors and runtime errors annotated inline.
+- **A conformance corpus of 500+ programs** (`tests/lang`), most written from the spec alone before
+  the implementation existed, with expected output, compile errors and runtime errors annotated
+  inline.
   Run it with `npm run sight -- test`.
 - **Property tests** (fast-check) check that every seek reproduces the state of a fresh run, that
   navigation and provenance respect time, and that snapshots round-trip exactly.
 - **Fuzzing** keeps the lexer and parser from throwing on arbitrary input, and a bytecode verifier
-  checks the stack discipline of every compiled program.
+  checks the stack discipline of every corpus program, gallery example and generated program.
 - **Playwright** end-to-end tests drive the studio in Chrome.
-- 98 % line coverage; strict TypeScript; zero runtime dependencies in the language core.
+- **CI** runs all of it on Linux and Windows, plus the performance budgets, and publishes the
+  studio to GitHub Pages from `main`.
+- About 96 % line coverage, enforced so it cannot drift down; strict TypeScript; zero runtime
+  dependencies in the language core.
 
 ```sh
 npm test            # unit, property and conformance tests
+npm run test:perf   # wall-clock budgets, one file at a time (kept out of npm test)
 npm run e2e         # end-to-end tests (uses your installed Chrome)
-npm run check       # type-check, lint and test
+npm run check       # type-check, lint, format check and test
 ```
 
 ## Project layout

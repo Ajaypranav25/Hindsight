@@ -468,7 +468,13 @@ Decisions made while building the runtime, recorded here so tools can rely on th
    program takes under 2 s and stays under ~150 MB; a seek averages under 5 ms.
 7. **Async**: `recordAsync` works in slices of `sliceMs` (default 8 ms), yielding through a
    `MessageChannel` macrotask when available (else `setTimeout(0)`), reporting `onProgress(time)`,
-   and ending with outcome `aborted` when `signal.aborted` becomes true.
+   and ending with outcome `aborted` when `signal.aborted` becomes true. The clock is read every
+   `interval` steps, and the interval adapts (`SlicePacer`, `recorder-async.ts`): it starts at 1,
+   doubles while batches of steps finish quickly, and drops eightfold when a batch was slow, staying
+   between 1 and 64. Cheap loops therefore check rarely (a clock read per 64 steps costs about 1 %),
+   while a loop of slow natives (a scan of a huge list) soon ends its slices within about one step
+   of the deadline; the cap bounds the first slow batch after a cheap stretch, so the page and Stop
+   stay responsive. A single native step still runs to completion.
 8. **Extend**: `extend(extraSteps)` / `extendAsync(extraSteps, options)` apply only to `step-limit`
    and `aborted` recordings (otherwise `InternalError`). They resume from the snapshot at `N` in a
    fresh hooked VM and return a new `Recording` of length `<= N + extraSteps` whose outcome's
@@ -574,18 +580,23 @@ show, repr, LineIndex, and all types from api-types.ts / diagnostics.ts / span.t
 
 `hindsight <command>`; during development `npm run sight -- <command>`.
 
-| command                               | behavior                                                                                                 |
-| ------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `run FILE [--max-steps N] [--seed S]` | print output; on error print a diagnostic and exit 1                                                     |
-| `check FILE`                          | compile only; print diagnostics; exit 1 on errors                                                        |
-| `disasm FILE`                         | print the disassembly                                                                                    |
-| `replay FILE --at T [--max-steps N]`  | record, then print the state at time `T`: location, frames with locals, globals, output so far           |
-| `why FILE --line L --name X`          | record, then list every event in the history of variable `X` declared on line `L`, with times and values |
-| `test [DIR]`                          | run `.sight` files with annotations (§10.2) using `src/conformance`; summary; exit 1 on failure          |
-| `repl`                                | interactive prompt (below)                                                                               |
+| command                               | behavior                                                                                                                                                                                         |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `run FILE [--max-steps N] [--seed S]` | print output; on error print a diagnostic and exit 1                                                                                                                                             |
+| `check FILE`                          | compile only; print diagnostics; exit 1 on errors                                                                                                                                                |
+| `disasm FILE`                         | print the disassembly                                                                                                                                                                            |
+| `replay FILE --at T [--max-steps N]`  | record, then print the state at time `T`: location, frames with locals, globals, output so far                                                                                                   |
+| `why FILE --line L --name X`          | record, then list every event in the history of variable `X` declared on line `L`, with times and values; a local's events are grouped by call (the first 50 calls are listed, the rest counted) |
+| `test [DIR]`                          | run `.sight` files with annotations (§10.2) using `src/conformance`; summary; exit 1 on failure                                                                                                  |
+| `repl`                                | interactive prompt (below)                                                                                                                                                                       |
 
 Diagnostics print Rust-style with a code frame and caret underline (`error[E020]: …`, `--> file:3:9`,
-the source line, `^^^`, `= hint: …`), colored only when stdout is a TTY.
+the source line, `^^^`, `= hint: …`), colored only when stdout and stderr are both terminals and
+`NO_COLOR` is unset. Each command takes exactly the arguments and options listed above; anything
+else is a usage error (exit 2), and numeric options must be plain decimal integers. When the reader
+of the output goes away (`hindsight run x | head`), the command stops quietly with exit 0. The
+command finds out whether it is the program being run by resolving `process.argv[1]` through links,
+since npm installs it as a link named `hindsight`.
 
 **REPL**: each accepted entry is appended to the source of all previously accepted entries; the
 whole text is compiled and run from scratch with the same seed, and only output events beyond the
@@ -597,7 +608,10 @@ discarded (so E022 applies across entries).
 ### 10.1 Unit tests
 
 Every module has co-located tests. Coverage target: 80 %+ lines for `src/core`, `src/conformance`,
-`src/cli`, and the non-visual parts of `src/studio`.
+`src/cli`, and the non-visual parts of `src/studio`; `vitest.config.ts` fails the coverage run below
+the current overall levels, so they cannot drift down unnoticed. Wall-clock budgets live in
+`*.perf.test.ts` files, which `npm test` and coverage skip: `npm run test:perf` runs them one file
+at a time. Every corpus program and gallery example that compiles must also pass `verifyProgram`.
 
 ### 10.2 Conformance corpus
 
@@ -734,12 +748,21 @@ tabbed panels); the page may scroll vertically, never horizontally.
   source, uncompressed; programs over 60,000 characters are not linked). Opening such a link loads
   that program, stores it as the current source and removes the fragment (`history.replaceState`),
   so the link is used once and later edits survive a reload; a link pasted into an open studio
-  loads on `hashchange`. The current source and settings persist in `localStorage` (every access
-  wrapped in try/catch).
-- **Crash guard**: a "run in progress" marker is stored while a recording runs and cleared when it
-  completes. If it is still set on page load (the last run froze or crashed the tab), the studio
-  loads the program without running it and says "The last run did not finish. Press Run to try
-  again."
+  loads on `hashchange` like an example (it runs only when auto-run is on). The current source and
+  settings persist in `localStorage` (every access wrapped in try/catch).
+- **Previous program**: only one program is stored, so before a share link or an example replaces
+  a program the user wrote, that program is kept as `hindsight:previous-source`. Text that arrived
+  with a link or an example and has not been edited is not the user's (`hindsight:source-delivered`
+  marks it across reloads), so it is never kept: a page that opens two links in a row cannot push
+  the user's program out. The copy is read back; if storage refused it, the new program is shown but
+  not saved over the old one until the user edits. A notice says so and offers Restore, and while a
+  program is kept the Examples menu ends with "Your previous program". Restoring swaps when the
+  program it replaces is the user's own. The slot holds one program: the most recent the user wrote.
+- **Crash guard**: a "run in progress" marker is stored while a recording runs and cleared once the
+  finished recording has been displayed (displaying it replays the program up to the pen, which can
+  freeze the tab too). If it is still set on page load (the last run froze or crashed the tab), the
+  studio loads the program without running it and says "The last run did not finish. Press Run to
+  try again."
 - **Help**: a dialog with the shortcuts and a one-page language cheat sheet.
 
 ### 11.4 Visual identity
