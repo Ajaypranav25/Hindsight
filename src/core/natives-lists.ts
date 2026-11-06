@@ -65,8 +65,15 @@ function reverse(ctx: NativeContext, args: Args): Value {
   return ctx.newList(sequence.items.slice().reverse())
 }
 
-/** Ascending by `<` (numbers numerically, strings by UTF-16 code units). */
+/**
+ * Ascending by `<` (numbers numerically, strings by UTF-16 code units), with NaN after every
+ * number. `<` alone treats NaN as equal to everything, which is not a consistent order: the sort
+ * would then return an engine-dependent, unsorted list (SPEC §9.2).
+ */
 function compareAscending(a: Value, b: Value): number {
+  const aIsNaN = typeof a === 'number' && Number.isNaN(a)
+  const bIsNaN = typeof b === 'number' && Number.isNaN(b)
+  if (aIsNaN || bIsNaN) return Number(aIsNaN) - Number(bIsNaN)
   return (a as number) < (b as number) ? -1 : (a as number) > (b as number) ? 1 : 0
 }
 

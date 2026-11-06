@@ -2,3 +2,5 @@ let xs = [10, 9, 1, 2.5, -3]
 print(sort(xs), xs) // expect: [-3, 1, 2.5, 9, 10] [10, 9, 1, 2.5, -3]
 print(sort(["b", "a", "B", "aa", ""])) // expect: ["", "B", "a", "aa", "b"]
 print(sort([]), sort([INF, -INF, 0])) // expect: [] [-Infinity, 0, Infinity]
+let nan = 0 * INF
+print(sort([3, nan, 1, 2]), sort([nan, 2, nan, 1])) // expect: [1, 2, 3, NaN] [1, 2, NaN, NaN]

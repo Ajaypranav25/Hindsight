@@ -48,11 +48,20 @@ function isUnbounded(range: RangeObj): boolean {
     : range.end === -Infinity || range.start === Infinity
 }
 
+/**
+ * About how many steps lead from `from` to `to`, as a starting guess for the length search. When
+ * `to - from` overflows a double (bounds near ±1e308), dividing first keeps the guess finite.
+ */
+function stepsBetween(from: number, to: number, step: number): number {
+  const span = to - from
+  return Number.isFinite(span) ? span / step : to / step - from / step
+}
+
 /** The first rejected k of a bounded range whose element 0 is accepted. */
 function firstRejected(range: RangeObj): number {
   const rejects = (k: number): boolean => !rangeAccepts(range, rangeElement(range, k))
   let accepted = 0
-  let candidate = Math.max(1, Math.ceil((range.end - range.start) / range.step))
+  let candidate = Math.max(1, Math.ceil(stepsBetween(range.start, range.end, range.step)))
   while (!rejects(candidate)) {
     accepted = candidate
     candidate *= 2

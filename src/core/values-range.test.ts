@@ -95,6 +95,21 @@ describe('rangeLength', () => {
       }
     }
   })
+
+  test('matches iteration when end - start overflows a double', () => {
+    const cases: [number, number, number, boolean][] = [
+      [-1e308, 1e308, 1e308, false],
+      [-1e308, 1e308, 1e308, true],
+      [1e308, -1e308, -1e308, false],
+      [-1.7e308, 1.7e308, 1e308, false],
+      [-1.7e308, 1.7e308, 5e307, true],
+    ]
+    for (const [start, end, step, inclusive] of cases) {
+      const expected = iterateRange(start, end, step, inclusive).length
+      expect(expected).toBeGreaterThan(1)
+      expect(rangeLength(makeRange(start, end, step, inclusive))).toBe(expected)
+    }
+  })
 })
 
 describe('rangeContains', () => {
@@ -142,6 +157,23 @@ describe('rangeContains', () => {
     const down = makeRange(0, -Infinity, -0.5)
     expect(rangeContains(down, -1e6)).toBe(true)
     expect(rangeContains(down, -0.25)).toBe(false)
+  })
+
+  test('agrees with iteration when the bounds are too far apart to subtract', () => {
+    // Element k is exactly start + k * step, so k * step can overflow to ±Infinity first.
+    const cases: [number, number, number, boolean][] = [
+      [-1e308, 1e308, 1e308, false],
+      [-1e308, 1e308, 1e308, true],
+      [-1e308, Infinity, 1e308, false],
+      [1e308, -Infinity, -1e308, false],
+    ]
+    for (const [start, end, step, inclusive] of cases) {
+      const range = makeRange(start, end, step, inclusive)
+      const elements = iterateRange(start, end, step, inclusive)
+      for (const candidate of [...elements, 1e308, -1e308, 5e307, 0, Infinity]) {
+        expect(rangeContains(range, candidate)).toBe(elements.includes(candidate))
+      }
+    }
   })
 
   test('agrees with iteration on rounding plateaus', () => {
