@@ -5,11 +5,15 @@ import type { Example } from '../state/types'
 import { ChevronIcon } from './icons'
 import { usePopover } from './usePopover'
 
-/** A menu of gallery programs; choosing one loads and records it. */
+/**
+ * A menu of gallery programs; choosing one loads and records it. While a program of the user's
+ * was kept (a link or an example replaced it), the menu also offers it back.
+ */
 export function ExamplePicker(props: { examples?: readonly Example[] }) {
   const examples = props.examples ?? EXAMPLES
   const exampleId = useStudio((s) => s.exampleId)
-  const { loadExample } = useStudioActions()
+  const hasPrevious = useStudio((s) => s.previousSource !== null)
+  const { loadExample, restorePreviousSource } = useStudioActions()
   const { open, toggle, close, rootRef, triggerRef } = usePopover()
   const listRef = useRef<HTMLUListElement>(null)
   const current = examples.find((example) => example.id === exampleId) ?? null
@@ -24,6 +28,11 @@ export function ExamplePicker(props: { examples?: readonly Example[] }) {
   const choose = (id: string) => {
     close(true)
     loadExample(id)
+  }
+
+  const restore = () => {
+    close(true)
+    restorePreviousSource()
   }
 
   return (
@@ -65,6 +74,23 @@ export function ExamplePicker(props: { examples?: readonly Example[] }) {
               </button>
             </li>
           ))}
+          {hasPrevious && (
+            <>
+              <li role="separator" className="ch-menu-separator" />
+              <li role="none">
+                <button
+                  type="button"
+                  role="menuitem"
+                  tabIndex={-1}
+                  className="ch-menu-item"
+                  onClick={restore}
+                >
+                  <span className="ch-menu-title">Your previous program</span>
+                  <span className="ch-menu-summary">The program a link or an example replaced</span>
+                </button>
+              </li>
+            </>
+          )}
         </ul>
       )}
     </div>

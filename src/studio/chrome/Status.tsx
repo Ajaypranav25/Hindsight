@@ -72,6 +72,15 @@ export function Status() {
           {notice && (
             <p className="ch-notice" data-tone={notice.tone} title={notice.text}>
               <span className="ch-notice-text">{notice.text}</span>
+              {notice.action === 'restore-previous' && (
+                <button
+                  type="button"
+                  className="ch-button ch-button-small ch-notice-action"
+                  onClick={actions.restorePreviousSource}
+                >
+                  Restore
+                </button>
+              )}
               <button
                 type="button"
                 className="ch-button ch-icon-button ch-notice-close"

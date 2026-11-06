@@ -15,5 +15,6 @@ export const studioStore = createStudioStore(
   { sharedSource: takeSharedSource(host) },
 )
 
-// A share link pasted into the address bar of an open studio loads like an edit.
-watchSharedLinks(host, (source) => studioStore.getState().setSource(source))
+// A share link pasted into the address bar of an open studio opens like one followed from outside:
+// the program it replaces is kept first.
+watchSharedLinks(host, (source) => studioStore.getState().openSharedSource(source))

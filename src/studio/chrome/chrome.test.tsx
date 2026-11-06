@@ -4,6 +4,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import { memoryStorage } from '../lib/storage'
 import { setEditorCursorLine } from '../lib/shortcuts'
 import { StudioProvider } from '../state/context'
+import { STORAGE_KEYS } from '../state/defaults'
 import { ManualScheduler } from '../state/scheduler'
 import { createStudioStore } from '../state/store'
 import { fakeRecording, scriptedEngine } from '../state/testing'
@@ -31,10 +32,10 @@ const EXAMPLES: readonly Example[] = [
   },
 ]
 
-function setup(source = 'print(1)\n') {
+function setup(source = 'print(1)\n', storage = memoryStorage()) {
   const engine = scriptedEngine()
   const store = createStudioStore(
-    { engine, storage: memoryStorage(), scheduler: new ManualScheduler(), examples: EXAMPLES },
+    { engine, storage, scheduler: new ManualScheduler(), examples: EXAMPLES },
     { sharedSource: source },
   )
   const view = render(
@@ -102,6 +103,39 @@ describe('Header', () => {
     fireEvent.click(screen.getByRole('button', { name: /Examples/ }))
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(screen.queryByRole('menu')).toBeNull()
+  })
+
+  test('opening a link over your own program says it was kept and offers to restore it', () => {
+    const storage = memoryStorage({ [STORAGE_KEYS.source]: 'print("mine")\n' })
+    const s = setup('print("shared")\n', storage)
+    expect(
+      screen.getByText('Opened a shared program. Your previous program was kept.'),
+    ).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Restore' }))
+    expect(s.store.getState().source).toBe('print("mine")\n')
+    expect(screen.queryByRole('button', { name: 'Restore' })).toBeNull()
+  })
+
+  test('the example menu offers the kept program until it is restored', () => {
+    const storage = memoryStorage({ [STORAGE_KEYS.source]: 'print("mine")\n' })
+    const s = setup('print("shared")\n', storage)
+    fireEvent.click(screen.getByRole('button', { name: /Examples/ }))
+    const menu = screen.getByRole('menu', { name: 'Example programs' })
+    expect(within(menu).getAllByRole('menuitemradio')).toHaveLength(2)
+    fireEvent.click(within(menu).getByRole('menuitem', { name: /Your previous program/ }))
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(s.store.getState().source).toBe('print("mine")\n')
+    // The shared program it replaced was never edited, so it is not the user's work to keep.
+    fireEvent.click(screen.getByRole('button', { name: /Examples/ }))
+    expect(screen.queryByRole('menuitem', { name: /Your previous program/ })).toBeNull()
+  })
+
+  test('with nothing kept, the example menu lists only the examples', () => {
+    setup()
+    fireEvent.click(screen.getByRole('button', { name: /Examples/ }))
+    const menu = screen.getByRole('menu', { name: 'Example programs' })
+    expect(within(menu).queryByRole('menuitem')).toBeNull()
+    expect(within(menu).queryByRole('separator')).toBeNull()
   })
 
   test('settings change the store', () => {
