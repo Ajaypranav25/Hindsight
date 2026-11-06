@@ -13,8 +13,17 @@ import type { TraceSink } from './trace-sink'
 const INITIAL_INTERVAL = 256
 /** Thinning starts when the retained snapshots copied more values than this (§7.1.4). */
 export const RETAINED_VALUES_LIMIT = 8_000_000
-/** How many steps run between checks of the async slice deadline. */
-const SLICE_CHECK_MASK = 1023
+
+/**
+ * Decides when a sliced run pauses (§7.1.7). The session calls `due` after every `interval` steps
+ * it executes; `due` may change `interval`, so slow steps (a native scanning a huge list) are
+ * followed by frequent checks while cheap ones keep checks rare.
+ */
+export interface Pacer {
+  readonly interval: number
+  /** True when the slice should end before the next step. */
+  due(): boolean
+}
 
 export interface SnapshotEntry {
   readonly time: number
@@ -180,21 +189,25 @@ export class RecordingSession {
   }
 
   /**
-   * Runs until the recording ends, or until `shouldYield` (polled every 1024 steps) returns true.
-   * Returns the finished core, or null when it yielded.
+   * Runs until the recording ends, or until `pacer` says the slice is over (it is asked after every
+   * `pacer.interval` steps, so each slice makes progress). Returns the finished core, or null when
+   * it paused.
    */
-  run(shouldYield: (() => boolean) | null): RecordingCore | null {
+  run(pacer: Pacer | null): RecordingCore | null {
     if (this.core !== null) return this.core
     const { vm, steps, schedule, stopAt } = this.init
-    const sliceStart = this.time
     let t = this.time
+    let interval = pacer === null ? Infinity : pacer.interval
+    let sinceCheck = 0
     for (;;) {
       if (t >= stopAt) return this.end(t, 'step-limit')
-      if (shouldYield !== null && t !== sliceStart && (t & SLICE_CHECK_MASK) === 0) {
-        if (shouldYield()) {
+      if (sinceCheck >= interval) {
+        sinceCheck = 0
+        if (pacer!.due()) {
           this.time = t
           return null
         }
+        interval = pacer!.interval
       }
       const frames = vm.frames
       const top = frames[frames.length - 1]!
@@ -206,6 +219,7 @@ export class RecordingSession {
         return this.end(t, 'error')
       }
       t++
+      sinceCheck++
       if (vm.status === 'finished') return this.end(t, 'finished')
     }
   }

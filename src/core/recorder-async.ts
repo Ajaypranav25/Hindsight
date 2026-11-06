@@ -5,9 +5,57 @@
  * narrow local interfaces, so the core needs no DOM or Node types.
  */
 import type { AsyncRecordOptions } from './api-types'
-import type { RecordingCore, RecordingSession } from './recorder-session'
+import type { Pacer, RecordingCore, RecordingSession } from './recorder-session'
 
 const DEFAULT_SLICE_MS = 8
+/**
+ * The most steps run between clock checks. The pacer only learns that steps are slow after a
+ * batch has run, so this caps an unobserved slow stretch (a cheap loop followed by a loop of
+ * slow natives); a clock read every 64 steps costs about 1% of recording time.
+ */
+export const MAX_CHECK_INTERVAL = 64
+/** Clock checks aim to be about this far apart: an eighth of the slice, but at least 1 ms. */
+const CHECK_TARGET_FRACTION = 1 / 8
+const MIN_CHECK_TARGET_MS = 1
+
+/**
+ * Ends each slice at its deadline (§7.1.7). The check interval starts at one step and adapts at
+ * every check: it doubles while the steps since the previous check took under an eighth of the
+ * target spacing, and shrinks eightfold when they took over twice that. A loop of cheap steps soon
+ * checks every MAX_CHECK_INTERVAL steps; once steps turn slow, checks come after every step, so a
+ * slice overshoots its deadline by at most one batch and Stop is never far away. The interval
+ * carries over between slices of one run.
+ */
+export class SlicePacer implements Pacer {
+  interval = 1
+  private deadline = 0
+  private lastCheck = 0
+  private readonly target: number
+
+  constructor(
+    private readonly sliceMs: number,
+    private readonly clock: () => number,
+  ) {
+    this.target = Math.max(MIN_CHECK_TARGET_MS, sliceMs * CHECK_TARGET_FRACTION)
+  }
+
+  /** Starts a slice. */
+  begin(): void {
+    const time = this.clock()
+    this.deadline = time + this.sliceMs
+    this.lastCheck = time
+  }
+
+  due(): boolean {
+    const time = this.clock()
+    const elapsed = time - this.lastCheck
+    this.lastCheck = time
+    if (elapsed > 2 * this.target) this.interval = Math.max(1, this.interval >> 3)
+    else if (elapsed < this.target / 8)
+      this.interval = Math.min(MAX_CHECK_INTERVAL, this.interval * 2)
+    return time >= this.deadline
+  }
+}
 
 interface HostPort {
   onmessage: ((event: unknown) => void) | null
@@ -51,11 +99,11 @@ export async function runSliced(
   session: RecordingSession,
   options: AsyncRecordOptions,
 ): Promise<RecordingCore> {
-  const sliceMs = options.sliceMs ?? DEFAULT_SLICE_MS
+  const pacer = new SlicePacer(options.sliceMs ?? DEFAULT_SLICE_MS, now)
   for (;;) {
     if (options.signal?.aborted === true) return finish(session.abort(), options)
-    const deadline = now() + sliceMs
-    const core = session.run(() => now() >= deadline)
+    pacer.begin()
+    const core = session.run(pacer)
     if (core !== null) return finish(core, options)
     options.onProgress?.(session.currentTime)
     await yieldToHost()

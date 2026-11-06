@@ -28,5 +28,23 @@ export const nodeIO: CliIO = {
   },
   stdout: (text) => process.stdout.write(text),
   stderr: (text) => process.stderr.write(text),
-  color: Boolean(process.stdout.isTTY) && !process.env.NO_COLOR,
+  // One style serves both streams, so color needs both to be terminals: `hindsight check x
+  // 2> errors.log` must not write escape codes into the file.
+  color: Boolean(process.stdout.isTTY && process.stderr.isTTY) && !process.env.NO_COLOR,
+}
+
+/** The part of a stream that reports write failures. */
+export interface ErrorSource {
+  on(event: 'error', listener: (error: NodeJS.ErrnoException) => void): unknown
+}
+
+/**
+ * Ends the process quietly once the reader of `stream` has gone away (`hindsight run x | head`):
+ * the rest of the output has nowhere to go, which is not an error. Other stream errors still throw.
+ */
+export function exitQuietlyOnClosedPipe(stream: ErrorSource, exit: (code: number) => void): void {
+  stream.on('error', (error) => {
+    if (error.code !== 'EPIPE') throw error
+    exit(0)
+  })
 }

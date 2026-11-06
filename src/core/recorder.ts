@@ -71,7 +71,8 @@ function newVM(program: Program, runtime: RuntimeDeps, seed: number): VM {
   })
 }
 
-function startSession(
+/** A recording session at step 0 (exported for the pacing tests; not part of the public API). */
+export function startSession(
   program: Program,
   runtime: RuntimeDeps,
   options: RecordOptions,

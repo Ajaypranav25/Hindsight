@@ -1,10 +1,13 @@
 import { createInterface } from 'node:readline'
 import { parseArgs, USAGE } from './args'
 import { runCommand } from './commands'
-import { nodeIO, type CliIO } from './io'
+import { isEntryPoint } from './entry'
+import { sanitize } from './format'
+import { exitQuietlyOnClosedPipe, nodeIO, type CliIO } from './io'
 import { ReplSession } from './repl'
 
-export const VERSION = '0.2.0'
+/** Kept equal to package.json's version (a test checks). */
+export const VERSION = '0.1.0'
 
 function startRepl(io: CliIO, seed: number): void {
   const session = new ReplSession(io, seed)
@@ -25,7 +28,8 @@ function startRepl(io: CliIO, seed: number): void {
 export function main(argv: readonly string[], io: CliIO = nodeIO): number | null {
   const parsed = parseArgs(argv)
   if (!parsed.ok) {
-    io.stderr(`error: ${parsed.error}\n\n${USAGE}\n`)
+    // The message can quote arguments, which may hold terminal control sequences.
+    io.stderr(`error: ${sanitize(parsed.error)}\n\n${USAGE}\n`)
     return 2
   }
   const { command } = parsed
@@ -44,8 +48,12 @@ export function main(argv: readonly string[], io: CliIO = nodeIO): number | null
   return runCommand(command, io)
 }
 
-const invokedDirectly = /(?:main\.ts|hindsight\.mjs)$/.test(process.argv[1] ?? '')
-if (invokedDirectly) {
+if (isEntryPoint(process.argv[1], import.meta.url)) {
+  // A closed pipe ends the process, but with the outcome the command already decided.
+  const exit = (code: number) =>
+    process.exit(typeof process.exitCode === 'number' ? process.exitCode : code)
+  exitQuietlyOnClosedPipe(process.stdout, exit)
+  exitQuietlyOnClosedPipe(process.stderr, exit)
   const code = main(process.argv.slice(2))
   if (code !== null) process.exitCode = code
 }

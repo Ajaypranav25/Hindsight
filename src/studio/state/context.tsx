@@ -69,5 +69,7 @@ export function pickActions(s: StudioStore): StudioActions {
     updateSettings: s.updateSettings,
     dismissHint: s.dismissHint,
     clearNotice: s.clearNotice,
+    restorePreviousSource: s.restorePreviousSource,
+    openSharedSource: s.openSharedSource,
   }
 }

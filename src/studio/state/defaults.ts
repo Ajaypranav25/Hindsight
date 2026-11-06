@@ -15,12 +15,21 @@ export const DEFAULT_SETTINGS: Settings = {
 export const AUTO_RUN_DELAY_MS = 600
 export const PERSIST_DELAY_MS = 400
 export const NOTICE_DURATION_MS = 6000
+/** Notices that offer a button stay longer, so there is time to use it. */
+export const ACTION_NOTICE_DURATION_MS = 15_000
 
 export const STORAGE_KEYS = {
   source: 'hindsight:source',
+  /** The user's own program, kept when a share link or an example replaced it. */
+  previousSource: 'hindsight:previous-source',
+  /** Present while the stored program arrived with a link or an example and was not edited. */
+  sourceDelivered: 'hindsight:source-delivered',
   settings: 'hindsight:settings',
   hintDismissed: 'hindsight:hint-dismissed',
-  /** Set while a recording runs; still set on load means that run froze or crashed the tab. */
+  /**
+   * Set while a recording runs and until it has been displayed; still set on load means that run
+   * froze or crashed the tab.
+   */
   runInProgress: 'hindsight:run-in-progress',
 } as const
 

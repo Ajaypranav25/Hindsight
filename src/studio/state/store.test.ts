@@ -1,7 +1,16 @@
 import { describe, expect, test } from 'vitest'
 import type { FrameView, ProvenanceEvent, StateView } from '../../core/api-types'
 import { memoryStorage } from '../lib/storage'
-import { DEFAULT_SETTINGS, interestingTime, isSettings, penTime, STORAGE_KEYS } from './defaults'
+import {
+  ACTION_NOTICE_DURATION_MS,
+  DEFAULT_SETTINGS,
+  interestingTime,
+  isSettings,
+  NOTICE_DURATION_MS,
+  penTime,
+  STORAGE_KEYS,
+} from './defaults'
+import { KEPT_AFTER_EXAMPLE_NOTICE, KEPT_AFTER_LINK_NOTICE } from './previous-source'
 import { ManualScheduler } from './scheduler'
 import { currentDiagnostics, isStale, selectedFrame, visibleFrames } from './selectors'
 import { UNFINISHED_RUN_NOTICE } from './initial-state'
@@ -349,6 +358,182 @@ describe('navigation', () => {
   })
 })
 
+describe("keeping the user's own program", () => {
+  test('a share link keeps the stored program to restore and says so', () => {
+    const storage = memoryStorage({ [STORAGE_KEYS.source]: 'print("mine")' })
+    const { store } = setup({ storage, shared: 'print("shared")' })
+    expect(store.getState().source).toBe('print("shared")')
+    expect(store.getState().previousSource).toBe('print("mine")')
+    expect(storage.read(STORAGE_KEYS.previousSource)).toBe('print("mine")')
+    expect(store.getState().notice).toEqual(KEPT_AFTER_LINK_NOTICE)
+  })
+
+  test('restoring brings the program back and runs it; an unedited shared program is not kept', () => {
+    const storage = memoryStorage({ [STORAGE_KEYS.source]: 'print("mine")' })
+    const { store, scheduler, engine } = setup({ storage, shared: 'print("shared")' })
+    store.getState().restorePreviousSource()
+    expect(store.getState().source).toBe('print("mine")')
+    expect(store.getState().previousSource).toBeNull()
+    expect(storage.read(STORAGE_KEYS.previousSource)).toBeNull()
+    expect(store.getState().notice).toBeNull()
+    expect(engine.recorded).toHaveLength(1)
+    scheduler.advance(400)
+    expect(storage.read(STORAGE_KEYS.source)).toBe('print("mine")')
+  })
+
+  test('restoring over an edited shared program keeps the edited one in turn', () => {
+    const storage = memoryStorage({ [STORAGE_KEYS.source]: 'print("mine")' })
+    const { store } = setup({ storage, shared: 'print("shared")' })
+    store.getState().setSource('print("shared, edited")')
+    store.getState().restorePreviousSource()
+    expect(store.getState().source).toBe('print("mine")')
+    expect(store.getState().previousSource).toBe('print("shared, edited")')
+  })
+
+  test('a second link does not push out the kept program', () => {
+    const storage = memoryStorage({ [STORAGE_KEYS.source]: 'print("mine")' })
+    const { store } = setup({ storage, shared: 'print("link one")' })
+    store.getState().openSharedSource('print("link two")')
+    expect(store.getState().source).toBe('print("link two")')
+    expect(store.getState().previousSource).toBe('print("mine")')
+    expect(storage.read(STORAGE_KEYS.previousSource)).toBe('print("mine")')
+  })
+
+  test('picking an example after opening a link keeps the original program', () => {
+    const storage = memoryStorage({ [STORAGE_KEYS.source]: 'print("mine")' })
+    const { store } = setup({ storage, shared: 'print("shared")' })
+    store.getState().loadExample('loop')
+    expect(store.getState().previousSource).toBe('print("mine")')
+  })
+
+  test('after a reload, an unedited shared program still is not the user’s own', () => {
+    const storage = memoryStorage({ [STORAGE_KEYS.source]: 'print("mine")' })
+    const first = setup({ storage, shared: 'print("link one")' })
+    first.scheduler.advance(1000)
+    const reloaded = setup({ storage, shared: 'print("link two")' })
+    expect(reloaded.store.getState().previousSource).toBe('print("mine")')
+    expect(storage.read(STORAGE_KEYS.previousSource)).toBe('print("mine")')
+  })
+
+  test('the slot holds the most recent program the user wrote', () => {
+    const storage = memoryStorage({ [STORAGE_KEYS.source]: 'print("mine")' })
+    const { store, scheduler } = setup({ storage, shared: 'print("shared")' })
+    store.getState().setSource('print("shared, edited")')
+    scheduler.advance(400)
+    store.getState().loadExample('loop')
+    expect(store.getState().previousSource).toBe('print("shared, edited")')
+  })
+
+  test('when the kept copy cannot be stored, the program is not overwritten and nothing claims it was kept', () => {
+    const backing = memoryStorage({ [STORAGE_KEYS.source]: 'print("mine")' })
+    const storage = {
+      ...backing,
+      write: (key: string, value: string) => {
+        if (key !== STORAGE_KEYS.previousSource) backing.write(key, value)
+      },
+    }
+    const { store, scheduler } = setup({ storage, shared: 'print("shared")' })
+    expect(store.getState().source).toBe('print("shared")')
+    expect(store.getState().notice).toBeNull()
+    expect(backing.read(STORAGE_KEYS.source)).toBe('print("mine")')
+    scheduler.advance(1000)
+    expect(backing.read(STORAGE_KEYS.source)).toBe('print("mine")')
+  })
+
+  test('an example whose kept copy cannot be stored is shown but not saved over the program', () => {
+    const backing = memoryStorage({ [STORAGE_KEYS.source]: 'print("mine")' })
+    const storage = {
+      ...backing,
+      write: (key: string, value: string) => {
+        if (key !== STORAGE_KEYS.previousSource) backing.write(key, value)
+      },
+    }
+    const { store, scheduler } = setup({ storage })
+    store.getState().loadExample('loop')
+    expect(store.getState().source).toBe(EXAMPLES[1]!.source)
+    expect(store.getState().notice).toBeNull()
+    scheduler.advance(1000)
+    expect(backing.read(STORAGE_KEYS.source)).toBe('print("mine")')
+  })
+
+  test('a pasted link runs only when auto-run is on', () => {
+    const { store, engine } = setup()
+    store.getState().updateSettings({ autoRun: false })
+    store.getState().openSharedSource('print("pasted")')
+    expect(store.getState().source).toBe('print("pasted")')
+    expect(engine.recorded).toHaveLength(0)
+    expect(store.getState().compile?.ok).toBe(true)
+    store.getState().updateSettings({ autoRun: true })
+    store.getState().openSharedSource('print("pasted again")')
+    expect(engine.recorded).toHaveLength(1)
+  })
+
+  test('nothing is kept when the replaced program is an unchanged example or the same text', () => {
+    const fromExample = setup({
+      storage: memoryStorage({ [STORAGE_KEYS.source]: EXAMPLES[1]!.source }),
+      shared: 'print("shared")',
+    })
+    expect(fromExample.store.getState().previousSource).toBeNull()
+    expect(fromExample.store.getState().notice).toBeNull()
+    const same = setup({
+      storage: memoryStorage({ [STORAGE_KEYS.source]: 'print("same")' }),
+      shared: 'print("same")',
+    })
+    expect(same.store.getState().previousSource).toBeNull()
+    expect(same.storage.read(STORAGE_KEYS.previousSource)).toBeNull()
+  })
+
+  test('loading an example keeps a program the user wrote and offers it back', () => {
+    const storage = memoryStorage({ [STORAGE_KEYS.source]: 'print("mine")' })
+    const { store } = setup({ storage })
+    store.getState().loadExample('loop')
+    expect(store.getState().source).toBe(EXAMPLES[1]!.source)
+    expect(store.getState().previousSource).toBe('print("mine")')
+    expect(storage.read(STORAGE_KEYS.previousSource)).toBe('print("mine")')
+    expect(store.getState().notice).toEqual(KEPT_AFTER_EXAMPLE_NOTICE)
+  })
+
+  test('switching between examples keeps nothing and leaves an earlier backup alone', () => {
+    const storage = memoryStorage({ [STORAGE_KEYS.previousSource]: 'print("older")' })
+    const { store } = setup({ storage })
+    store.getState().loadExample('loop')
+    expect(store.getState().previousSource).toBe('print("older")')
+    expect(store.getState().notice).toBeNull()
+  })
+
+  test('the restore notice stays a while longer than ordinary notices, then clears', async () => {
+    const storage = memoryStorage({ [STORAGE_KEYS.source]: 'print("mine")' })
+    const { store, scheduler } = setup({ storage, shared: 'print("shared")' })
+    void store.getState().startup()
+    scheduler.advance(NOTICE_DURATION_MS)
+    expect(store.getState().notice).toEqual(KEPT_AFTER_LINK_NOTICE)
+    scheduler.advance(ACTION_NOTICE_DURATION_MS)
+    expect(store.getState().notice).toBeNull()
+  })
+
+  test('a link pasted into an open studio keeps the program it replaces, too', () => {
+    const storage = memoryStorage({ [STORAGE_KEYS.source]: 'print("mine")' })
+    const { store, scheduler, engine } = setup({ storage })
+    store.getState().toggleBreakpoint(1)
+    store.getState().openSharedSource('print("pasted")')
+    expect(store.getState().source).toBe('print("pasted")')
+    expect(store.getState().breakpoints.size).toBe(0)
+    expect(engine.recorded).toHaveLength(1)
+    expect(store.getState().previousSource).toBe('print("mine")')
+    expect(store.getState().notice).toEqual(KEPT_AFTER_LINK_NOTICE)
+    scheduler.advance(400)
+    expect(storage.read(STORAGE_KEYS.source)).toBe('print("pasted")')
+    expect(storage.read(STORAGE_KEYS.previousSource)).toBe('print("mine")')
+  })
+
+  test('restoring with nothing kept does nothing', () => {
+    const { store, engine } = setup()
+    store.getState().restorePreviousSource()
+    expect(store.getState().source).toBe(EXAMPLES[0]!.source)
+    expect(engine.recorded).toHaveLength(0)
+  })
+})
+
 describe('review regressions', () => {
   test('a shared program is stored at once, so a reload without the fragment keeps it', () => {
     const storage = memoryStorage({ [STORAGE_KEYS.source]: 'print("stored")' })
@@ -356,23 +541,54 @@ describe('review regressions', () => {
     expect(storage.read(STORAGE_KEYS.source)).toBe('print("shared")')
   })
 
-  test('marks a run in progress in storage and clears the mark when it completes', async () => {
-    const { store, engine, storage } = setup()
+  test('marks a run in progress and clears the mark once the recording has been displayed', async () => {
+    const { store, engine, storage, scheduler } = setup()
     const running = store.getState().startup()
     expect(storage.read(STORAGE_KEYS.runInProgress)).not.toBeNull()
     await engine.resolveNext(fakeRecording({ length: 3 }))
     await running
+    // Displaying a recording replays the program up to the pen, which can freeze the tab as surely
+    // as recording it, so the mark outlives the render that follows the run.
+    expect(storage.read(STORAGE_KEYS.runInProgress)).not.toBeNull()
+    scheduler.advance(0)
+    expect(storage.read(STORAGE_KEYS.runInProgress)).toBeNull()
+  })
+
+  test('an extension keeps the mark until it has been displayed', async () => {
+    const { store, engine, storage, scheduler } = setup()
+    void store.getState().run()
+    await engine.resolveNext(
+      fakeRecording({ length: 5, outcome: { kind: 'step-limit', maxSteps: 5 } }),
+    )
+    scheduler.advance(0)
+    const extending = store.getState().extend()
+    expect(storage.read(STORAGE_KEYS.runInProgress)).not.toBeNull()
+    await extending
+    expect(storage.read(STORAGE_KEYS.runInProgress)).not.toBeNull()
+    scheduler.advance(0)
     expect(storage.read(STORAGE_KEYS.runInProgress)).toBeNull()
   })
 
   test('an aborted run keeps the mark until its replacement completes', async () => {
-    const { store, engine, storage } = setup()
+    const { store, engine, storage, scheduler } = setup()
     void store.getState().run()
     void store.getState().run()
     await engine.resolveNext(fakeRecording({ length: 3 }))
+    scheduler.advance(0)
     expect(storage.read(STORAGE_KEYS.runInProgress)).not.toBeNull()
     await engine.resolveNext(fakeRecording({ length: 3 }))
+    scheduler.advance(0)
     expect(storage.read(STORAGE_KEYS.runInProgress)).toBeNull()
+  })
+
+  test('a run started before the previous one was displayed keeps its own mark', async () => {
+    const { store, engine, storage, scheduler } = setup()
+    const first = store.getState().run()
+    await engine.resolveNext(fakeRecording({ length: 3 }))
+    await first
+    void store.getState().run()
+    scheduler.advance(0)
+    expect(storage.read(STORAGE_KEYS.runInProgress)).not.toBeNull()
   })
 
   test('does not repeat a run that never finished; Run tries again and clears the notice', async () => {
@@ -380,7 +596,7 @@ describe('review regressions', () => {
       [STORAGE_KEYS.source]: 'print("freezes")',
       [STORAGE_KEYS.runInProgress]: 'true',
     })
-    const { store, engine } = setup({ storage })
+    const { store, engine, scheduler } = setup({ storage })
     expect(store.getState().notice).toEqual({ text: UNFINISHED_RUN_NOTICE, tone: 'error' })
     await store.getState().startup()
     expect(engine.recorded).toHaveLength(0)
@@ -390,6 +606,7 @@ describe('review regressions', () => {
     expect(store.getState().notice).toBeNull()
     await engine.resolveNext(fakeRecording({ length: 2 }))
     await running
+    scheduler.advance(0)
     expect(storage.read(STORAGE_KEYS.runInProgress)).toBeNull()
   })
 

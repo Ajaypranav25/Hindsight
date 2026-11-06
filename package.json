@@ -8,6 +8,9 @@
   "bin": {
     "hindsight": "dist/cli/hindsight.mjs"
   },
+  "files": [
+    "dist/cli/hindsight.mjs"
+  ],
   "engines": {
     "node": ">=22.12"
   },
@@ -21,13 +24,15 @@
     "sight": "tsx src/cli/main.ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:perf": "vitest run --config vitest.perf.config.ts",
     "coverage": "vitest run --coverage",
     "e2e": "playwright test",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.core.json",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check": "npm run typecheck && npm run lint && npm run test"
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm run test",
+    "prepack": "npm run build:cli"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",

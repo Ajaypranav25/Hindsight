@@ -9,8 +9,9 @@ export default defineConfig({
   reporter: [['list']],
   use: {
     baseURL: `http://localhost:${PORT}`,
-    // Use the locally installed Google Chrome so no browser download is needed.
-    channel: 'chrome',
+    // Locally, the installed Google Chrome saves a browser download; CI installs Playwright's own
+    // Chromium (`npx playwright install --with-deps chromium`) so runs do not depend on the image.
+    channel: process.env.CI ? undefined : 'chrome',
     headless: true,
     viewport: { width: 1440, height: 900 },
   },

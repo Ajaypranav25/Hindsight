@@ -38,6 +38,8 @@ export type RunStatus =
 export interface Notice {
   readonly text: string
   readonly tone: 'info' | 'error'
+  /** A button the notice offers: bring back the program a link or an example replaced. */
+  readonly action?: 'restore-previous'
 }
 
 /** The write being explained after an origin jump: the pen sits one step after `time`. */
@@ -76,6 +78,8 @@ export interface StudioState {
   readonly notice: Notice | null
   /** Set by `jumpToOrigin`; any later seek, run or example load clears it. */
   readonly originMark: OriginMark | null
+  /** The user's own program, kept when a share link or an example replaced it (else null). */
+  readonly previousSource: string | null
 }
 
 export interface StudioActions {
@@ -115,6 +119,13 @@ export interface StudioActions {
   updateSettings(patch: Partial<Settings>): void
   dismissHint(): void
   clearNotice(): void
+  /**
+   * Swaps `previousSource` back into the editor and records it; the program it replaces is kept
+   * in turn when it is the user's own. Does nothing when no program was kept.
+   */
+  restorePreviousSource(): void
+  /** Opens a share link's program in a running studio, keeping the program it replaces. */
+  openSharedSource(source: string): void
 }
 
 export type StudioStore = StudioState & StudioActions

@@ -8,6 +8,7 @@ import type {
 } from '../../core/api-types'
 import { writeJson } from '../lib/storage'
 import {
+  ACTION_NOTICE_DURATION_MS,
   AUTO_RUN_DELAY_MS,
   NOTICE_DURATION_MS,
   penTime,
@@ -20,6 +21,12 @@ import {
   UNFINISHED_RUN_NOTICE,
   type Startup,
 } from './initial-state'
+import {
+  KEPT_AFTER_EXAMPLE_NOTICE,
+  KEPT_AFTER_LINK_NOTICE,
+  keepPreviousSource,
+  type KeepResult,
+} from './previous-source'
 import type {
   Engine,
   Example,
@@ -54,13 +61,41 @@ type Set = StoreApi<StudioStore>['setState']
 type Get = StoreApi<StudioStore>['getState']
 
 export function createStudioStore(deps: StoreDeps, startup: Startup): StoreApi<StudioStore> {
-  // A shared program becomes the session's program, so a reload (after the link's fragment has
-  // been removed) keeps it rather than reverting to the previously stored source.
-  if (startup.sharedSource !== null) deps.storage.write(STORAGE_KEYS.source, startup.sharedSource)
+  const { storage } = deps
+  let kept: KeepResult = 'not-needed'
+  if (startup.sharedSource !== null) {
+    // The program the link replaces is kept first, so opening a link never destroys work.
+    kept = keepPreviousSource(storage, deps.examples, {
+      current: storage.read(STORAGE_KEYS.source),
+      delivered: storage.read(STORAGE_KEYS.sourceDelivered) !== null,
+      incoming: startup.sharedSource,
+    })
+    // A shared program becomes the session's program, so a reload (after the link's fragment has
+    // been removed) keeps it rather than reverting to the previously stored source; but not when
+    // the program it replaces could not be kept.
+    if (kept !== 'failed') {
+      storage.write(STORAGE_KEYS.source, startup.sharedSource)
+      storage.write(STORAGE_KEYS.sourceDelivered, 'true')
+    }
+  }
+  const origin: ProgramOrigin = {
+    delivered: startup.sharedSource !== null || storage.read(STORAGE_KEYS.sourceDelivered) !== null,
+    persistBlocked: kept === 'failed',
+  }
   return createStore<StudioStore>()((set, get) => {
-    const controller = new Controller(deps, set, get)
-    return { ...initialState(deps.storage, deps.examples, startup), ...controller.actions() }
+    const controller = new Controller(deps, set, get, origin)
+    const state = initialState(storage, deps.examples, startup)
+    const notice = state.notice ?? (kept === 'kept' ? KEPT_AFTER_LINK_NOTICE : null)
+    return { ...state, notice, ...controller.actions() }
   })
+}
+
+/** Where the editor's program came from, as far as keeping and saving it are concerned. */
+interface ProgramOrigin {
+  /** It arrived with a link or an example and was not edited since (so it is not kept). */
+  readonly delivered: boolean
+  /** Keeping the program it replaced failed, so it is not saved over that one until edited. */
+  readonly persistBlocked: boolean
 }
 
 /** Owns the timers and the in-flight recording; every state change goes through `set`. */
@@ -75,13 +110,20 @@ class Controller {
   private progress = 0
   /** The previous page's run never finished, so the page-load run is skipped. */
   private readonly unfinishedAtLoad: boolean
+  /** See ProgramOrigin: the editor's program is unedited text from a link or an example. */
+  private delivered: boolean
+  /** See ProgramOrigin: saving is held back until the user edits. */
+  private persistBlocked: boolean
 
   constructor(
     private readonly deps: StoreDeps,
     private readonly set: Set,
     private readonly get: Get,
+    origin: ProgramOrigin,
   ) {
     this.unfinishedAtLoad = lastRunUnfinished(deps.storage)
+    this.delivered = origin.delivered
+    this.persistBlocked = origin.persistBlocked
   }
 
   actions(): StudioActions {
@@ -111,6 +153,8 @@ class Controller {
         this.deps.storage.write(STORAGE_KEYS.hintDismissed, 'true')
       },
       clearNotice: () => this.set({ notice: null }),
+      restorePreviousSource: () => this.restorePreviousSource(),
+      openSharedSource: (source) => this.openSharedSource(source),
     }
   }
 
@@ -127,6 +171,9 @@ class Controller {
         ? this.settledStatus()
         : { kind: 'compile-error', diagnostics: compile.diagnostics },
     })
+    // An edit makes the program the user's own, and saving it is the user's choice.
+    this.delivered = false
+    this.persistBlocked = false
     this.schedulePersist()
     this.cancelAutoRun()
     if (compile.ok && this.get().settings.autoRun) {
@@ -140,22 +187,80 @@ class Controller {
 
   private loadExample(id: string): void {
     const example = this.deps.examples.find((candidate) => candidate.id === id)
-    if (!example) return
+    if (example) this.replaceKeepingPrevious(example.source, KEPT_AFTER_EXAMPLE_NOTICE, true)
+  }
+
+  /** A share link opened in a running studio; it runs only when auto-run is on. */
+  private openSharedSource(source: string): void {
+    this.replaceKeepingPrevious(source, KEPT_AFTER_LINK_NOTICE, this.get().settings.autoRun)
+  }
+
+  /**
+   * Replaces the program with delivered text, first keeping the user's own and saying so with
+   * `notice`. When the copy cannot be stored, the new program is shown but not saved over it.
+   */
+  private replaceKeepingPrevious(source: string, notice: Notice, run: boolean): void {
+    const current = this.get().source
+    const result = keepPreviousSource(this.deps.storage, this.deps.examples, {
+      current,
+      delivered: this.delivered,
+      incoming: source,
+    })
+    if (result === 'failed') this.persistBlocked = true
+    this.replaceProgram(source, { delivered: true, run })
+    if (result !== 'kept') return
+    this.set({ previousSource: current })
+    this.notify(notice)
+  }
+
+  private restorePreviousSource(): void {
+    const { previousSource, source } = this.get()
+    if (previousSource === null) return
+    const result = keepPreviousSource(this.deps.storage, this.deps.examples, {
+      current: source,
+      delivered: this.delivered,
+      incoming: previousSource,
+    })
+    if (result !== 'kept') this.deps.storage.remove(STORAGE_KEYS.previousSource)
+    // The kept program is the user's own work, so it is not delivered text.
+    this.replaceProgram(previousSource, { delivered: false, run: true })
+    this.set({ previousSource: result === 'kept' ? source : null, notice: null })
+  }
+
+  /**
+   * Puts a whole new program in the editor (example, link or restore) and saves it; then records
+   * it, or (when `run` is false) only compiles it.
+   */
+  private replaceProgram(source: string, how: { delivered: boolean; run: boolean }): void {
     this.stopPlay()
     this.cancelAutoRun()
+    this.delivered = how.delivered
     this.set({
-      source: example.source,
-      exampleId: id,
+      source,
+      exampleId: this.deps.examples.find((example) => example.source === source)?.id ?? null,
       breakpoints: new Set(),
       watch: null,
       originMark: null,
     })
     this.schedulePersist()
     this.penStrategy = 'example'
-    void this.run()
+    if (how.run) {
+      void this.run()
+      return
+    }
+    const compile = this.deps.engine.compile(source)
+    this.set({
+      compile,
+      status: compile.ok
+        ? this.settledStatus()
+        : { kind: 'compile-error', diagnostics: compile.diagnostics },
+    })
   }
 
   private async startup(): Promise<void> {
+    // A notice that opened the page with a button gets the usual timeout from now.
+    const { notice } = this.get()
+    if (notice?.action !== undefined) this.notify(notice)
     if (!this.unfinishedAtLoad) return this.run()
     // Show the program (and its diagnostics) but do not run it again: it may freeze the tab anew.
     const compile = this.deps.engine.compile(this.get().source)
@@ -202,6 +307,7 @@ class Controller {
       watch: previous.recordedSource === source ? previous.watch : null,
       originMark: null,
     })
+    this.clearRunMarkAfterDisplay()
   }
 
   private placePen(recording: Recording): number {
@@ -232,6 +338,7 @@ class Controller {
     })
     if (!this.finishRecording(token)) return
     this.set({ recording: extended, status: this.completedStatus() })
+    this.clearRunMarkAfterDisplay()
   }
 
   /**
@@ -250,8 +357,18 @@ class Controller {
   private finishRecording(token: RunToken): boolean {
     if (this.current !== token || token.aborted) return false
     this.current = null
-    this.deps.storage.remove(STORAGE_KEYS.runInProgress)
     return true
+  }
+
+  /**
+   * Removes the run marker once the new recording has been displayed. Displaying it replays the
+   * program up to the pen, which can freeze the tab as surely as recording it; the timer only
+   * fires after that render has finished. A run started meanwhile keeps its own marker.
+   */
+  private clearRunMarkAfterDisplay(): void {
+    this.deps.scheduler.setTimeout(() => {
+      if (this.current === null) this.deps.storage.remove(STORAGE_KEYS.runInProgress)
+    }, 0)
   }
 
   private reportProgress(token: RunToken, progress: number): void {
@@ -280,11 +397,16 @@ class Controller {
     this.autoRunTimer = null
   }
 
+  /** Saves the program shortly, with whether it is delivered text (unless saving is held back). */
   private schedulePersist(): void {
     if (this.persistTimer !== null) this.deps.scheduler.clearTimeout(this.persistTimer)
     this.persistTimer = this.deps.scheduler.setTimeout(() => {
       this.persistTimer = null
-      this.deps.storage.write(STORAGE_KEYS.source, this.get().source)
+      if (this.persistBlocked) return
+      const { storage } = this.deps
+      storage.write(STORAGE_KEYS.source, this.get().source)
+      if (this.delivered) storage.write(STORAGE_KEYS.sourceDelivered, 'true')
+      else storage.remove(STORAGE_KEYS.sourceDelivered)
     }, PERSIST_DELAY_MS)
   }
 
@@ -373,10 +495,13 @@ class Controller {
   private notify(notice: Notice): void {
     if (this.noticeTimer !== null) this.deps.scheduler.clearTimeout(this.noticeTimer)
     this.set({ notice })
-    this.noticeTimer = this.deps.scheduler.setTimeout(() => {
-      this.noticeTimer = null
-      if (this.get().notice === notice) this.set({ notice: null })
-    }, NOTICE_DURATION_MS)
+    this.noticeTimer = this.deps.scheduler.setTimeout(
+      () => {
+        this.noticeTimer = null
+        if (this.get().notice === notice) this.set({ notice: null })
+      },
+      notice.action === undefined ? NOTICE_DURATION_MS : ACTION_NOTICE_DURATION_MS,
+    )
   }
 
   // --- settings -----------------------------------------------------------------------------

@@ -1,0 +1,3 @@
+// İ (U+0130) lowercases to i plus a combining dot, so lower's result is size-checked too.
+let s = repeat("İ", 2 ** 23 + 1)
+let t = lower(s) // expect runtime error R025: result too large

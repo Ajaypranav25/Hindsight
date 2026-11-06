@@ -30,8 +30,13 @@ export function badArgument(
   return ctx.fail('R019', message)
 }
 
-/** A string the native just built, charged against the allocation budget (SPEC §10.5). */
+/**
+ * A string the native just built: R025 when it exceeds the size limit (case mapping can lengthen
+ * text, so `upper` and `lower` only learn the length by building it), else charged against the
+ * allocation budget (SPEC §10.5).
+ */
 export function fresh(ctx: NativeContext, text: string): string {
+  if (text.length > SIZE_LIMIT) return tooLarge(ctx)
   ctx.charge(text.length)
   return text
 }

@@ -42,5 +42,6 @@ export function initialState(
     hintDismissed: storage.read(STORAGE_KEYS.hintDismissed) === 'true',
     notice: lastRunUnfinished(storage) ? { text: UNFINISHED_RUN_NOTICE, tone: 'error' } : null,
     originMark: null,
+    previousSource: storage.read(STORAGE_KEYS.previousSource),
   }
 }

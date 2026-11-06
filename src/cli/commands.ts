@@ -1,12 +1,13 @@
 import type {
+  LocalInfo,
+  Program,
   ProvenanceEvent,
   Recording,
   StateView,
   TracedValue,
   WriteTarget,
-} from '../core/api-types'
+} from '../core/index'
 import { compile, disassemble, LineIndex, record, run } from '../core/index'
-import type { Program } from '../core/bytecode'
 import { checkSource } from '../conformance/check'
 import type { Command } from './args'
 import {
@@ -179,47 +180,76 @@ function describeOutput(recording: Recording, view: StateView, style: Style): st
 
 // --- why ----------------------------------------------------------------------------------------
 
+/** The most calls of a function `why` lists one by one; the rest are only counted. */
+export const MAX_WHY_CALLS = 50
+
+/** One binding of a variable: a global, or a local in one call of its function. */
 interface Binding {
   readonly target: WriteTarget
   readonly at: number
-  readonly where: string
 }
 
-/** Finds the first activation of variable `name` declared on `line`. */
-export function findBinding(
+interface Bindings {
+  readonly where: string
+  /** The global's binding, or one binding per call (in call order, at most MAX_WHY_CALLS). */
+  readonly bindings: readonly Binding[]
+  /** Calls in which the local was in scope; can exceed `bindings.length`. */
+  readonly calls: number
+}
+
+/** Finds variable `name` declared on `line`: a global, or a local with a binding per call. */
+export function findBindings(
   recording: Recording,
   source: string,
   line: number,
   name: string,
-): Binding | null {
+): Bindings | null {
   const index = new LineIndex(source)
   const global = recording.program.globals.find(
     (g) => g.name === name && index.lineOf(g.declSpan.start) === line,
   )
-  if (global) return { target: { kind: 'global', name }, at: recording.length, where: 'global' }
+  if (global) {
+    const binding = { target: { kind: 'global', name } as const, at: recording.length }
+    return { where: 'global', bindings: [binding], calls: 1 }
+  }
   for (const proto of recording.program.protos) {
     const local = proto.debug.locals.find(
       (l) => l.name === name && !l.hidden && index.lineOf(l.declSpan.start) === line,
     )
     if (!local) continue
-    for (let t = 0; t < recording.length; t++) {
-      const location = recording.locationAt(t)
-      if (
-        location?.protoId !== proto.id ||
-        location.ip < local.startIp ||
-        location.ip >= local.endIp
-      )
-        continue
-      const frame = recording.stateAt(t).frames.at(-1)
-      if (!frame) continue
-      return {
-        target: { kind: 'local', frameUid: frame.uid, slot: local.slot },
-        at: t,
-        where: proto.name ?? 'lambda',
-      }
-    }
+    const starts = firstStepsInScope(recording, proto.id, local)
+    if (starts.length === 0) continue
+    const bindings = starts.slice(0, MAX_WHY_CALLS).flatMap((at): Binding[] => {
+      const frame = recording.stateAt(at).frames.at(-1)
+      if (!frame) return []
+      return [{ target: { kind: 'local', frameUid: frame.uid, slot: local.slot }, at }]
+    })
+    return { where: proto.name ?? 'lambda', bindings, calls: starts.length }
   }
   return null
+}
+
+/**
+ * For each call of function `protoId`, the first step at which `local` is in scope. A call begins
+ * where the trace enters a depth from a shallower one, so recursive calls stay apart.
+ */
+function firstStepsInScope(recording: Recording, protoId: number, local: LocalInfo): number[] {
+  const depths = recording.depthSeries()
+  const callStarts: number[] = []
+  const listed = new Set<number>()
+  const steps: number[] = []
+  for (let t = 0; t < recording.length; t++) {
+    const depth = depths[t]!
+    if (t === 0 || depths[t - 1]! < depth) callStarts[depth] = t
+    const location = recording.locationAt(t)
+    if (location?.protoId !== protoId || location.ip < local.startIp || location.ip >= local.endIp)
+      continue
+    const call = callStarts[depth]!
+    if (listed.has(call)) continue
+    listed.add(call)
+    steps.push(t)
+  }
+  return steps
 }
 
 function tracedText(value: TracedValue): string {
@@ -234,30 +264,54 @@ function eventLine(recording: Recording, source: string, event: ProvenanceEvent)
   return `line ${new LineIndex(source).lineOf(location.stmtSpan.start)}`
 }
 
+/** The history of one binding, one event per line, each line starting with `indent`. */
+function historyLines(
+  recording: Recording,
+  source: string,
+  style: Style,
+  name: string,
+  binding: Binding,
+  indent: string,
+): string[] {
+  const history = recording.history(binding.target, binding.at, { limit: 200 })
+  const lines = history.events.map((event) => {
+    const step = `step ${event.time.toLocaleString('en-US')}`.padEnd(14)
+    const where = style.dim(eventLine(recording, source, event))
+    return `${indent}${style.dim(step)} ${event.kind.padEnd(8)} ${name} = ${tracedText(event.value)}  ${where}`
+  })
+  if (history.truncated)
+    lines.push(style.dim(`${indent}(${history.total} events in all; evenly sampled)`))
+  return lines
+}
+
 function why(io: CliIO, style: Style, command: Extract<Command, { kind: 'why' }>): ExitCode {
   const loaded = load(io, style, command.file)
   if (!loaded) return 1
   const recording = record(loaded.program, { maxSteps: command.maxSteps, seed: command.seed })
-  const binding = findBinding(recording, loaded.source, command.line, command.name)
-  if (!binding) {
+  const found = findBindings(recording, loaded.source, command.line, command.name)
+  const name = sanitize(command.name)
+  if (!found) {
     io.stderr(
-      `${style.error('error')}: no variable '${sanitize(command.name)}' declared on line ${command.line} was ever live in this run\n`,
+      `${style.error('error')}: no variable '${name}' declared on line ${command.line} was ever live in this run\n`,
     )
     return 1
   }
-  const history = recording.history(binding.target, binding.at, { limit: 200 })
+  const several = found.calls > 1
+  const calls = several ? `; ${found.calls.toLocaleString('en-US')} calls` : ''
   const lines = [
     style.bold(
-      `history of '${sanitize(command.name)}' (declared on line ${command.line}, ${sanitize(binding.where)}):`,
+      `history of '${name}' (declared on line ${command.line}, ${sanitize(found.where)}${calls}):`,
     ),
   ]
-  for (const event of history.events) {
-    const step = `step ${event.time.toLocaleString('en-US')}`.padEnd(14)
+  found.bindings.forEach((binding, index) => {
+    if (several) lines.push(`  ${style.accent(`call ${index + 1}`)}`)
     lines.push(
-      `  ${style.dim(step)} ${event.kind.padEnd(8)} ${sanitize(command.name)} = ${tracedText(event.value)}  ${style.dim(eventLine(recording, loaded.source, event))}`,
+      ...historyLines(recording, loaded.source, style, name, binding, several ? '    ' : '  '),
     )
-  }
-  if (history.truncated) lines.push(style.dim(`  (${history.total} events in all; evenly sampled)`))
+  })
+  const unlisted = found.calls - found.bindings.length
+  if (unlisted > 0)
+    lines.push(style.dim(`  (${unlisted.toLocaleString('en-US')} more calls not listed)`))
   io.stdout(`${lines.join('\n')}\n`)
   return 0
 }

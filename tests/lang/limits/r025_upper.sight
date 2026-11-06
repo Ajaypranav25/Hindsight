@@ -1,0 +1,3 @@
+// Case mapping can lengthen text (ß becomes SS), so upper's result is size-checked too.
+let s = repeat("ß", 2 ** 23 + 1)
+let t = upper(s) // expect runtime error R025: result too large
