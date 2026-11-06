@@ -43,6 +43,7 @@ const SPAN_CURRENT = Decoration.mark({ class: 'ed-span-current' })
 const SPAN_CALLER = Decoration.mark({ class: 'ed-span-caller' })
 const SPAN_ORIGIN = Decoration.mark({ class: 'ed-span-origin' })
 const ORIGIN_LABEL = Decoration.widget({ widget: new OriginLabelWidget(), side: 1 })
+const LINE_CULPRIT = Decoration.line({ class: 'ed-line-culprit' })
 
 /** 1-based line of the last character of `span` (its start line when empty). */
 function lastLineOf(doc: Text, span: Span): number {
@@ -94,6 +95,12 @@ export function overlayDecorations(state: EditorState, overlay: EditorOverlay): 
   if (origin && origin.end > origin.start && origin.end <= state.doc.length) {
     ranges.push(SPAN_ORIGIN.range(origin.start, origin.end))
     ranges.push(ORIGIN_LABEL.range(origin.end))
+  }
+  const culprit = overlay.culprit
+  if (culprit) {
+    const last = Math.min(culprit.end, state.doc.lines)
+    for (let line = Math.max(1, culprit.start); line <= last; line++)
+      ranges.push(LINE_CULPRIT.range(state.doc.line(line).from))
   }
   for (const hint of overlay.hints) {
     if (hint.line > state.doc.lines) continue

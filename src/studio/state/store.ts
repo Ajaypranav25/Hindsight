@@ -7,6 +7,7 @@ import type {
   WriteTarget,
 } from '../../core/api-types'
 import { writeJson } from '../lib/storage'
+import { bugFinderActions } from './bug-finder'
 import {
   ACTION_NOTICE_DURATION_MS,
   AUTO_RUN_DELAY_MS,
@@ -155,6 +156,7 @@ class Controller {
       clearNotice: () => this.set({ notice: null }),
       restorePreviousSource: () => this.restorePreviousSource(),
       openSharedSource: (source) => this.openSharedSource(source),
+      ...bugFinderActions(this.get, this.set),
     }
   }
 

@@ -5,6 +5,7 @@ import { useStateView, useStudio, useStudioActions } from '../state/context'
 import { isStale } from '../state/selectors'
 import { setEditorCursorLine } from './cursor-line'
 import { scrollStatementIntoView } from './decorations'
+import { culpritLines } from '../panels/bug-finder-model'
 import { minimalChange } from './doc-sync'
 import { maxHitCount } from './gutter-math'
 import { LibraryChip } from './LibraryChip'
@@ -29,6 +30,8 @@ export function Editor() {
   const breakpoints = useStudio((s) => s.breakpoints)
   const compileResult = useStudio((s) => s.compile)
   const originMark = useStudio((s) => s.originMark)
+  const bugFinder = useStudio((s) => s.bugFinder)
+  const culprit = useMemo(() => culpritLines(bugFinder, recording), [bugFinder, recording])
   const view = useStateView()
   const actions = useStudioActions()
 
@@ -71,8 +74,9 @@ export function Editor() {
   const overlay = useMemo(() => {
     const base = computeOverlay({ view, stale, selectedFrameUid, source })
     const originSpan = stale ? null : originSpanAt(recording, originMark, time, source.length)
-    return originSpan ? { ...base, originSpan } : base
-  }, [view, stale, selectedFrameUid, source, recording, originMark, time])
+    const marked = originSpan ? { ...base, originSpan } : base
+    return culprit ? { ...marked, culprit } : marked
+  }, [view, stale, selectedFrameUid, source, recording, originMark, time, culprit])
 
   useEffect(() => {
     const editor = editorRef.current

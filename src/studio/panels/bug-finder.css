@@ -1,0 +1,143 @@
+/* The bug finder panel (ARCHITECTURE §11.3): questions about calls, answered while the pen moves. */
+
+.bf {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding-bottom: var(--space-2);
+}
+
+.bf-intro,
+.bf-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+}
+
+.bf-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.bf-heading {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.bf-heading:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--radius-sm);
+}
+
+.bf-text,
+.bf-ask {
+  margin: 0;
+  font: var(--text-sm) / 1.45 var(--font-ui);
+  color: var(--ink-muted);
+}
+
+.bf-ask {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.bf-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.bf-call {
+  padding: var(--space-2) var(--space-3);
+  border-left: 2px solid var(--marker);
+  background: var(--surface-sunken);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  min-width: 0;
+}
+
+.bf-signature,
+.bf-outcome {
+  margin: 0;
+  font: var(--text-sm) / 1.5 var(--font-ui);
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
+}
+
+.bf-signature code,
+.bf-outcome code {
+  font-family: var(--font-mono);
+  color: var(--ink);
+}
+
+.bf-signature code {
+  font-weight: 600;
+}
+
+.bf-outcome[data-outcome='raised'],
+.bf-outcome[data-outcome='unfinished'] {
+  color: var(--error);
+}
+
+.bf-answer[data-answer='right'] {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.bf-answer[data-answer='wrong'] {
+  border-color: var(--pen);
+  color: var(--pen);
+}
+
+.bf-answer {
+  min-width: 5.5rem;
+  justify-content: center;
+  font-weight: 600;
+}
+
+.bf-found {
+  margin: 0;
+  font: 600 var(--text-md) / 1.4 var(--font-ui);
+  color: var(--ink);
+}
+
+.bf-found[data-certainty='likely'] {
+  color: var(--warn);
+}
+
+.bf-tools {
+  padding-top: var(--space-1);
+  border-top: 1px solid var(--rule);
+}
+
+.bf-error {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-left: 2px solid var(--error);
+  background: var(--error-soft);
+}
+
+.bf-from {
+  padding: 0;
+}
+
+.bf-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The panel has room for a question when it is open in the instrument column. */
+.app-stack > .app-panel-bugs:not([data-collapsed='true']) {
+  flex: 4 1 0;
+  min-height: 13rem;
+}

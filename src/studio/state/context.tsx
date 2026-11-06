@@ -71,5 +71,10 @@ export function pickActions(s: StudioStore): StudioActions {
     clearNotice: s.clearNotice,
     restorePreviousSource: s.restorePreviousSource,
     openSharedSource: s.openSharedSource,
+    openBugFinder: s.openBugFinder,
+    startBugFinder: s.startBugFinder,
+    answerBugFinder: s.answerBugFinder,
+    undoBugFinder: s.undoBugFinder,
+    closeBugFinder: s.closeBugFinder,
   }
 }

@@ -138,3 +138,13 @@ function remembered(state: FinderState): Judgment | null {
   const known = key === null ? undefined : state.memo.get(key)
   return known === undefined ? null : { call, answer: known, remembered: true }
 }
+
+export {
+  callSignature,
+  changeTexts,
+  culpritText,
+  linesText,
+  outcomeText,
+  questionText,
+  verdictReason,
+} from './bug-finder-text'

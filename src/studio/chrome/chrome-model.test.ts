@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import { compile, record } from '../../core/index'
 import type { Diagnostic, Recording } from '../../core/index'
+import { INITIAL_BUG_FINDER } from '../state/bug-finder'
 import { DEFAULT_SETTINGS } from '../state/defaults'
 import { fakeRecording } from '../state/testing'
 import type { StudioState } from '../state/types'
@@ -25,6 +26,7 @@ function state(patch: Partial<StudioState> = {}): StudioState {
     notice: null,
     originMark: null,
     previousSource: null,
+    bugFinder: INITIAL_BUG_FINDER,
     ...patch,
   }
 }

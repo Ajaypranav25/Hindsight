@@ -26,6 +26,8 @@ export interface EditorOverlay {
   readonly hints: readonly InlineHint[]
   /** The write an origin jump explains (marked "set here"), while the pen is just after it. */
   readonly originSpan: Span | null
+  /** Lines of the function the bug finder found (1-based, inclusive), or null. */
+  readonly culprit?: { readonly start: number; readonly end: number } | null
 }
 
 export const EMPTY_OVERLAY: EditorOverlay = {
