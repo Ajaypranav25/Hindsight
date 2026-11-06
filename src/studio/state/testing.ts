@@ -3,11 +3,14 @@ import type {
   AsyncRecordOptions,
   CompileResult,
   Direction,
+  ForkResult,
   Outcome,
+  OutputEvent,
   ProvenanceEvent,
   Recording,
   StateView,
   StepKind,
+  WhatIfInfo,
   WriteTarget,
 } from '../../core/api-types'
 import type { Program } from '../../core/bytecode'
@@ -22,6 +25,15 @@ export interface FakeRecordingOptions {
   readonly stmtTimes?: readonly number[]
   readonly origins?: ReadonlyMap<string, ProvenanceEvent>
   readonly breakpointHits?: ReadonlyMap<number, readonly number[]>
+  readonly outputs?: readonly OutputEvent[]
+  readonly whatIf?: WhatIfInfo | null
+  /** What `forkAsync` resolves to (default: a 'target' error); `fork` returns an error. */
+  readonly forkAsync?: Recording['forkAsync']
+}
+
+const NOT_FORKABLE: ForkResult = {
+  ok: false,
+  error: { code: 'target', message: 'this fake recording cannot fork' },
 }
 
 export function fakeProgram(source: string): Program {
@@ -42,7 +54,7 @@ export function fakeRecording(options: FakeRecordingOptions): Recording {
     program: fakeProgram(''),
     length: n,
     outcome: options.outcome ?? { kind: 'finished' },
-    outputs: [],
+    outputs: options.outputs ?? [],
     locationAt: () => null,
     depthAt: (t) => depths[t] ?? 0,
     depthSeries: () => depths,
@@ -64,6 +76,9 @@ export function fakeRecording(options: FakeRecordingOptions): Recording {
     extend: () => recording,
     extendAsync: async (extra: number) =>
       fakeRecording({ ...options, length: n + extra, outcome: { kind: 'finished' } }),
+    whatIf: options.whatIf ?? null,
+    fork: () => NOT_FORKABLE,
+    forkAsync: options.forkAsync ?? (async () => NOT_FORKABLE),
   }
   return recording
 }

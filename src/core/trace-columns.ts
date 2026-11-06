@@ -39,6 +39,16 @@ export class StepColumns {
     this.depths[t] = depth
   }
 
+  /** A copy of steps `0..length`: a what-if fork's shared past (ARCHITECTURE §7.5). */
+  copyPrefix(length: number): StepColumns {
+    const copy = new StepColumns()
+    if (length > copy.protoIds.length) copy.ensure(length)
+    copy.protoIds.set(this.protoIds.subarray(0, length))
+    copy.ips.set(this.ips.subarray(0, length))
+    copy.depths.set(this.depths.subarray(0, length))
+    return copy
+  }
+
   private ensure(needed: number): void {
     this.protoIds = grow(this.protoIds, needed)
     this.ips = grow(this.ips, needed)
@@ -71,6 +81,13 @@ export class StringTable {
 
   text(id: number): string {
     return this.texts[id]!
+  }
+
+  /** An independent copy with the same ids. */
+  copy(): StringTable {
+    const copy = new StringTable()
+    for (const text of this.texts) copy.intern(text)
+    return copy
   }
 }
 
@@ -111,7 +128,6 @@ export const AllocType = { other: 0, cell: 1 } as const
  * cell allocations keep the owner slot in `b` and the owner frame uid in `aux`.
  */
 export class EventColumns {
-  readonly strings = new StringTable()
   times = new Int32Array(INITIAL_CAPACITY)
   kinds = new Uint8Array(INITIAL_CAPACITY)
   targetKinds = new Uint8Array(INITIAL_CAPACITY)
@@ -121,6 +137,8 @@ export class EventColumns {
   ops = new Uint8Array(INITIAL_CAPACITY)
   valueTags = new Uint8Array(INITIAL_CAPACITY)
   valueNums = new Float64Array(INITIAL_CAPACITY)
+
+  constructor(readonly strings: StringTable = new StringTable()) {}
 
   /** Writes row `at`; `value` is encoded as a traced value. */
   set(
@@ -187,6 +205,63 @@ export class EventColumns {
     }
   }
 
+  /** A copy of rows `0..count` with its own string table, for a what-if fork (§7.5). */
+  copyPrefix(count: number): EventColumns {
+    const copy = new EventColumns(this.strings.copy())
+    if (count > copy.times.length) copy.ensure(count)
+    copy.times.set(this.times.subarray(0, count))
+    copy.kinds.set(this.kinds.subarray(0, count))
+    copy.targetKinds.set(this.targetKinds.subarray(0, count))
+    copy.a.set(this.a.subarray(0, count))
+    copy.b.set(this.b.subarray(0, count))
+    copy.aux.set(this.aux.subarray(0, count))
+    copy.ops.set(this.ops.subarray(0, count))
+    copy.valueTags.set(this.valueTags.subarray(0, count))
+    copy.valueNums.set(this.valueNums.subarray(0, count))
+    return copy
+  }
+
+  /** The first of rows `0..count` at `time` or later (`count` when there is none). */
+  firstRowAt(time: number, count: number): number {
+    let lo = 0
+    let hi = count
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1
+      if (this.times[mid]! < time) lo = mid + 1
+      else hi = mid
+    }
+    return lo
+  }
+
+  /** True when row `at` and row `otherAt` of `other` record the same event (strings by text). */
+  sameRow(at: number, other: EventColumns, otherAt: number): boolean {
+    const targetKind = this.targetKinds[at]!
+    const tag = this.valueTags[at]!
+    if (
+      this.kinds[at] !== other.kinds[otherAt] ||
+      targetKind !== other.targetKinds[otherAt] ||
+      this.a[at] !== other.a[otherAt] ||
+      this.aux[at] !== other.aux[otherAt] ||
+      this.ops[at] !== other.ops[otherAt] ||
+      tag !== other.valueTags[otherAt]
+    )
+      return false
+    const named = targetKind === TargetCode.global || targetKind === TargetCode.field
+    if (!this.sameNumber(this.b[at]!, other, other.b[otherAt]!, named)) return false
+    return this.sameNumber(
+      this.valueNums[at]!,
+      other,
+      other.valueNums[otherAt]!,
+      tag === ValueTag.string,
+    )
+  }
+
+  private sameNumber(mine: number, other: EventColumns, theirs: number, isString: boolean) {
+    return isString
+      ? this.strings.text(mine) === other.strings.text(theirs)
+      : Object.is(mine, theirs)
+  }
+
   private encodeValue(at: number, value: Value): void {
     let tag: number
     let num = 0
@@ -231,6 +306,13 @@ export class AllocTimes {
     if (id < 0) return
     if (id >= this.times.length) this.times = grow(this.times, id + 1)
     this.times[id] = time + 1
+  }
+
+  /** A copy keeping only the allocations before `limit` (a what-if fork's past, §7.5). */
+  copyBefore(limit: number): AllocTimes {
+    const copy = new AllocTimes()
+    copy.times = this.times.map((stored) => (stored !== 0 && stored - 1 < limit ? stored : 0))
+    return copy
   }
 
   /** The allocation time of `id` if it is before `limit`, else null. */

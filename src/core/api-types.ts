@@ -342,4 +342,99 @@ export interface Recording {
   /** Continues a `step-limit` or `aborted` recording for up to `extraSteps` more steps. */
   extend(extraSteps: number): Recording
   extendAsync(extraSteps: number, options?: AsyncRecordOptions): Promise<Recording>
+
+  /** What makes this recording a what-if fork (ARCHITECTURE §7.5); null for a real run. */
+  readonly whatIf: WhatIfInfo | null
+  /**
+   * A what-if (ARCHITECTURE §7.5): the run with `edit` applied to the state at `time` (before the
+   * instruction at `time` executes) and a newly recorded future. The steps, events and output
+   * before `time` are this recording's. Invalid requests return an error instead of throwing.
+   */
+  fork(time: number, edit: ForkEdit, options?: ForkOptions): ForkResult
+  forkAsync(time: number, edit: ForkEdit, options?: AsyncForkOptions): Promise<ForkResult>
+}
+
+// ---------------------------------------------------------------------------------------------
+// What-if forks (ARCHITECTURE §7.5)
+
+/** A value a what-if edit can write: primitives only. */
+export type EditValue = null | boolean | number | string
+
+/** `target` gets `value` at the fork step. */
+export interface ForkEdit {
+  /** A defined global, a live visible local, a list element, an existing record field or a cell. */
+  readonly target: WriteTarget
+  readonly value: EditValue
+}
+
+export interface TimedEdit {
+  /** The fork step the edit was applied at. */
+  readonly time: number
+  readonly edit: ForkEdit
+}
+
+export interface WhatIfInfo {
+  /** Length of the recording this one was forked from. */
+  readonly parentLength: number
+  /** The fork step: `edit` was applied before the instruction at this step executed. */
+  readonly time: number
+  readonly edit: ForkEdit
+  /**
+   * Every edit in this timeline in time order: for a fork of a fork, the parent's edits at or
+   * before `time`, then `edit` (an edit after `time` belonged to the future the fork replaced).
+   */
+  readonly edits: readonly TimedEdit[]
+}
+
+export interface ForkOptions {
+  /** Default: the parent's step limit. It must be above the fork step. */
+  readonly maxSteps?: number
+  /** Default: the parent's. */
+  readonly heapLimit?: number
+}
+
+/** A fork shares its parent's seed and snapshot budget, so only these options apply. */
+export interface AsyncForkOptions
+  extends ForkOptions, Pick<AsyncRecordOptions, 'signal' | 'onProgress' | 'sliceMs'> {}
+
+export type ForkErrorCode = 'time' | 'target' | 'value' | 'max-steps'
+
+export interface ForkError {
+  readonly code: ForkErrorCode
+  readonly message: string
+}
+
+export type ForkResult =
+  | { readonly ok: true; readonly recording: Recording }
+  | { readonly ok: false; readonly error: ForkError }
+
+/** What `parseLiteralValue` read. */
+export type LiteralResult =
+  { readonly ok: true; readonly value: EditValue } | { readonly ok: false; readonly error: string }
+
+/** One output line of two compared runs, `a` (the real run) and `b` (the what-if). */
+export interface OutputDiffLine {
+  readonly kind: 'same' | 'removed' | 'added'
+  readonly text: string
+  /** Index in `a.outputs` (for `same` and `removed`), else null. */
+  readonly indexA: number | null
+  /** Index in `b.outputs` (for `same` and `added`), else null. */
+  readonly indexB: number | null
+  /** The step that printed the line in `a` (null when `a` did not print it). */
+  readonly timeA: number | null
+  readonly timeB: number | null
+}
+
+export interface RecordingComparison {
+  /**
+   * The first step at which the runs differ (the instruction, the events other than what-if
+   * edits, or the output), or null when they agree to the end.
+   */
+  readonly divergence: number | null
+  /** Both runs' output lines, in order (a longest-common-subsequence diff). */
+  readonly lines: readonly OutputDiffLine[]
+  /** Lines only `a` printed. */
+  readonly removed: number
+  /** Lines only `b` printed. */
+  readonly added: number
 }

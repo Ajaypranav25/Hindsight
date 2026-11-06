@@ -14,6 +14,9 @@ import {
 } from './trace-columns'
 
 export class TraceSink implements VMHooks {
+  /** Rows below this are never discarded: a what-if fork's edits at its first step (§7.5). */
+  keep = 0
+
   constructor(
     readonly events: EventColumns,
     readonly allocs: AllocTimes,
@@ -107,7 +110,7 @@ export class TraceSink implements VMHooks {
   /** Drops everything emitted at `time` or later (the failing step, ARCHITECTURE §7.1.2). */
   discardFrom(time: number): void {
     const times = this.events.times
-    while (this.eventCount > 0 && times[this.eventCount - 1]! >= time) this.eventCount--
+    while (this.eventCount > this.keep && times[this.eventCount - 1]! >= time) this.eventCount--
     while (this.outputs.length > 0 && this.outputs[this.outputs.length - 1]!.time >= time) {
       this.outputs.pop()
     }

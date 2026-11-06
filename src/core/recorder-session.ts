@@ -29,6 +29,8 @@ export interface SnapshotEntry {
   readonly time: number
   readonly snapshot: VMSnapshot
   readonly size: number
+  /** A what-if fork's edited state at its fork step: never thinned (§7.5). */
+  readonly pinned?: boolean
 }
 
 /** The retained snapshots and the cadence state that decides when the next one is due. */
@@ -54,6 +56,21 @@ export class SnapshotSchedule {
       this.nextTime,
       this.retained,
     )
+  }
+
+  /**
+   * The schedule of a what-if fork at `time` (§7.5): the snapshots before `time`, then the edited
+   * state at `time`, pinned so that thinning keeps it. Every seek at or after `time` then starts
+   * from the edited state, so a replay never runs the parent's unedited future.
+   */
+  forkAt(time: number, snapshot: VMSnapshot): SnapshotSchedule {
+    const entries = this.entries.filter((entry) => entry.time < time)
+    entries.push({ time, snapshot, size: snapshot.size, pinned: true })
+    const retained = entries.reduce((sum, entry) => sum + entry.size, 0)
+    const schedule = new SnapshotSchedule(entries, this.budget, this.interval, 0, retained)
+    schedule.thin()
+    schedule.scheduleAfter(time, snapshot.size)
+    return schedule
   }
 
   get list(): readonly SnapshotEntry[] {
@@ -107,13 +124,18 @@ export class SnapshotSchedule {
     return entry
   }
 
-  /** Drops every other snapshot (keeping time 0) and doubles the interval while over budget. */
+  /**
+   * Drops every other snapshot (keeping time 0 and pinned ones) and doubles the interval while
+   * over budget.
+   */
   private thin(): void {
     while (
       this.entries.length > 1 &&
       (this.entries.length > this.budget || this.retained > RETAINED_VALUES_LIMIT)
     ) {
-      this.entries = this.entries.filter((_, index) => index % 2 === 0)
+      const kept = this.entries.filter((entry, index) => index % 2 === 0 || entry.pinned === true)
+      if (kept.length === this.entries.length) return
+      this.entries = kept
       this.retained = this.entries.reduce((sum, entry) => sum + entry.size, 0)
       this.interval *= 2
     }

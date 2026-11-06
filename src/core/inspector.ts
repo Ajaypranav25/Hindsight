@@ -88,7 +88,11 @@ function frameView(
 }
 
 /** Locals live at the frame's ip and inside its current stack region, one per slot, slot order. */
-function liveLocals(locals: readonly LocalInfo[], frame: Frame, regionEnd: number): LocalInfo[] {
+export function liveLocals(
+  locals: readonly LocalInfo[],
+  frame: Frame,
+  regionEnd: number,
+): LocalInfo[] {
   const bySlot = new Map<number, LocalInfo>()
   for (const local of locals) {
     if (local.startIp > frame.ip || frame.ip >= local.endIp) continue

@@ -38,6 +38,8 @@ export type { Value } from './runtime-types'
 export { disassemble } from './disasm'
 export { verifyProgram } from './verify'
 export { repr, show } from './values'
+export { compareRecordings } from './compare'
+export { formatLiteral, parseLiteralValue } from './literal'
 
 /** The prelude source (SPEC Appendix A). */
 export function getLibrarySource(): string {
