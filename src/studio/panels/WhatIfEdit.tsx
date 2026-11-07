@@ -93,6 +93,8 @@ export function WhatIfButton({
   )
 }
 
+const BUSY_MESSAGE = 'Still recording: press Enter again when it finishes'
+
 /** The inline editor: Enter replays the future with the new value; Escape or leaving cancels. */
 export function WhatIfInput(props: {
   readonly value: ValueView
@@ -103,6 +105,7 @@ export function WhatIfInput(props: {
 }) {
   const { value, target, label, onDone } = props
   const { forkWhatIf } = useStudioActions()
+  const busy = useWhatIfAvailability() === 'busy'
   const [text, setText] = useState(() => literalText(value))
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -114,6 +117,8 @@ export function WhatIfInput(props: {
   const commit = () => {
     const parsed = parseLiteralValue(text)
     if (!parsed.ok) return setError(parsed.error)
+    // A fork waits for the recording in progress; closing now would drop the typed value.
+    if (busy) return setError(BUSY_MESSAGE)
     onDone(true)
     void forkWhatIf(target, parsed.value, label)
   }

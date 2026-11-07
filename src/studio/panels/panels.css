@@ -145,9 +145,10 @@
   background: var(--marker-soft);
 }
 
-/* a what-if button waits, disabled, while a recording is made (it keeps focus meanwhile) */
+/* a what-if button waits, disabled, while a recording is made (it keeps focus meanwhile);
+   only its color fades, so its focus ring keeps full strength */
 .pn-act[aria-disabled='true'] {
-  opacity: 0.5;
+  color: var(--ink-faint);
   cursor: default;
 }
 

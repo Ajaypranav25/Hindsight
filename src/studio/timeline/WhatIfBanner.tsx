@@ -17,15 +17,17 @@ export function WhatIfBanner(props: { readonly onLeft?: () => void }) {
     () => (whatIf && recording ? whatIfSummary(whatIf, recording) : null),
     [whatIf, recording],
   )
-  const textRef = useRef<HTMLParagraphElement>(null)
+  const groupRef = useRef<HTMLDivElement>(null)
+  // A new fork means new edits; extending the fork keeps them (and must not move focus).
+  const edits = whatIf?.edits ?? null
   useEffect(() => {
-    // A new fork takes focus from the what-if button the edit left it on (or from nowhere).
+    // The banner takes focus from the what-if button the edit left it on (or from nowhere). Its
+    // own name is short: the live region above says what changed.
+    if (edits === null) return
     const active = document.activeElement
     const idle = active === null || active === document.body
-    if (whatIf !== null && (idle || active.closest(`[${WHAT_IF_TRIGGER}]`) !== null)) {
-      textRef.current?.focus()
-    }
-  }, [whatIf])
+    if (idle || active.closest(`[${WHAT_IF_TRIGGER}]`) !== null) groupRef.current?.focus()
+  }, [edits])
   const divergence = whatIf?.comparison.divergence ?? null
   const sentence = summary ? `${summary.head} · ${summary.divergence} · ${summary.output}` : ''
   return (
@@ -34,10 +36,8 @@ export function WhatIfBanner(props: { readonly onLeft?: () => void }) {
         {sentence}
       </p>
       {summary && whatIf && (
-        <div className="tl-whatif" role="group" aria-label="What if">
+        <div ref={groupRef} tabIndex={-1} className="tl-whatif" role="group" aria-label="What if">
           <p
-            ref={textRef}
-            tabIndex={-1}
             className="tl-whatif__text"
             title={whatIf.edits.map((e) => `${e.text} at step ${formatCount(e.time)}`).join('\n')}
           >

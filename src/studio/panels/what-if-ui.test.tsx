@@ -130,9 +130,28 @@ describe('what-if editing in the Variables panel', () => {
       }),
     )
     await act(async () => finish({ ok: true, recording: totals(vi.fn()) }))
-    const banner = screen.getByRole('group', { name: 'What if' })
-    expect(banner.contains(document.activeElement)).toBe(true)
-    expect(document.activeElement?.textContent).toMatch(/^What if total = 6 at step 3 · /)
+    // The banner itself takes focus; its live region says what changed (once).
+    expect(document.activeElement).toBe(screen.getByRole('group', { name: 'What if' }))
+  })
+
+  test('Enter while a recording is made keeps the edit open and says why', async () => {
+    const forkAsync = vi.fn(async () => NOT_YET)
+    const { store } = renderWithRecording(<Variables />, totals(forkAsync), 3)
+    fireEvent.click(screen.getByRole('button', { name: /What if total were different/ }))
+    act(() => store.setState({ status: { kind: 'recording', progress: 0 } }))
+    const input = screen.getByRole('textbox', { name: /What if total were/ }) as HTMLInputElement
+    fireEvent.change(input, { target: { value: '9' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(screen.getByText('Still recording: press Enter again when it finishes')).toBeTruthy()
+    expect(input.value).toBe('9')
+    expect(forkAsync).not.toHaveBeenCalled()
+    act(() => store.setState({ status: { kind: 'ready' } }))
+    await act(async () => fireEvent.keyDown(input, { key: 'Enter' }))
+    expect(forkAsync).toHaveBeenCalledWith(
+      3,
+      { target: TOTAL, value: 9 },
+      expect.objectContaining({ signal: expect.anything() }),
+    )
   })
 
   test('no what-if at the end of the run', () => {
@@ -205,6 +224,22 @@ describe('the what-if banner and console', () => {
     expect(screen.queryByRole('group', { name: 'What if' })).toBeNull()
     // The banner went away with its button, so focus lands on the timeline.
     expect(document.activeElement).toBe(screen.getByRole('slider', { name: 'Time' }))
+  })
+
+  test('the banner takes focus for a new fork, not when the same what-if is extended', () => {
+    const { store } = whatIfStore()
+    const trigger = document.createElement('button')
+    trigger.setAttribute('data-whatif-trigger', '')
+    document.body.append(trigger)
+    trigger.focus()
+    const whatIf = store.getState().whatIf!
+    // Extending the fork compares the runs again but keeps the edits.
+    act(() => store.setState({ whatIf: { ...whatIf, comparison: { ...whatIf.comparison } } }))
+    expect(document.activeElement).toBe(trigger)
+    const edits = [...whatIf.edits, { time: 30, text: 'total = 1' }]
+    act(() => store.setState({ whatIf: { ...whatIf, edits, label: '2 edits' } }))
+    expect(document.activeElement).toBe(screen.getByRole('group', { name: 'What if' }))
+    trigger.remove()
   })
 
   test('the console marks the lines the real run did not print', () => {

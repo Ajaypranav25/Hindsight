@@ -48,8 +48,8 @@ test('what if: fork at the pen, compare with the real run, go back', async ({
 
   const banner = page.getByRole('group', { name: 'What if' })
   await expect(banner).toContainText(`What if total = 100 at step ${at}`)
-  // The edit's result takes focus: the sentence saying what changed.
-  await expect(banner.locator('.tl-whatif__text')).toBeFocused()
+  // The edit's result takes focus: the banner saying what changed.
+  await expect(banner).toBeFocused()
   await expect(banner).toContainText(/diverges at step [\d,]+ · 1 of 1 output line changed/)
   await expect(statusLine(page)).toContainText(/Finished/)
   await expect(outputLines(page).first()).toContainText('total 112')
