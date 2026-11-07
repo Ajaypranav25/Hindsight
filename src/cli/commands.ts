@@ -20,17 +20,18 @@ import {
   type Style,
 } from './format'
 import type { CliIO } from './io'
+import { whatIf } from './whatif'
 
 export type ExitCode = 0 | 1 | 2
 
-interface Loaded {
+export interface Loaded {
   readonly file: string
   readonly source: string
   readonly program: Program
 }
 
 /** Reads and compiles a file, printing diagnostics on failure. */
-function load(io: CliIO, style: Style, file: string): Loaded | null {
+export function load(io: CliIO, style: Style, file: string): Loaded | null {
   let source: string
   try {
     source = io.readFile(file)
@@ -74,6 +75,10 @@ export function runCommand(command: Command, io: CliIO): ExitCode {
       return why(io, style, command)
     case 'test':
       return test(io, style, command.dir)
+    case 'whatif': {
+      const loaded = load(io, style, command.file)
+      return loaded ? whatIf(io, style, loaded, command) : 1
+    }
     default:
       return 0
   }

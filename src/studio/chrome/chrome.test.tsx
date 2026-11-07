@@ -210,6 +210,31 @@ describe('Header', () => {
     expect(screen.getByRole('button', { name: 'Link copied' })).toBeTruthy()
   })
 
+  test('a link copied during a what-if opens the real run where the what-if began', async () => {
+    const s = setup('print("shared")\n')
+    await finishRun(s)
+    const parent = s.store.getState().recording!
+    act(() =>
+      s.store.setState({
+        recording: fakeRecording({ length: 60 }),
+        time: 30,
+        whatIf: {
+          parent,
+          parentTime: 12,
+          edits: [{ time: 12, text: 'x = 1' }],
+          label: 'x = 1 at step 12',
+          comparison: { divergence: null, lines: [], removed: 0, added: 0 },
+        },
+      }),
+    )
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Copy a link/ }))
+    })
+    expect(writeText).toHaveBeenCalledWith(expect.stringMatching(/#src=[A-Za-z0-9_-]+&t=12$/))
+  })
+
   test('when the clipboard refuses, the link is shown for manual copying', async () => {
     setup()
     const writeText = vi.fn().mockRejectedValue(new Error('denied'))

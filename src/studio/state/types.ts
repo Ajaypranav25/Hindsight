@@ -6,12 +6,16 @@ import type {
   AsyncRecordOptions,
   CompileResult,
   Direction,
+  EditValue,
   Recording,
+  RecordingComparison,
   StepKind,
   WriteTarget,
 } from '../../core/api-types'
 import type { Program } from '../../core/bytecode'
 import type { Diagnostic } from '../../core/diagnostics'
+import type { Answer } from '../../core/index'
+import type { BugFinderState } from './bug-finder'
 
 export type ThemeSetting = 'system' | 'light' | 'dark'
 
@@ -80,6 +84,31 @@ export interface StudioState {
   readonly originMark: OriginMark | null
   /** The user's own program, kept when a share link or an example replaced it (else null). */
   readonly previousSource: string | null
+  /** Set while `recording` is a what-if fork of the real run (ARCHITECTURE §7.5). */
+  readonly whatIf: WhatIfState | null
+  /** The bug finder's interview (ARCHITECTURE §7.6) and requests to reveal its panel. */
+  readonly bugFinder: BugFinderState
+}
+
+/** One edit of a what-if, as the studio names it. */
+export interface WhatIfEditLabel {
+  /** The fork step. */
+  readonly time: number
+  /** e.g. `total = 0`. */
+  readonly text: string
+}
+
+export interface WhatIfState {
+  /** The real run, restored by `leaveWhatIf`. */
+  readonly parent: Recording
+  /** The pen in the real run when the first edit was made. */
+  readonly parentTime: number
+  /** The edits in this timeline, oldest first. */
+  readonly edits: readonly WhatIfEditLabel[]
+  /** "total = 0 at step 3,500", or "2 edits". */
+  readonly label: string
+  /** The real run (a) against the what-if (b). */
+  readonly comparison: RecordingComparison
 }
 
 export interface StudioActions {
@@ -124,8 +153,29 @@ export interface StudioActions {
    * in turn when it is the user's own. Does nothing when no program was kept.
    */
   restorePreviousSource(): void
-  /** Opens a share link's program in a running studio, keeping the program it replaces. */
-  openSharedSource(source: string): void
+  /**
+   * Opens a share link's program in a running studio, keeping the program it replaces; a moment
+   * link's `time` places the pen once it has been recorded.
+   */
+  openSharedSource(source: string, time?: number | null): void
+  /** Forks the shown run at the pen with `target` set to `value` (`name` labels the edit). */
+  forkWhatIf(target: WriteTarget, value: EditValue, name: string): Promise<void>
+  /** Leaves what-if mode: the real run comes back with its pen. */
+  leaveWhatIf(): void
+  /**
+   * Reveals the bug finder and, unless an interview is open or the run ended with an error,
+   * starts one about the whole program.
+   */
+  openBugFinder(): void
+  /** Records that the bug finder panel moved focus for the latest reveal. */
+  markBugFinderFocused(): void
+  /** Starts an interview below the call that begins at step `entry` (the whole program by default). */
+  startBugFinder(entry?: number): void
+  /** Judges the open question about a call. */
+  answerBugFinder(answer: Answer): void
+  /** Takes back the last answer. */
+  undoBugFinder(): void
+  closeBugFinder(): void
 }
 
 export type StudioStore = StudioState & StudioActions
@@ -134,6 +184,8 @@ export type StudioStore = StudioState & StudioActions
 export interface Engine {
   compile(source: string): CompileResult
   recordAsync(program: Program, options: AsyncRecordOptions): Promise<Recording>
+  /** Compares the real run `a` with a what-if `b`. */
+  compare(a: Recording, b: Recording): RecordingComparison
 }
 
 /**

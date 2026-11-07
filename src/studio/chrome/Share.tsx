@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { formatCount } from '../lib/format'
 import { MAX_SHARED_SOURCE_LENGTH, shareFragment } from '../lib/share'
 import { useStudio } from '../state/context'
+import { momentTime } from '../state/selectors'
 import { ShareIcon } from './icons'
 import { usePopover } from './usePopover'
 
@@ -25,8 +26,8 @@ export function pageAddress(location: Pick<Location, 'origin' | 'pathname' | 'hr
   return location.href.split('#')[0] ?? ''
 }
 
-function linkTo(source: string): string | null {
-  const fragment = shareFragment(source)
+function linkTo(source: string, time: number | null): string | null {
+  const fragment = shareFragment(source, time)
   return fragment === null ? null : pageAddress(window.location) + fragment
 }
 
@@ -36,6 +37,7 @@ function linkTo(source: string): string | null {
  */
 export function Share() {
   const source = useStudio((s) => s.source)
+  const time = useStudio(momentTime)
   const { open, show, rootRef, triggerRef } = usePopover()
   const [result, setResult] = useState<ShareResult>({ kind: 'none' })
 
@@ -46,7 +48,7 @@ export function Share() {
   }, [result])
 
   const copy = () => {
-    const text = COPY_SOURCE ? source : linkTo(source)
+    const text = COPY_SOURCE ? source : linkTo(source, time)
     if (text === null) {
       setResult({ kind: 'too-large' })
       show()

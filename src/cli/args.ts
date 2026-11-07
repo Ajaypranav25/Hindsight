@@ -1,4 +1,5 @@
-import { DEFAULT_MAX_STEPS, DEFAULT_SEED } from '../core/api-types'
+import { DEFAULT_MAX_STEPS, DEFAULT_SEED, type EditValue } from '../core/api-types'
+import { parseLiteralValue } from '../core/literal'
 
 export type Command =
   | {
@@ -28,6 +29,21 @@ export type Command =
   | { readonly kind: 'repl'; readonly seed: number }
   | { readonly kind: 'help' }
   | { readonly kind: 'version' }
+  | {
+      readonly kind: 'whatif'
+      readonly file: string
+      readonly at: number
+      readonly name: string
+      readonly value: EditValue
+      readonly maxSteps: number
+      readonly seed: number
+    }
+  | {
+      readonly kind: 'debug'
+      readonly file: string
+      readonly maxSteps: number
+      readonly seed: number
+    }
 
 export type ParsedArgs =
   { readonly ok: true; readonly command: Command } | { readonly ok: false; readonly error: string }
@@ -42,9 +58,11 @@ Usage:
   hindsight why FILE --line L --name X             list every change to variable X declared on line L
   hindsight test [DIR]                             run annotated conformance files (default: tests/lang)
   hindsight repl [--seed S]                        interactive prompt
+  hindsight whatif FILE --at T --set NAME=VALUE    replay from step T with NAME changed; diff the output
+  hindsight debug FILE [--max-steps N] [--seed S]  find a bug by answering questions about calls
   hindsight --help | --version`
 
-const VALUE_FLAGS = new Set(['--max-steps', '--seed', '--at', '--line', '--name'])
+const VALUE_FLAGS = new Set(['--max-steps', '--seed', '--at', '--line', '--name', '--set'])
 
 /** What each command accepts: its options, and how many arguments may follow its name. */
 const COMMANDS: ReadonlyMap<string, { readonly flags: readonly string[]; readonly arity: number }> =
@@ -56,6 +74,8 @@ const COMMANDS: ReadonlyMap<string, { readonly flags: readonly string[]; readonl
     ['why', { flags: ['--line', '--name', '--max-steps', '--seed'], arity: 1 }],
     ['test', { flags: [], arity: 1 }],
     ['repl', { flags: ['--seed'], arity: 0 }],
+    ['whatif', { flags: ['--at', '--set', '--max-steps', '--seed'], arity: 1 }],
+    ['debug', { flags: ['--max-steps', '--seed'], arity: 1 }],
   ])
 
 /** Plain decimal integers only: no exponents, hex, signs other than '-', or spaces. */
@@ -163,7 +183,39 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
       return { ok: true, command: { kind: 'test', dir: positional[1] ?? 'tests/lang' } }
     case 'repl':
       return { ok: true, command: { kind: 'repl', seed } }
+    case 'whatif':
+      return whatIfCommand(positional, flags, maxSteps, seed)
+    case 'debug': {
+      const file = needFile(positional, name)
+      if (typeof file !== 'string') return { ok: false, error: file.error }
+      return { ok: true, command: { kind: 'debug', file, maxSteps, seed } }
+    }
     default:
       return { ok: false, error: `unknown command '${name}'` }
+  }
+}
+
+const NAME_AND_VALUE = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/s
+
+/** `whatif FILE --at T --set NAME=VALUE`: VALUE is a Hindsight literal. */
+function whatIfCommand(
+  positional: readonly string[],
+  flags: ReadonlyMap<string, string>,
+  maxSteps: number,
+  seed: number,
+): ParsedArgs {
+  const file = needFile(positional, 'whatif')
+  if (typeof file !== 'string') return { ok: false, error: file.error }
+  if (!flags.has('--at')) return { ok: false, error: "'whatif' needs --at T" }
+  const at = integerFlag(flags, '--at', 0, 0)
+  if (typeof at === 'string') return { ok: false, error: at }
+  const set = NAME_AND_VALUE.exec(flags.get('--set') ?? '')
+  if (set === null) return { ok: false, error: "'whatif' needs --set NAME=VALUE" }
+  const [, name = '', text = ''] = set
+  const literal = parseLiteralValue(text)
+  if (!literal.ok) return { ok: false, error: `--set ${name}: ${literal.error}` }
+  return {
+    ok: true,
+    command: { kind: 'whatif', file, at, name, value: literal.value, maxSteps, seed },
   }
 }

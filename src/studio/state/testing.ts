@@ -3,11 +3,15 @@ import type {
   AsyncRecordOptions,
   CompileResult,
   Direction,
+  ForkResult,
   Outcome,
+  OutputEvent,
+  RecordingComparison,
   ProvenanceEvent,
   Recording,
   StateView,
   StepKind,
+  WhatIfInfo,
   WriteTarget,
 } from '../../core/api-types'
 import type { Program } from '../../core/bytecode'
@@ -22,6 +26,15 @@ export interface FakeRecordingOptions {
   readonly stmtTimes?: readonly number[]
   readonly origins?: ReadonlyMap<string, ProvenanceEvent>
   readonly breakpointHits?: ReadonlyMap<number, readonly number[]>
+  readonly outputs?: readonly OutputEvent[]
+  readonly whatIf?: WhatIfInfo | null
+  /** What `forkAsync` resolves to (default: a 'target' error); `fork` returns an error. */
+  readonly forkAsync?: Recording['forkAsync']
+}
+
+const NOT_FORKABLE: ForkResult = {
+  ok: false,
+  error: { code: 'target', message: 'this fake recording cannot fork' },
 }
 
 export function fakeProgram(source: string): Program {
@@ -42,7 +55,7 @@ export function fakeRecording(options: FakeRecordingOptions): Recording {
     program: fakeProgram(''),
     length: n,
     outcome: options.outcome ?? { kind: 'finished' },
-    outputs: [],
+    outputs: options.outputs ?? [],
     locationAt: () => null,
     depthAt: (t) => depths[t] ?? 0,
     depthSeries: () => depths,
@@ -64,6 +77,9 @@ export function fakeRecording(options: FakeRecordingOptions): Recording {
     extend: () => recording,
     extendAsync: async (extra: number) =>
       fakeRecording({ ...options, length: n + extra, outcome: { kind: 'finished' } }),
+    whatIf: options.whatIf ?? null,
+    fork: () => NOT_FORKABLE,
+    forkAsync: options.forkAsync ?? (async () => NOT_FORKABLE),
   }
   return recording
 }
@@ -71,6 +87,9 @@ export function fakeRecording(options: FakeRecordingOptions): Recording {
 export interface ScriptedEngine extends Engine {
   readonly compiled: string[]
   readonly recorded: { source: string; options: AsyncRecordOptions }[]
+  /** What `compare` returns (tests may replace it). */
+  comparison: RecordingComparison
+  readonly compared: (readonly [Recording, Recording])[]
   /** Resolves the oldest pending recordAsync with the given recording. */
   resolveNext(recording: Recording): Promise<void>
   readonly pendingCount: number
@@ -81,9 +100,16 @@ export function scriptedEngine(): ScriptedEngine {
   const compiled: string[] = []
   const recorded: { source: string; options: AsyncRecordOptions }[] = []
   const pending: ((recording: Recording) => void)[] = []
+  const compared: (readonly [Recording, Recording])[] = []
   return {
     compiled,
     recorded,
+    compared,
+    comparison: { divergence: null, lines: [], removed: 0, added: 0 },
+    compare(a: Recording, b: Recording): RecordingComparison {
+      compared.push([a, b])
+      return this.comparison
+    },
     get pendingCount() {
       return pending.length
     },

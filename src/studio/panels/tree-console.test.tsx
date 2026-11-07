@@ -200,30 +200,29 @@ describe('Console', () => {
 })
 
 describe('panels on real recordings', () => {
-  test('render every example at sampled times without failing', () => {
-    for (const example of EXAMPLES) {
-      const compiled = compile(example.source)
-      if (!compiled.ok) throw new Error(`${example.id} does not compile`)
-      const recording: Recording = record(compiled.program, { maxSteps: 20_000 })
-      const { store, unmount } = renderWithRecording(
-        <>
-          <CallStack />
-          <Variables />
-          <Console />
-        </>,
-        recording,
-        0,
-      )
-      const samples = 8
-      for (let i = 0; i <= samples; i++) {
-        act(() => store.getState().seek(Math.round((recording.length * i) / samples)))
-        for (const button of screen.queryAllByRole('button', { name: /^Expand / }).slice(0, 3))
-          fireEvent.click(button)
-      }
-      act(() => store.getState().updateSettings({ justMyCode: false }))
-      act(() => store.getState().seek(Math.floor(recording.length / 2)))
-      expect(document.body.textContent).not.toBe('')
-      unmount()
+  // One test per example: each gets its own time budget, and a failure names the example.
+  test.each(EXAMPLES)('render $id at sampled times without failing', (example) => {
+    const compiled = compile(example.source)
+    if (!compiled.ok) throw new Error(`${example.id} does not compile`)
+    const recording: Recording = record(compiled.program, { maxSteps: 20_000 })
+    const { store, unmount } = renderWithRecording(
+      <>
+        <CallStack />
+        <Variables />
+        <Console />
+      </>,
+      recording,
+      0,
+    )
+    const samples = 8
+    for (let i = 0; i <= samples; i++) {
+      act(() => store.getState().seek(Math.round((recording.length * i) / samples)))
+      for (const button of screen.queryAllByRole('button', { name: /^Expand / }).slice(0, 3))
+        fireEvent.click(button)
     }
+    act(() => store.getState().updateSettings({ justMyCode: false }))
+    act(() => store.getState().seek(Math.floor(recording.length / 2)))
+    expect(document.body.textContent).not.toBe('')
+    unmount()
   })
 })

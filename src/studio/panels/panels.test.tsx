@@ -127,7 +127,11 @@ describe('Variables', () => {
     expect(screen.getByRole('heading', { name: 'Captured' })).toBeTruthy()
     expect(screen.getByRole('heading', { name: 'Globals' })).toBeTruthy()
     const rows = screen.getAllByRole('listitem').map((row) => row.textContent)
-    expect(rows).toEqual(['xvar1⟲history', 'ccap7⟲history', 'glet"hi"⟲history'])
+    expect(rows).toEqual([
+      'xvar1⟲what ifhistory',
+      'ccap7⟲what ifhistory',
+      'glet"hi"⟲what ifhistory',
+    ])
   })
 
   test('jump to origin moves the pen just after the write that set the value', () => {
@@ -162,7 +166,7 @@ describe('Variables', () => {
       [...document.querySelectorAll('[data-changed]')].map((row) => row.textContent)
     expect(changed()).toEqual([])
     act(() => store.getState().seek(1))
-    expect(changed()).toEqual(['xvar2⟲history'])
+    expect(changed()).toEqual(['xvar2⟲what ifhistory'])
     act(() => store.getState().seek(2))
     expect(changed()).toEqual([])
     act(() => store.getState().seek(950))

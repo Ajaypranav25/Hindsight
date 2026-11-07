@@ -3,6 +3,7 @@ import type { ObjectView, ValueView, WriteTarget } from '../../core/index'
 import { formatCount, formatValue, reprString, truncate } from '../lib/format'
 import { useStateView, useStudio, useStudioActions } from '../state/context'
 import { formatRange, PAGE_SIZE } from './panel-logic'
+import { useWhatIfAvailability, useWhatIfEditing, WhatIfButton, WhatIfInput } from './WhatIfEdit'
 import './panels.css'
 
 const EXPANDABLE = new Set(['list', 'record', 'function', 'iterator'])
@@ -30,15 +31,22 @@ export interface ValueRowProps {
 export function ValueRow(props: ValueRowProps) {
   const { name, value, label, target, badge, path = [], actions, flash = null } = props
   const [expanded, setExpanded] = useState(false)
+  const { editing, start, finish, buttonRef } = useWhatIfEditing()
+  const availability = useWhatIfAvailability()
   const cycle = value.kind === 'ref' && path.includes(value.id)
   const expandable = isExpandable(value) && !cycle
+  // Primitive values of variables, elements and fields can be changed in a what-if.
+  const editTarget = availability !== 'none' && value.kind !== 'ref' ? (target ?? null) : null
+  const ready = availability === 'ready'
   return (
     <li className="pn-row" data-changed={flash !== null ? 'true' : undefined}>
       {flash !== null && <span key={flash} className="pn-flash" aria-hidden="true" />}
       {name !== '' && <span className="pn-name">{name}</span>}
       {badge && <span className="pn-badge">{badge}</span>}
-      <span className="pn-value-cell">
-        {expandable ? (
+      <span className="pn-value-cell" onDoubleClick={editTarget && ready ? start : undefined}>
+        {editing && editTarget ? (
+          <WhatIfInput value={value} target={editTarget} label={label} onDone={finish} />
+        ) : expandable ? (
           <button
             type="button"
             className="pn-toggle"
@@ -58,6 +66,9 @@ export function ValueRow(props: ValueRowProps) {
       {(target || actions) && (
         <span className="pn-actions">
           {target && <OriginButton target={target} label={label} />}
+          {editTarget && !editing && (
+            <WhatIfButton ref={buttonRef} label={label} disabled={!ready} onClick={start} />
+          )}
           {actions}
         </span>
       )}

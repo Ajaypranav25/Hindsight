@@ -4,10 +4,14 @@
  * inspector modules.
  */
 import {
+  type AsyncForkOptions,
   type AsyncRecordOptions,
   DEFAULT_MAX_STEPS,
   DEFAULT_SEED,
   type Direction,
+  type ForkEdit,
+  type ForkOptions,
+  type ForkResult,
   type HistoryResult,
   type HistoryWindow,
   type Location,
@@ -20,10 +24,12 @@ import {
   type Recording,
   type StateView,
   type StepKind,
+  type WhatIfInfo,
   type WriteTarget,
 } from './api-types'
 import type { Program } from './bytecode'
 import { InternalError } from './diagnostics'
+import { prepareFork } from './fork'
 import { buildStateView } from './inspector'
 import { findReachable, objectView } from './inspector-heap'
 import { ProtoTable, locationOf } from './inspector-location'
@@ -145,7 +151,10 @@ class RecordedRun implements Recording {
   private navIndex: NavIndex | null = null
   private provenanceIndex: ProvenanceIndex | null = null
 
-  constructor(private readonly core: RecordingCore) {
+  constructor(
+    readonly core: RecordingCore,
+    readonly whatIf: WhatIfInfo | null = null,
+  ) {
     this.program = core.program
     this.length = core.length
     this.outcome = core.outcome
@@ -253,12 +262,29 @@ class RecordedRun implements Recording {
   }
 
   extend(extraSteps: number): Recording {
-    return new RecordedRun(extensionSession(this.core, extraSteps, {}).run(null)!)
+    return new RecordedRun(extensionSession(this.core, extraSteps, {}).run(null)!, this.whatIf)
   }
 
   async extendAsync(extraSteps: number, options: AsyncRecordOptions = {}): Promise<Recording> {
     const session = extensionSession(this.core, extraSteps, options)
-    return new RecordedRun(await runSliced(session, options))
+    return new RecordedRun(await runSliced(session, options), this.whatIf)
+  }
+
+  fork(time: number, edit: ForkEdit, options: ForkOptions = {}): ForkResult {
+    const prepared = prepareFork(this.core, this.whatIf, time, edit, options)
+    if (!prepared.ok) return prepared
+    return { ok: true, recording: new RecordedRun(prepared.session.run(null)!, prepared.whatIf) }
+  }
+
+  async forkAsync(
+    time: number,
+    edit: ForkEdit,
+    options: AsyncForkOptions = {},
+  ): Promise<ForkResult> {
+    const prepared = prepareFork(this.core, this.whatIf, time, edit, options)
+    if (!prepared.ok) return prepared
+    const core = await runSliced(prepared.session, options)
+    return { ok: true, recording: new RecordedRun(core, prepared.whatIf) }
   }
 
   private check(t: number): void {
@@ -286,4 +312,9 @@ class RecordedRun implements Recording {
     this.provenanceIndex ??= new ProvenanceIndex(this.core.events, this.core.eventCount)
     return this.provenanceIndex
   }
+}
+
+/** The trace behind a recording this module made (for `compareRecordings`), else null. */
+export function recordingCore(recording: Recording): RecordingCore | null {
+  return recording instanceof RecordedRun ? recording.core : null
 }

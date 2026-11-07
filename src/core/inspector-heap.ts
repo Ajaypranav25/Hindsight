@@ -183,7 +183,7 @@ function forEachChild(vm: VM, object: HeapObject, visit: (value: Value) => void)
  * Breadth-first traversal; `onObject` receives each reachable object once, in visiting order, and
  * returns false to stop. `limit` bounds the number of objects discovered.
  */
-function walk(vm: VM, limit: number, onObject: (object: HeapObject) => boolean): boolean {
+export function walk(vm: VM, limit: number, onObject: (object: HeapObject) => boolean): boolean {
   const seen = new Set<number>()
   const queue: HeapObject[] = []
   let truncated = false

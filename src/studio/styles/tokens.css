@@ -26,6 +26,8 @@
   --pen-soft: rgb(207 52 39 / 0.14);
   --marker: #2958d0;
   --marker-soft: rgb(41 88 208 / 0.12);
+  --whatif: #8a3fc4;
+  --whatif-soft: rgb(138 63 196 / 0.12);
   --trace-fill: rgb(23 32 43 / 0.1);
   --trace-line: #17202b;
   --highlight-line: rgb(41 88 208 / 0.08);
@@ -88,6 +90,8 @@
     --pen-soft: rgb(255 90 76 / 0.18);
     --marker: #79a0ff;
     --marker-soft: rgb(121 160 255 / 0.16);
+    --whatif: #c79bff;
+    --whatif-soft: rgb(199 155 255 / 0.16);
     --trace-fill: rgb(225 231 238 / 0.1);
     --trace-line: #c9d2dd;
     --highlight-line: rgb(121 160 255 / 0.1);
@@ -125,6 +129,8 @@
   --pen-soft: rgb(255 90 76 / 0.18);
   --marker: #79a0ff;
   --marker-soft: rgb(121 160 255 / 0.16);
+  --whatif: #c79bff;
+  --whatif-soft: rgb(199 155 255 / 0.16);
   --trace-fill: rgb(225 231 238 / 0.1);
   --trace-line: #c9d2dd;
   --highlight-line: rgb(121 160 255 / 0.1);

@@ -1,0 +1,20 @@
+// title: What if?
+// summary: Collatz step counts. Press What if beside n and give it another number (try 27): Hindsight forks the run at the pen and shows how the future changes.
+
+fn steps(n) {
+  var count = 0
+  var x = n
+  while x != 1 {
+    x = if x % 2 == 0 { x / 2 } else { 3 * x + 1 }
+    count += 1
+  }
+  count
+}
+
+var longest = 0
+for start in 1..=12 {
+  let s = steps(start)
+  if s > longest { longest = s }
+  print("{start}: {s} steps")
+}
+print("longest: {longest}")

@@ -2,6 +2,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import type { Recording } from '../../core/api-types'
 import { useStudio } from '../state/context'
+import type { ChartWhatIf } from './chart-whatif'
 import {
   buildEnvelope,
   followTime,
@@ -81,4 +82,16 @@ export function useViewport(
     [recording, length],
   )
   return [current, update] as const
+}
+
+/** The what-if layers' data while a what-if is shown (the ghost is built once per real run). */
+export function useChartWhatIf(): ChartWhatIf | null {
+  const parent = useStudio((s) => s.whatIf?.parent ?? null)
+  const forkTime = useStudio((s) => s.whatIf?.edits[0]?.time ?? null)
+  const divergence = useStudio((s) => s.whatIf?.comparison.divergence ?? null)
+  const ghost = useMemo(() => (parent ? buildEnvelope(parent.depthSeries()) : null), [parent])
+  return useMemo(
+    () => (ghost && forkTime !== null ? { ghost, forkTime, divergence } : null),
+    [ghost, forkTime, divergence],
+  )
 }

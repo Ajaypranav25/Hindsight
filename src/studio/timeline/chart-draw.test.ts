@@ -38,6 +38,7 @@ const colors: ChartColors = {
   surface: 'surface',
   rule: 'rule',
   fontMono: 'mono',
+  whatIf: 'whatif',
 }
 
 function scene(): ChartScene {
@@ -100,5 +101,30 @@ describe('drawChart', () => {
     })
     expect(calls).not.toContain('arc')
     expect(calls).toContain('fillRect')
+  })
+})
+
+describe('what-if layers', () => {
+  test('draw the real run as a ghost after the fork step and mark the fork and the divergence', () => {
+    const { ctx, calls, styles } = fakeContext()
+    const s = scene()
+    const forkTime = Math.floor(s.length / 3)
+    drawChart(ctx, { ...s, whatIf: { ghost: s.env!, forkTime, divergence: forkTime + 10 } })
+    expect(styles).toContain('whatif')
+    expect(styles).toContain('ink-muted')
+    expect(calls.filter((c) => c === 'closePath').length).toBeGreaterThan(1)
+  })
+
+  test('skip marks outside the view and a missing divergence', () => {
+    const { ctx, styles } = fakeContext()
+    const s = scene()
+    const ghost = s.env!
+    drawChart(ctx, {
+      ...s,
+      view: fullViewport(10),
+      whatIf: { ghost, forkTime: 50, divergence: null },
+    })
+    drawChart(ctx, { ...s, view: fullViewport(10), whatIf: { ghost, forkTime: 5, divergence: 99 } })
+    expect(styles).toContain('whatif')
   })
 })

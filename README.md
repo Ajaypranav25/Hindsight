@@ -8,6 +8,11 @@ Run a program, then drag a red pen backwards through its execution. Step into, o
 calls in _both_ directions, ask any variable where its value came from, click a line of output to
 land on the moment it was printed, and watch the heap rewire itself as you scrub.
 
+Then change the past: give any variable another value at any moment and Hindsight forks the run
+there, so you see where the new future diverges from the real one. Or let it find the bug: answer
+a few yes/no questions about the calls your program made, and it names the function whose own code
+is wrong.
+
 ![Hindsight Studio replaying a recursive Fibonacci program](docs/images/studio.png)
 
 Hindsight is a language and a debugger designed together. Every program runs on a bytecode VM that
@@ -26,7 +31,8 @@ npm run dev          # opens Hindsight Studio at http://localhost:5173
 
 The studio opens with a gallery program already recorded. Pick another from **Examples**: a bug hunt
 where the answer is one click away, a crash you can rewind out of, recursion that draws mountain
-ranges, closures, a breadth-first maze search, the Game of Life and more.
+ranges, closures, a breadth-first maze search, the Game of Life, a bug to find by answering
+questions, a what-if to fork, and more.
 
 ## A taste of the language
 
@@ -61,19 +67,25 @@ through calls; strings interpolate `{expressions}`. Error messages are specific 
 
 ## The studio
 
-|                                 |                                                                                                                                                                                                   |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Strip chart**                 | The whole run is traced like a chart recorder: x is time, height is call depth. Drag the pen anywhere; zoom and pan with the wheel. Output, breakpoint hits and watched writes appear as markers. |
-| **Two-way stepping**            | Step into, over and out, forwards and backwards. Continue to a breakpoint, or back to the previous one. Step over is based on the actual call, not just the depth, so `sq(2) + sq(3)` behaves.    |
-| **⟲ Where did this come from?** | Every variable, list element and record field has an origin button. It jumps to the step that produced the value and marks the line that set it.                                                  |
-| **History**                     | Every change to a binding, as a list and a sparkline, plotted on the strip chart. Loop variables keep one history across iterations.                                                              |
-| **Time-aware console**          | Output printed after the pen is ghosted. Click any line to land on the moment it was printed.                                                                                                     |
-| **Heat gutter**                 | How often each line ran, on a log scale. Click to jump to the next time it runs.                                                                                                                  |
-| **Heap graph**                  | Lists, records and closures reachable from the selected frame, with stable positions as you scrub, so a reversed linked list visibly rewires its arrows.                                          |
-| **Just my code**                | Library functions (`map`, `filter`, `sort_by`, …) are written in Hindsight and recorded too; just-my-code skips them unless you want to look inside.                                              |
-| **Share**                       | Copy a link that carries the program in the URL.                                                                                                                                                  |
+|                                 |                                                                                                                                                                                                                                           |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Strip chart**                 | The whole run is traced like a chart recorder: x is time, height is call depth. Drag the pen anywhere; zoom and pan with the wheel. Output, breakpoint hits and watched writes appear as markers.                                         |
+| **Two-way stepping**            | Step into, over and out, forwards and backwards. Continue to a breakpoint, or back to the previous one. Step over is based on the actual call, not just the depth, so `sq(2) + sq(3)` behaves.                                            |
+| **⟲ Where did this come from?** | Every variable, list element and record field has an origin button. It jumps to the step that produced the value and marks the line that set it.                                                                                          |
+| **History**                     | Every change to a binding, as a list and a sparkline, plotted on the strip chart. Loop variables keep one history across iterations.                                                                                                      |
+| **Time-aware console**          | Output printed after the pen is ghosted. Click any line to land on the moment it was printed.                                                                                                                                             |
+| **Heat gutter**                 | How often each line ran, on a log scale. Click to jump to the next time it runs.                                                                                                                                                          |
+| **Heap graph**                  | Lists, records and closures reachable from the selected frame, with stable positions as you scrub, so a reversed linked list visibly rewires its arrows.                                                                                  |
+| **Just my code**                | Library functions (`map`, `filter`, `sort_by`, …) are written in Hindsight and recorded too; just-my-code skips them unless you want to look inside.                                                                                      |
+| **What if?**                    | Change any variable, list element or record field at the pen: the run forks there, the strip chart shows where the new future diverges (with the real run as a ghost behind it), and changed output is marked. Fork again to stack edits. |
+| **Bug finder**                  | Answer right / wrong / not sure about recorded calls (`average(xs = [88, 83, 79])` returned `54`) until Hindsight names the function whose own code is wrong. Identical calls are asked about only once.                                  |
+| **Moment links**                | Copy a link that carries the program and the pen's step: it opens on the very moment you were looking at, so a bug report lands on the bug.                                                                                               |
 
 ![The heap graph after reversing a linked list, in the light theme](docs/images/heap.png)
+
+![A what-if: start is changed to 27 in the ninth iteration; the run diverges two steps later and two output lines change](docs/images/whatif.png)
+
+![The bug finder's verdict after two answers: the bug is in average, whose lines are highlighted in the editor](docs/images/bug-finder.png)
 
 Keyboard: **F11** / **Shift+F11** step into forward/back, **F10** / **Shift+F10** step over,
 **F7** / **Shift+F7** step out, **F8** / **Shift+F8** continue, **F9** breakpoint, **Space** play,
@@ -91,6 +103,41 @@ npm run sight -- why examples/02-bug-hunt.sight --line 8 --name total   # every 
 npm run sight -- disasm examples/01-hello.sight
 npm run sight -- test                                            # the conformance corpus
 npm run sight -- repl
+npm run sight -- whatif examples/18-what-if.sight --at 1144 --set start=27   # fork the run
+npm run sight -- debug examples/17-find-the-bug.sight                       # find the bug
+```
+
+`whatif` forks the recorded run and compares the two futures:
+
+```
+what if start = 27 at step 1,144 (it was 9)
+the futures diverge at step 1,146 · line 16, column 11 · in <top level>
+real run: 2,264 steps, finishes normally
+what if:  4,139 steps, finishes normally
+output: 2 lines only in the real run (-), 2 only in the what-if (+)
+ … 5 unchanged lines
+ 8: 3 steps
+-9: 19 steps
++27: 111 steps
+ 10: 6 steps
+ …
+-longest: 19
++longest: 111
+```
+
+`debug` interviews you about the calls the program made, then points at the culprit:
+
+```
+Question 1: average(scores = [92, 88, 95]) returned 68.75
+Is that right? [r/w/n/u/q] w
+Question 2: total(scores = [92, 88, 95]) returned 275
+Is that right? [r/w/n/u/q] r
+Found it: the bug is in average (lines 10–12).
+Every call it makes returned the right value, but its own result is wrong.
+
+  10 | fn average(scores) {
+  11 |   total(scores) / (len(scores) + 1)
+  12 | }
 ```
 
 `why` answers the question a debugger usually makes you hunt for:
@@ -125,6 +172,14 @@ source ─▶ lexer ─▶ parser ─▶ compiler ─▶ bytecode + debug info
 - **Provenance** queries the event log, translating list indexes back through every insert, remove
   and pop, so "where did `xs[2]` come from?" still has the right answer after the list was
   reshuffled.
+- **What-if forks** copy the run's past up to the chosen step, write the edit into a fresh VM there,
+  pin a snapshot of the edited state as a seek barrier (so no replay can slip back into the real
+  run's future), and record a new future. Comparing the two finds where they first behave
+  differently and diffs their output.
+- **The bug finder** is algorithmic debugging (Shapiro, 1982) over the recorded call tree: arguments
+  come from each call's first step and results from the caller's operand stack just after the
+  return, so nothing extra is recorded. Answers are remembered per call, so recursion costs one
+  question per distinct call.
 
 Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 

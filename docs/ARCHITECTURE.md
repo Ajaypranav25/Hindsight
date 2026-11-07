@@ -558,6 +558,57 @@ Builds a `StateView` from the VM positioned at time `t`:
 - At `t == N`: frames are empty when finished; for errors, step limits and aborts, frames show the
   paused state, and `error` is set for errors.
 
+### 7.5 What-if forks (`fork.ts`, `compare.ts`, `literal.ts`)
+
+`Recording.fork(time, edit, options?)` and `forkAsync(…)` (sliced like `recordAsync`) answer "what
+if this value had been different here?". `edit = { target, value }` writes a primitive (`nil`, a
+boolean, a number or a string) to a defined global, a live visible local, a list element, an
+existing record field or a cell, before the instruction at `time` executes. Invalid requests return
+`{ ok: false, error: { code: 'time' | 'target' | 'value' | 'max-steps', … } }`; nothing throws for
+user input.
+
+1. **Shared past.** The fork copies the parent's trace, events, allocation times and output before
+   `time` (never appending to the parent's buffers, which `extend` shares), keeps the parent's
+   snapshots at or before `time`, and positions a fresh VM there by restore and replay.
+2. **The edit** is applied to that VM and recorded as a `write` event at `time`, so history and
+   origin show it like any other write.
+3. **Seek barrier.** The edited state is snapshotted at `time` and pinned, so thinning keeps it.
+   Every seek at or after `time` starts from it, and a VM positioned before `time` never runs on
+   across it (that would replay the parent's unedited future).
+4. **New future.** Recording continues from `time` with the parent's seed and step limit (or
+   `options.maxSteps`). `recording.whatIf` holds the parent's length, the fork step, the edit, and
+   every edit in the timeline: a fork of a fork keeps its parent's edits at or before its own step
+   (later ones belonged to the future it replaced).
+
+`compareRecordings(a, b)` compares two runs of one program: the first step where they behave
+differently (location, events or output; the what-if edit events themselves are skipped) and a
+longest-common-subsequence diff of their output lines. `parseLiteralValue(text)` reads an edit value
+as a user types it, through the lexer; `formatLiteral(value)` writes one that reads back unchanged.
+
+### 7.6 Bug finder (`calls*.ts`, `call-*.ts`, `bug-finder.ts`)
+
+Algorithmic debugging (Shapiro, 1982): the user judges recorded calls ("average([88, 83, 79])
+returned 54: is that right?") and the finder narrows a wrong result down to the function whose own
+code is wrong. It is built only on the public `Recording` API.
+
+- **Call tree** (`callTree(recording)`): the root is the whole program. A call starts at a step whose
+  depth exceeds the previous step's and ends at the last step at that depth; its children are the
+  calls one level deeper inside it, in execution order. One pass over `depthSeries()` builds the
+  shape on first use; details are built only for the calls asked about, and cached.
+- **Call details**: name, line span, the arguments (the callee's parameter locals at its first step)
+  and the result: the caller's top operand temp (`FrameView.temps`) just after the return. The
+  outcome is `returned`, `raised` (the run's error is inside the call) or `unfinished` (cut off by
+  the step limit). Values read as the studio shows them; memo keys render them in full
+  (`call-values.ts`) and give up on what cannot be compared safely (cycles, iterators, very deep or
+  very long values), so two different calls never share an answer.
+- **Just-my-code** never asks about library calls, but lifts the calls they make (the function given
+  to `map`) to the nearest user call.
+- **Finder** (`startFinder`, `question`, `answer`, `undo`, `verdict`; immutable states): the suspect
+  is known (or assumed) wrong; its children are asked in execution order; the first judged wrong
+  becomes the suspect; when none is left, the suspect is the verdict: `certain`, or `likely` when an
+  answer on the way was "not sure". Answers are remembered by call key, so identical calls (common
+  in recursion) are asked about once.
+
 ## 8. Public API (`src/core/index.ts`)
 
 ```ts
@@ -570,8 +621,14 @@ recordAsync(program, AsyncRecordOptions): Promise<Recording>
 disassemble(program): string
 verifyProgram(program): string[]
 getLibrarySource(): string
+compareRecordings(a, b): RecordingComparison             // what-if: divergence and output diff
+parseLiteralValue(text): LiteralResult, formatLiteral(value): string
+callTree(recording): CallTree                            // bug finder: the recorded calls
+startFinder(tree, call, options), question, answer, undo, verdict
 show, repr, LineIndex, and all types from api-types.ts / diagnostics.ts / span.ts / tokens.ts
 ```
+
+`Recording.fork` and `forkAsync` (§7.5) are methods of every recording.
 
 `compile` runs the stages of SPEC §11.2 and returns only the first failing stage's diagnostics
 (sorted, de-duplicated). It never throws for user input. `run` and `record` agree on outcomes.
@@ -580,15 +637,17 @@ show, repr, LineIndex, and all types from api-types.ts / diagnostics.ts / span.t
 
 `hindsight <command>`; during development `npm run sight -- <command>`.
 
-| command                               | behavior                                                                                                                                                                                         |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `run FILE [--max-steps N] [--seed S]` | print output; on error print a diagnostic and exit 1                                                                                                                                             |
-| `check FILE`                          | compile only; print diagnostics; exit 1 on errors                                                                                                                                                |
-| `disasm FILE`                         | print the disassembly                                                                                                                                                                            |
-| `replay FILE --at T [--max-steps N]`  | record, then print the state at time `T`: location, frames with locals, globals, output so far                                                                                                   |
-| `why FILE --line L --name X`          | record, then list every event in the history of variable `X` declared on line `L`, with times and values; a local's events are grouped by call (the first 50 calls are listed, the rest counted) |
-| `test [DIR]`                          | run `.sight` files with annotations (§10.2) using `src/conformance`; summary; exit 1 on failure                                                                                                  |
-| `repl`                                | interactive prompt (below)                                                                                                                                                                       |
+| command                               | behavior                                                                                                                                                                                                                                        |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `run FILE [--max-steps N] [--seed S]` | print output; on error print a diagnostic and exit 1                                                                                                                                                                                            |
+| `check FILE`                          | compile only; print diagnostics; exit 1 on errors                                                                                                                                                                                               |
+| `disasm FILE`                         | print the disassembly                                                                                                                                                                                                                           |
+| `replay FILE --at T [--max-steps N]`  | record, then print the state at time `T`: location, frames with locals, globals, output so far                                                                                                                                                  |
+| `why FILE --line L --name X`          | record, then list every event in the history of variable `X` declared on line `L`, with times and values; a local's events are grouped by call (the first 50 calls are listed, the rest counted)                                                |
+| `test [DIR]`                          | run `.sight` files with annotations (§10.2) using `src/conformance`; summary; exit 1 on failure                                                                                                                                                 |
+| `repl`                                | interactive prompt (below)                                                                                                                                                                                                                      |
+| `whatif FILE --at T --set NAME=VALUE` | record, fork at step `T` with `NAME` (resolved in the innermost frame: locals, captures, then globals) set to a literal (§7.5), then print the edit, where the futures diverge, both outcomes and an output diff (`-` real run, `+` what-if)    |
+| `debug FILE`                          | the bug finder (§7.6) as an interview: one question per call (`r` right, `w` wrong, `n` or `?` not sure, `u` undo, `q` quit), answers read line by line from a terminal or a pipe; ends with the verdict and a code frame of the buggy function |
 
 Diagnostics print Rust-style with a code frame and caret underline (`error[E020]: …`, `--> file:3:9`,
 the source line, `^^^`, `= hint: …`), colored only when stdout and stderr are both terminals and
@@ -740,12 +799,35 @@ tabbed panels); the page may scroll vertically, never horizontally.
   step, line and function. Markers: output events (ticks on the top margin), breakpoint hits, watched
   writes, the error flag at the end. Rendering uses a per-pixel min/max envelope (precomputed
   mipmaps) so 2,000,000 steps draw in a few milliseconds.
+- **What if** (§7.5): every primitive value of a local, global, captured variable, list element or
+  record field has a "What if" button (double-clicking the value works too) that edits it inline as
+  a literal at the pen's step. Enter forks the run (`forkAsync`) and shows the new timeline. A
+  banner above the strip chart names the edit, the divergence step and how many output lines
+  changed, with "Go to divergence" and "Back to the real run"; the chart draws the real run's trace
+  faintly behind the fork, with markers at the fork step and the divergence; changed console lines
+  are marked. Editing again forks the fork ("2 edits"). Editing the program, running or picking an
+  example leaves what-if mode. Focus follows the edit: Enter and Escape return it to the row's
+  "What if" button (shown disabled while the fork records), the new banner takes it once the fork is
+  shown, and "Back to the real run" leaves it on the strip chart.
+- **Bug finder** (§7.6): "Find the bug" in the header opens a non-modal panel (in the desktop
+  column, collapsed until opened; a tab on tablet and phone) and interviews the user about the whole
+  program, or from the user call at the pen. A question shows a call with its arguments and result:
+  Right / Wrong / Not sure (keys r, w, n), Show me (the pen goes to just after the call returned, so
+  the other panels show it in context), Undo, Start over. The verdict names the function,
+  highlights its lines in the editor and offers "Go to the call". After a runtime error it points at
+  the error first; when the program changed since it was recorded, it offers to run it instead.
+  An interview belongs to one recording: during a what-if, an interview about the real run waits
+  (the panel offers to continue it in the real run, or to start a new one about the what-if). Opening
+  the panel from the header moves focus to its question, also when the panel only now appears.
 - **Status**: recording progress; "Finished · 56,789 steps · 12 lines"; "Runtime error on line 7 · …"
   (click to jump); "Step limit reached · Record 2M more" (calls `extendAsync`).
 - **Settings**: step budget (500 k / 2 M / 10 M), just-my-code, auto-run, instruction-level
   stepping (adds a step-instruction button, shows `opName` and operand temps), theme.
 - **Sharing**: "Copy link" puts the program in the URL fragment (`#src=` + base64url of the UTF-8
-  source, uncompressed; programs over 60,000 characters are not linked). Opening such a link loads
+  source, uncompressed; programs over 60,000 characters are not linked) with the pen's step
+  (`&t=`), making a moment link: opening it records the program and puts the pen at that step, so a
+  bug report opens on the bug. A link replays the real run, so during a what-if its step is at most
+  the first edit's, where both futures are still the same. Opening such a link loads
   that program, stores it as the current source and removes the fragment (`history.replaceState`),
   so the link is used once and later edits survive a reload; a link pasted into an open studio
   loads on `hashchange` like an example (it runs only when auto-run is on). The current source and
