@@ -106,7 +106,25 @@ describe('the bug finder in the store', () => {
     await running
     expect(openQuestion(store)).toBeUndefined()
     store.getState().answerBugFinder('wrong')
-    expect(store.getState().bugFinder.session?.finder.asked).toBe(0)
+    // The finished interview is dropped, releasing the old recording and its call tree.
+    expect(store.getState().bugFinder.session).toBeNull()
+  })
+
+  test('a what-if keeps an interview about the real run, and Find the bug does not replace it', async () => {
+    const source =
+      'var scale = 5\nfn half(x) {\n  x * scale / 10\n}\nprint(half(4))\nprint(half(8))\n'
+    const { store, recording } = await setup(source)
+    store.getState().openBugFinder()
+    const realSession = store.getState().bugFinder.session
+    expect(realSession?.recording).toBe(recording)
+    store.getState().seek(Math.floor(recording.length / 2))
+    await store.getState().forkWhatIf({ kind: 'global', name: 'scale' }, 10, 'scale')
+    expect(store.getState().whatIf).not.toBeNull()
+    expect(store.getState().bugFinder.session).toBe(realSession)
+    store.getState().openBugFinder()
+    expect(store.getState().bugFinder.session).toBe(realSession)
+    store.getState().leaveWhatIf()
+    expect(openQuestion(store)).toBeDefined()
   })
 
   test('no interview starts about a recording older than the program', async () => {

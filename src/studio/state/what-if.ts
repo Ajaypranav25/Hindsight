@@ -57,7 +57,10 @@ export class WhatIfFlow {
     const earlier = whatIf?.edits.filter((edit) => edit.time <= time) ?? []
     const token = this.host.begin(time)
     this.pending = token
-    this.host.set({ status: { kind: 'recording', progress: time } })
+    // A compile error in the edited program keeps the status line, as during any recording.
+    if (this.host.get().compile?.ok !== false) {
+      this.host.set({ status: { kind: 'recording', progress: time } })
+    }
     const result = await recording.forkAsync(
       time,
       { target, value },
@@ -67,6 +70,8 @@ export class WhatIfFlow {
     if (!this.host.finish(token)) return
     if (!result.ok) {
       this.host.set({ status: this.host.completedStatus() })
+      // Nothing new is shown, but the run marker written by begin() must still go.
+      this.host.displayed()
       return this.host.notify({ text: `No what-if: ${result.error.message}`, tone: 'error' })
     }
     const edits = [...earlier, { time, text: `${name} = ${formatLiteral(value)}` }]

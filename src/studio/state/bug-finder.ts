@@ -78,8 +78,10 @@ export function bugFinderActions(
   }
   return {
     openBugFinder() {
-      const { bugFinder, recording } = get()
+      const { bugFinder, recording, whatIf } = get()
       set({ bugFinder: { ...bugFinder, reveal: bugFinder.reveal + 1 } })
+      // An interview about the real run outlives a what-if: going back continues it.
+      if (whatIf !== null && bugFinder.session?.recording === whatIf.parent) return
       const failed = recording?.outcome.kind === 'error'
       if (!failed && liveSession(bugFinder, recording) === null) start()
     },

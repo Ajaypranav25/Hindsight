@@ -1,12 +1,14 @@
 import { describe, expect, test } from 'vitest'
 import type {
   AsyncForkOptions,
+  AsyncRecordOptions,
   ForkEdit,
   ForkResult,
   Recording,
   WriteTarget,
 } from '../../core/api-types'
 import { memoryStorage } from '../lib/storage'
+import { STORAGE_KEYS } from './defaults'
 import { ManualScheduler } from './scheduler'
 import { createStudioStore } from './store'
 import { fakeRecording, scriptedEngine } from './testing'
@@ -35,15 +37,16 @@ function forkable(length: number, calls: ForkCall[], extra: Partial<Recording> =
 async function studio(sharedTime: number | null = null, first?: Recording) {
   const engine = scriptedEngine()
   const scheduler = new ManualScheduler()
+  const storage = memoryStorage()
   const store = createStudioStore(
-    { engine, storage: memoryStorage(), scheduler, examples: [] },
+    { engine, storage, scheduler, examples: [] },
     { sharedSource: 'print(1)', sharedTime },
   )
   const calls: ForkCall[] = []
   const parent = first ?? forkable(100, calls)
   void store.getState().run()
   await engine.resolveNext(parent)
-  return { engine, scheduler, store, calls, parent }
+  return { engine, scheduler, storage, store, calls, parent }
 }
 
 /** Starts a what-if at `time`, resolves its fork with `fork` and waits for the store. */
@@ -132,6 +135,7 @@ describe('what-if mode in the store', () => {
 
   test('a failed fork explains itself and changes nothing', async () => {
     const context = await studio()
+    context.scheduler.advance(0)
     context.store.getState().seek(40)
     const done = context.store.getState().forkWhatIf(TOTAL, 0, 'total')
     context.calls[0]!.resolve({ ok: false, error: { code: 'target', message: 'boom' } })
@@ -141,6 +145,42 @@ describe('what-if mode in the store', () => {
     expect(state.status).toEqual({ kind: 'ready' })
     expect(state.recording).toBe(context.parent)
     expect(state.whatIf).toBeNull()
+    // A failed fork must not leave the "run in progress" mark for the next page load.
+    context.scheduler.advance(0)
+    expect(context.storage.read(STORAGE_KEYS.runInProgress)).toBeNull()
+  })
+
+  test('a what-if while the edited program does not compile keeps the compile error', async () => {
+    const context = await studio()
+    context.store.getState().setSource('print(ERROR)')
+    const before = context.store.getState().status
+    expect(before.kind).toBe('compile-error')
+    await forkAt(context, 40, fakeRecording({ length: 120 }))
+    expect(context.store.getState().status).toEqual(before)
+    expect(context.store.getState().whatIf).not.toBeNull()
+  })
+
+  test('leaving while an extension of the fork records keeps the real run', async () => {
+    const context = await studio()
+    let finish: (recording: Recording) => void = () => {}
+    let signal: { readonly aborted: boolean } | undefined
+    const limited: Recording = {
+      ...fakeRecording({ length: 120, outcome: { kind: 'step-limit', maxSteps: 120 } }),
+      extendAsync: (_extra: number, options?: AsyncRecordOptions) =>
+        new Promise<Recording>((resolve) => {
+          finish = resolve
+          signal = options?.signal
+        }),
+    }
+    await forkAt(context, 40, limited)
+    const extending = context.store.getState().extend()
+    context.store.getState().leaveWhatIf()
+    expect(signal?.aborted).toBe(true)
+    expect(context.store.getState().status).toEqual({ kind: 'ready' })
+    finish(fakeRecording({ length: 300 }))
+    await extending
+    expect(context.store.getState().recording).toBe(context.parent)
+    expect(context.store.getState().whatIf).toBeNull()
   })
 
   test('at the end of the run there is no future to replay', async () => {
@@ -187,6 +227,17 @@ describe('moment links', () => {
     store.getState().openSharedSource('print(3)', 7)
     await engine.resolveNext(fakeRecording({ length: 50 }))
     expect(store.getState().time).toBe(7)
+  })
+
+  test('a linked step still waiting for its run does not move the pen of another program', async () => {
+    const { store, engine } = await studio()
+    store.getState().updateSettings({ autoRun: false })
+    store.getState().openSharedSource('print(3)', 7)
+    store.getState().setSource('print(4)')
+    const running = store.getState().run()
+    await engine.resolveNext(fakeRecording({ length: 50 }))
+    await running
+    expect(store.getState().time).toBe(50)
   })
 })
 

@@ -84,12 +84,27 @@ export function createStudioStore(deps: StoreDeps, startup: Startup): StoreApi<S
     delivered: startup.sharedSource !== null || storage.read(STORAGE_KEYS.sourceDelivered) !== null,
     persistBlocked: kept === 'failed',
   }
-  return createStore<StudioStore>()((set, get) => {
+  const store = createStore<StudioStore>()((set, get) => {
     const controller = new Controller(deps, set, get, origin, startup.sharedTime ?? null)
     const state = initialState(storage, deps.examples, startup)
     const notice = state.notice ?? (kept === 'kept' ? KEPT_AFTER_LINK_NOTICE : null)
     return { ...state, notice, ...controller.actions() }
   })
+  store.subscribe(dropFinishedInterview(store))
+  return store
+}
+
+/**
+ * An interview is over once its recording is neither shown nor the real run behind a what-if;
+ * dropping it releases that recording and its call tree.
+ */
+function dropFinishedInterview(store: StoreApi<StudioStore>): (state: StudioStore) => void {
+  return (state) => {
+    const session = state.bugFinder.session
+    if (session === null || session.recording === state.recording) return
+    if (session.recording === state.whatIf?.parent) return
+    store.setState({ bugFinder: { ...state.bugFinder, session: null } })
+  }
 }
 
 /** Where the editor's program came from, as far as keeping and saving it are concerned. */
@@ -103,6 +118,8 @@ interface ProgramOrigin {
 /** Owns the timers and the in-flight recording; every state change goes through `set`. */
 class Controller {
   private current: RunToken | null = null
+  /** The extension in flight, if any (leaving a what-if abandons an extension of its fork). */
+  private extension: RunToken | null = null
   private penStrategy: PenStrategy = 'example'
   private autoRunTimer: number | null = null
   private persistTimer: number | null = null
@@ -174,15 +191,23 @@ class Controller {
       restorePreviousSource: () => this.restorePreviousSource(),
       openSharedSource: (source, time) => this.openSharedSource(source, time),
       forkWhatIf: (target, value, name) => this.whatIf.fork(target, value, name),
-      leaveWhatIf: () => this.whatIf.leave(),
+      leaveWhatIf: () => this.leaveWhatIf(),
       ...bugFinderActions(this.get, this.set),
     }
   }
 
   // --- source and runs ----------------------------------------------------------------------
 
-  private setSource(source: string): void {
+  /** Back to the real run; an extension of the fork still recording is abandoned with it. */
+  private leaveWhatIf(): void {
+    if (this.extension !== null && this.get().whatIf !== null) this.cancelRecording(this.extension)
     this.whatIf.leave()
+  }
+
+  private setSource(source: string): void {
+    this.leaveWhatIf()
+    // A moment link's step belongs to the linked program, not to an edited one.
+    this.pendingTime = null
     const exampleId = this.deps.examples.find((example) => example.source === source)?.id ?? null
     const compile = this.deps.engine.compile(source)
     this.set({
@@ -214,8 +239,9 @@ class Controller {
 
   /** A share link opened in a running studio; it runs only when auto-run is on. */
   private openSharedSource(source: string, time?: number | null): void {
-    this.pendingTime = time ?? null
     this.replaceKeepingPrevious(source, KEPT_AFTER_LINK_NOTICE, this.get().settings.autoRun)
+    // Set after the replacement (which clears it); a run started there reads it when it lands.
+    this.pendingTime = time ?? null
   }
 
   /**
@@ -255,7 +281,8 @@ class Controller {
    * it, or (when `run` is false) only compiles it.
    */
   private replaceProgram(source: string, how: { delivered: boolean; run: boolean }): void {
-    this.whatIf.leave()
+    this.leaveWhatIf()
+    this.pendingTime = null
     this.stopPlay()
     this.cancelAutoRun()
     this.delivered = how.delivered
@@ -297,7 +324,7 @@ class Controller {
   }
 
   private async run(): Promise<void> {
-    this.whatIf.leave()
+    this.leaveWhatIf()
     this.cancelAutoRun()
     const { source, settings, notice } = this.get()
     const compile = this.deps.engine.compile(source)
@@ -359,12 +386,20 @@ class Controller {
     )
       return
     const token = this.beginRecording(recording.length)
+    this.extension = token
     this.set({ status: { kind: 'recording', progress: recording.length } })
     const extended = await recording.extendAsync(settings.maxSteps, {
       signal: token,
       onProgress: (progress) => this.reportProgress(token, progress),
     })
+    if (this.extension === token) this.extension = null
     if (!this.finishRecording(token)) return
+    if (this.get().recording !== recording) {
+      // The shown run changed meanwhile (a what-if was left): the extension is not its future.
+      this.set({ status: this.completedStatus() })
+      this.clearRunMarkAfterDisplay()
+      return
+    }
     this.set({
       recording: extended,
       status: this.completedStatus(),
