@@ -144,6 +144,40 @@ describe('call keys', () => {
     const [f, g] = tree.children(tree.root).map((call) => tree.details(call).key)
     expect(f).not.toBe(g)
   })
+
+  test('closures of one function with different captured values are not the same call', () => {
+    const source =
+      'fn make_checker(limit) {\n  fn(x) { x <= limit }\n}\nlet a = make_checker(10)\nlet b = make_checker(5)\nprint(a(5))\nprint(b(5))\n'
+    const { tree } = treeOf(source)
+    const calls = tree.children(tree.root).filter((call) => call.name !== 'make_checker')
+    expect(calls).toHaveLength(2)
+    const [first, second] = calls.map((call) => tree.details(call))
+    expect(first!.result?.text).toBe(second!.result?.text)
+    expect(first!.key).not.toBeNull()
+    expect(first!.key).not.toBe(second!.key)
+  })
+
+  test('calls that read a global see its value: equal calls under different globals differ', () => {
+    const source =
+      'var flag = true\nfn f(x) {\n  if flag { x } else { x }\n}\nprint(f(1))\nflag = false\nprint(f(1))\nprint(f(1))\n'
+    const { tree } = treeOf(source)
+    const [a, b, c] = tree.children(tree.root).map((call) => tree.details(call).key)
+    expect(a).not.toBeNull()
+    expect(a).not.toBe(b)
+    expect(b).toBe(c)
+  })
+
+  test('a recursive function reading its own name still repeats keys', () => {
+    const { tree } = treeOf('fn fib(n) {\n  if n < 2 { n } else { fib(n - 1) + fib(n - 2) }\n}\nfib(4)\n')
+    const keys: (string | null)[] = []
+    const visit = (call: CallNode) => {
+      if (call.name === 'fib') keys.push(tree.details(call).key)
+      for (const child of tree.children(call)) visit(child)
+    }
+    visit(tree.root)
+    expect(keys.length).toBeGreaterThan(new Set(keys).size)
+    expect(keys.every((key) => key !== null)).toBe(true)
+  })
 })
 
 describe('outcomes', () => {
@@ -171,6 +205,38 @@ describe('outcomes', () => {
     expect(spin.exit).toBe(recording.length)
     expect(tree.details(spin)).toMatchObject({ result: null, error: null, key: null })
     expect(tree.root.outcome).toBe('unfinished')
+  })
+
+  test('a call that returned on the last recorded step returned, though the run then failed', () => {
+    const { tree, recording } = treeOf('fn f(b) {\n  b\n}\nprint(-f(true))\n')
+    expect(recording.outcome.kind).toBe('error')
+    const f = tree.children(tree.root)[0]!
+    expect(f.outcome).toBe('returned')
+    expect(f.exit).toBe(recording.length - 1)
+    expect(tree.details(f).result?.text).toBe('true')
+    expect(tree.callAt(recording.length)).toBe(tree.root)
+    expect(tree.root.outcome).toBe('raised')
+  })
+
+  test('a call that returned just before the step limit returned', () => {
+    const source = 'fn f(x) {\n  x\n}\nlet y = f(1)\nprint(y)\n'
+    const full = treeOf(source)
+    const exit = full.tree.children(full.tree.root)[0]!.exit
+    const { tree, recording } = treeOf(source, exit + 1)
+    expect(recording.outcome.kind).toBe('step-limit')
+    const f = tree.children(tree.root)[0]!
+    expect(f.outcome).toBe('returned')
+    expect(tree.details(f).result?.text).toBe('1')
+  })
+
+  test('a call that fails on its first step is in the tree, and raised', () => {
+    const { tree, recording } = treeOf('fn g() {\n  later\n}\ng()\nlet later = 1\n')
+    expect(recording.outcome.kind).toBe('error')
+    const g = tree.children(tree.root)[0]
+    expect(g?.name).toBe('g')
+    expect(g?.outcome).toBe('raised')
+    expect(g?.entry).toBe(recording.length)
+    expect(tree.callAt(recording.length)).toBe(g)
   })
 })
 
@@ -239,6 +305,18 @@ describe('the call index', () => {
     const index = buildCallIndex(depths, depths.length)
     expect([0, 1, 2].map((i) => index.endOf(i))).toEqual([4, 4, 4])
     expect(index.innermostAt(4)).toBe(2)
+  })
+
+  test('the depth at N closes calls that returned on the last step and opens one that failed at once', () => {
+    const returned = buildCallIndex(Int32Array.from([0, 1, 1]), 3, 0)
+    expect(returned.returnedOf(1)).toBe(true)
+    expect(returned.endOf(1)).toBe(3)
+    expect(returned.innermostAt(3)).toBe(0)
+    const failed = buildCallIndex(Int32Array.from([0, 0]), 2, 1)
+    expect(failed.count).toBe(2)
+    expect(failed.entryOf(1)).toBe(2)
+    expect(failed.returnedOf(1)).toBe(false)
+    expect(failed.innermostAt(2)).toBe(1)
   })
 
   test('an empty recording has just the root', () => {

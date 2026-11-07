@@ -43,6 +43,7 @@ describe('formatLiteral', () => {
     [true, 'true'],
     [false, 'false'],
     [-1.5, '-1.5'],
+    [-0, '-0'],
     ['a{b}"\n\\', '"a\\{b\\}\\"\\n\\\\"'],
     ['\u0001\0', '"\\u{1}\\0"'],
   ])('%j', (value, text) => {
@@ -60,7 +61,8 @@ describe('formatLiteral', () => {
         (value) => {
           const parsed = parseLiteralValue(formatLiteral(value))
           expect(parsed.ok).toBe(true)
-          if (parsed.ok) expect(Object.is(parsed.value, value) || parsed.value === value).toBe(true)
+          // Object.is, so -0 must come back as -0 (=== would accept +0).
+          if (parsed.ok) expect(Object.is(parsed.value, value)).toBe(true)
         },
       ),
     )

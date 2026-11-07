@@ -336,3 +336,23 @@ start()
     expect(found(state)).toMatchObject({ name: 'spin', certainty: 'certain' })
   })
 })
+
+describe('hidden inputs', () => {
+  test('closures of one function are judged separately: their captured values differ', () => {
+    const tree = treeOf(
+      'fn make_checker(limit) {\n  fn(x) { x <= limit }\n}\nlet a = make_checker(10)\nlet b = make_checker(5)\nprint(a(5))\nprint(b(5))\n',
+    )
+    let closures = 0
+    // The checker should be `x < limit`: a(5) = true is right, b(5) = true is wrong.
+    const oracle: Oracle = (details) => {
+      if (details.call.name === 'make_checker') return 'right'
+      closures += 1
+      return closures === 1 ? 'right' : 'wrong'
+    }
+    const { state, asked } = interview(tree, oracle)
+    expect(asked).toHaveLength(4)
+    expect(found(state)).toMatchObject({ certainty: 'certain' })
+    expect(found(state)?.name).not.toBe('<top level>')
+    expect(found(state)?.name).not.toBe('make_checker')
+  })
+})

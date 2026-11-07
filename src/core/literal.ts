@@ -47,9 +47,13 @@ function literalOf(tokens: readonly Token[]): EditValue | undefined {
   }
 }
 
-/** The literal text of `value` (numbers as JavaScript writes them; NaN and ±Infinity have none). */
+/**
+ * The literal text of `value` (numbers as JavaScript writes them, except -0, which String() writes
+ * as "0"; NaN and ±Infinity have none).
+ */
 export function formatLiteral(value: EditValue): string {
   if (value === null) return 'nil'
+  if (Object.is(value, -0)) return '-0'
   if (typeof value !== 'string') return String(value)
   let out = '"'
   for (let i = 0; i < value.length; i++) out += escapeUnit(value, i)

@@ -4,7 +4,7 @@
  * operand stack, the error it raised, and the arguments it changed (lists and records it mutated).
  */
 import type { Recording, RuntimeErrorInfo, ValueView } from './api-types'
-import type { FunctionProto, Program } from './bytecode'
+import { instructionLength, Op, type FunctionProto, type Program } from './bytecode'
 import type { CallNode } from './calls'
 import { cutText, deepText, keyText, PREVIEW_LENGTH, valueText } from './call-values'
 import { InternalError } from './diagnostics'
@@ -177,7 +177,9 @@ function callKey(
 ): string | null {
   const ending = outcomeKey(recording, after, result, error)
   if (ending === null) return null
-  const parts = [String(call.protoId)]
+  const context = contextKey(recording, call)
+  if (context === null) return null
+  const parts = [String(call.protoId), ...context]
   for (const param of params) {
     const before = keyText(recording, call.entry, param.value)
     if (before === null) return null
@@ -190,6 +192,47 @@ function callKey(
   }
   parts.push(ending)
   return parts.join(KEY_SEPARATOR)
+}
+
+/**
+ * What the call's result can depend on besides its arguments: the callee's captured variables and
+ * the globals its own code reads, as they were when it began (two closures of one function, or one
+ * function under different globals, are different calls). Null when one of them cannot be keyed.
+ */
+function contextKey(recording: Recording, call: CallNode): string[] | null {
+  const state = recording.stateAt(call.entry)
+  const parts: string[] = []
+  for (const capture of state.frames.at(-1)?.captures ?? []) {
+    const text = keyText(recording, call.entry, capture.value)
+    if (text === null) return null
+    parts.push(`capture ${capture.name}=${text}`)
+  }
+  const proto = mainProto(recording.program, call.protoId)
+  for (const name of proto === null ? [] : globalsReadBy(proto)) {
+    const global = state.globals.find((candidate) => candidate.name === name)
+    // Not defined yet: reading it raises, which the outcome already records.
+    const text = global === undefined ? '(undefined)' : keyText(recording, call.entry, global.value)
+    if (text === null) return null
+    parts.push(`global ${name}=${text}`)
+  }
+  return parts
+}
+
+const globalReads = new WeakMap<FunctionProto, readonly string[]>()
+
+/** The names of the globals a function's own code reads (`GetGlobal`), sorted. */
+function globalsReadBy(proto: FunctionProto): readonly string[] {
+  let names = globalReads.get(proto)
+  if (names === undefined) {
+    const found = new Set<string>()
+    const { code, constants } = proto
+    for (let ip = 0; ip < code.length; ip += instructionLength(code, ip, constants)) {
+      if (code[ip] === Op.GetGlobal) found.add(constants[code[ip + 1]!] as string)
+    }
+    names = [...found].sort()
+    globalReads.set(proto, names)
+  }
+  return names
 }
 
 /** An argument object's text after the call; empty once nothing can reach it any more. */

@@ -120,7 +120,12 @@ export class CallTree {
   }
 
   private index(): CallIndex {
-    this.shape ??= buildCallIndex(this.recording.depthSeries(), this.recording.length)
+    const { recording } = this
+    this.shape ??= buildCallIndex(
+      recording.depthSeries(),
+      recording.length,
+      recording.depthAt(recording.length),
+    )
     return this.shape
   }
 
@@ -169,7 +174,7 @@ export class CallTree {
     const { recording } = this
     const entry = this.index().entryOf(index)
     const end = this.index().endOf(index)
-    const outcome = this.outcomeOf(end)
+    const outcome = this.outcomeOf(index)
     const location = recording.locationAt(entry)
     const script = recording.program.script
     return {
@@ -184,9 +189,9 @@ export class CallTree {
     }
   }
 
-  private outcomeOf(end: number): CallOutcome {
+  private outcomeOf(index: number): CallOutcome {
     const { recording } = this
-    if (end < recording.length) return 'returned'
+    if (this.index().returnedOf(index)) return 'returned'
     switch (recording.outcome.kind) {
       case 'finished':
         return 'returned'
