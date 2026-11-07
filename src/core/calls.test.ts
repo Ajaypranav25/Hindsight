@@ -168,7 +168,9 @@ describe('call keys', () => {
   })
 
   test('a recursive function reading its own name still repeats keys', () => {
-    const { tree } = treeOf('fn fib(n) {\n  if n < 2 { n } else { fib(n - 1) + fib(n - 2) }\n}\nfib(4)\n')
+    const { tree } = treeOf(
+      'fn fib(n) {\n  if n < 2 { n } else { fib(n - 1) + fib(n - 2) }\n}\nfib(4)\n',
+    )
     const keys: (string | null)[] = []
     const visit = (call: CallNode) => {
       if (call.name === 'fib') keys.push(tree.details(call).key)
