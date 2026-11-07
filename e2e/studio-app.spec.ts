@@ -5,6 +5,7 @@ import {
   expect,
   loadExample,
   outputLines,
+  penStep,
   replaceProgram,
   tapeCounter,
   test,
@@ -25,11 +26,14 @@ test('Copy link carries the program to a new page', async ({ studio: page, conte
   const link = (await copied.isVisible())
     ? await page.evaluate(() => navigator.clipboard.readText())
     : await manual.getByRole('textbox').inputValue()
-  expect(link).toMatch(/^http:\/\/localhost:\d+\/#src=[\w-]+$/)
+  // A moment link: the program and the pen's step.
+  expect(link).toMatch(/^http:\/\/localhost:\d+\/#src=[\w-]+&t=\d+$/)
+  const step = Number(/&t=(\d+)$/.exec(link)![1])
 
   const other = await context.newPage()
   await other.goto(link)
   await waitForRun(other)
+  await expect.poll(() => penStep(other)).toBe(step)
   await expect(editorContent(other)).toContainText('print("shared {n}")')
   await expect(outputLines(other).first()).toContainText('shared 42')
   await expect(other.getByRole('button', { name: /Examples/ })).toContainText('Your program')
@@ -74,7 +78,13 @@ test.describe('phone layout', () => {
     await expect(editorContent(page)).toBeVisible()
     await expect(chart(page)).toBeVisible()
     const tabs = page.getByRole('tablist', { name: 'Instruments' })
-    await expect(tabs.getByRole('tab')).toHaveText(['Call stack', 'Variables', 'Heap', 'Console'])
+    await expect(tabs.getByRole('tab')).toHaveText([
+      'Call stack',
+      'Variables',
+      'Heap',
+      'Bug finder',
+      'Console',
+    ])
     await expect(tabs.getByRole('tab', { name: 'Variables' })).toHaveAttribute(
       'aria-selected',
       'true',
