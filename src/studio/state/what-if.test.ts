@@ -10,6 +10,7 @@ import type {
 import { memoryStorage } from '../lib/storage'
 import { STORAGE_KEYS } from './defaults'
 import { ManualScheduler } from './scheduler'
+import { momentTime } from './selectors'
 import { createStudioStore } from './store'
 import { fakeRecording, scriptedEngine } from './testing'
 import { PEN_AT_END_NOTICE, whatIfLabel, whatIfSummary } from './what-if'
@@ -238,6 +239,21 @@ describe('moment links', () => {
     await engine.resolveNext(fakeRecording({ length: 50 }))
     await running
     expect(store.getState().time).toBe(50)
+  })
+
+  test('during a what-if a link points no later than the first edit, where the futures agree', async () => {
+    const context = await studio()
+    const { store } = context
+    store.getState().seek(30)
+    expect(momentTime(store.getState())).toBe(30)
+    expect(momentTime({ ...store.getState(), recording: null })).toBeNull()
+    await forkAt(context, 40, fakeRecording({ length: 120 }))
+    store.getState().seek(90)
+    expect(momentTime(store.getState())).toBe(40)
+    store.getState().seek(10)
+    expect(momentTime(store.getState())).toBe(10)
+    store.getState().setSource('print(2)')
+    expect(momentTime(store.getState())).toBeNull()
   })
 })
 

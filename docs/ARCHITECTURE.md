@@ -806,7 +806,9 @@ tabbed panels); the page may scroll vertically, never horizontally.
   changed, with "Go to divergence" and "Back to the real run"; the chart draws the real run's trace
   faintly behind the fork, with markers at the fork step and the divergence; changed console lines
   are marked. Editing again forks the fork ("2 edits"). Editing the program, running or picking an
-  example leaves what-if mode.
+  example leaves what-if mode. Focus follows the edit: Enter and Escape return it to the row's
+  "What if" button (shown disabled while the fork records), the new banner takes it once the fork is
+  shown, and "Back to the real run" leaves it on the strip chart.
 - **Bug finder** (§7.6): "Find the bug" in the header opens a non-modal panel (in the desktop
   column, collapsed until opened; a tab on tablet and phone) and interviews the user about the whole
   program, or from the user call at the pen. A question shows a call with its arguments and result:
@@ -814,6 +816,9 @@ tabbed panels); the page may scroll vertically, never horizontally.
   the other panels show it in context), Undo, Start over. The verdict names the function,
   highlights its lines in the editor and offers "Go to the call". After a runtime error it points at
   the error first; when the program changed since it was recorded, it offers to run it instead.
+  An interview belongs to one recording: during a what-if, an interview about the real run waits
+  (the panel offers to continue it in the real run, or to start a new one about the what-if). Opening
+  the panel from the header moves focus to its question, also when the panel only now appears.
 - **Status**: recording progress; "Finished · 56,789 steps · 12 lines"; "Runtime error on line 7 · …"
   (click to jump); "Step limit reached · Record 2M more" (calls `extendAsync`).
 - **Settings**: step budget (500 k / 2 M / 10 M), just-my-code, auto-run, instruction-level
@@ -821,7 +826,8 @@ tabbed panels); the page may scroll vertically, never horizontally.
 - **Sharing**: "Copy link" puts the program in the URL fragment (`#src=` + base64url of the UTF-8
   source, uncompressed; programs over 60,000 characters are not linked) with the pen's step
   (`&t=`), making a moment link: opening it records the program and puts the pen at that step, so a
-  bug report opens on the bug. Opening such a link loads
+  bug report opens on the bug. A link replays the real run, so during a what-if its step is at most
+  the first edit's, where both futures are still the same. Opening such a link loads
   that program, stores it as the current source and removes the fragment (`history.replaceState`),
   so the link is used once and later edits survive a reload; a link pasted into an open studio
   loads on `hashchange` like an example (it runs only when auto-run is on). The current source and

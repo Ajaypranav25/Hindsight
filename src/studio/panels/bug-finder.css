@@ -104,8 +104,10 @@
   color: var(--ink);
 }
 
+/* a likely (not certain) verdict: ink text for contrast, flagged by a warning rule */
 .bf-found[data-certainty='likely'] {
-  color: var(--warn);
+  padding-left: var(--space-2);
+  border-left: 3px solid var(--warn);
 }
 
 .bf-tools {

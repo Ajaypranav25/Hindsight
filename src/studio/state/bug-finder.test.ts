@@ -40,7 +40,7 @@ function openQuestion(store: Awaited<ReturnType<typeof setup>>['store']) {
 describe('the bug finder in the store', () => {
   test('opening it reveals the panel and starts an interview about the whole program', async () => {
     const { store } = await setup()
-    expect(store.getState().bugFinder).toEqual({ reveal: 0, session: null })
+    expect(store.getState().bugFinder).toEqual({ reveal: 0, focused: 0, session: null })
     store.getState().openBugFinder()
     expect(store.getState().bugFinder.reveal).toBe(1)
     expect(openQuestion(store)?.name).toBe('celsius')
@@ -48,6 +48,17 @@ describe('the bug finder in the store', () => {
     store.getState().openBugFinder()
     expect(store.getState().bugFinder.reveal).toBe(2)
     expect(store.getState().bugFinder.session).toBe(session)
+  })
+
+  test('a reveal waits until the panel has taken focus for it', async () => {
+    const { store } = await setup()
+    store.getState().openBugFinder()
+    expect(store.getState().bugFinder).toMatchObject({ reveal: 1, focused: 0 })
+    store.getState().markBugFinderFocused()
+    const handled = store.getState().bugFinder
+    expect(handled).toMatchObject({ reveal: 1, focused: 1 })
+    store.getState().markBugFinderFocused()
+    expect(store.getState().bugFinder).toBe(handled)
   })
 
   test('answers, undo and close', async () => {
@@ -93,7 +104,7 @@ describe('the bug finder in the store', () => {
   test('after a run that failed, opening only reveals the panel', async () => {
     const { store } = await setup('fn get(xs) {\n  xs[3]\n}\nprint(get([1]))\n')
     store.getState().openBugFinder()
-    expect(store.getState().bugFinder).toEqual({ reveal: 1, session: null })
+    expect(store.getState().bugFinder).toEqual({ reveal: 1, focused: 0, session: null })
     store.getState().startBugFinder()
     expect(openQuestion(store)?.outcome).toBe('raised')
   })
@@ -131,7 +142,7 @@ describe('the bug finder in the store', () => {
     const { store } = await setup()
     store.getState().setSource(CELSIUS.replace('/ 6', '/ 9'))
     store.getState().openBugFinder()
-    expect(store.getState().bugFinder).toEqual({ reveal: 1, session: null })
+    expect(store.getState().bugFinder).toEqual({ reveal: 1, focused: 0, session: null })
     store.getState().startBugFinder()
     expect(store.getState().bugFinder.session).toBeNull()
   })
@@ -147,6 +158,6 @@ describe('the bug finder in the store', () => {
       { sharedSource: CELSIUS },
     )
     store.getState().openBugFinder()
-    expect(store.getState().bugFinder).toEqual({ reveal: 1, session: null })
+    expect(store.getState().bugFinder).toEqual({ reveal: 1, focused: 0, session: null })
   })
 })

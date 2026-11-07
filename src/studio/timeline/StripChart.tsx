@@ -111,7 +111,7 @@ export function StripChart() {
 
   return (
     <div className={className}>
-      <WhatIfBanner />
+      <WhatIfBanner onLeft={() => canvasRef.current?.focus()} />
       <div className="tl-chart__paper" ref={wrapRef}>
         <canvas
           ref={canvasRef}

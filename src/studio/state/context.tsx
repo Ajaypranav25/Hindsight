@@ -74,6 +74,7 @@ export function pickActions(s: StudioStore): StudioActions {
     forkWhatIf: s.forkWhatIf,
     leaveWhatIf: s.leaveWhatIf,
     openBugFinder: s.openBugFinder,
+    markBugFinderFocused: s.markBugFinderFocused,
     startBugFinder: s.startBugFinder,
     answerBugFinder: s.answerBugFinder,
     undoBugFinder: s.undoBugFinder,

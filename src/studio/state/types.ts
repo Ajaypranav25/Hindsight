@@ -167,6 +167,8 @@ export interface StudioActions {
    * starts one about the whole program.
    */
   openBugFinder(): void
+  /** Records that the bug finder panel moved focus for the latest reveal. */
+  markBugFinderFocused(): void
   /** Starts an interview below the call that begins at step `entry` (the whole program by default). */
   startBugFinder(entry?: number): void
   /** Judges the open question about a call. */

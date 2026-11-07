@@ -24,11 +24,16 @@ export interface BugFinderSession {
 export interface BugFinderState {
   /** Bumped each time the bug finder is opened from outside its panel, so the layout reveals it. */
   readonly reveal: number
+  /**
+   * The last reveal the panel moved focus for. Behind `reveal` until the shown panel takes focus,
+   * which may be a panel that only mounts because of the reveal.
+   */
+  readonly focused: number
   /** The interview, or null. */
   readonly session: BugFinderSession | null
 }
 
-export const INITIAL_BUG_FINDER: BugFinderState = { reveal: 0, session: null }
+export const INITIAL_BUG_FINDER: BugFinderState = { reveal: 0, focused: 0, session: null }
 
 /** The interview in progress about `recording`, or null. */
 export function liveSession(
@@ -53,7 +58,12 @@ export function startSession(
 
 type BugFinderActions = Pick<
   StudioActions,
-  'openBugFinder' | 'startBugFinder' | 'answerBugFinder' | 'undoBugFinder' | 'closeBugFinder'
+  | 'openBugFinder'
+  | 'markBugFinderFocused'
+  | 'startBugFinder'
+  | 'answerBugFinder'
+  | 'undoBugFinder'
+  | 'closeBugFinder'
 >
 
 /** The store's bug-finder actions. */
@@ -84,6 +94,12 @@ export function bugFinderActions(
       if (whatIf !== null && bugFinder.session?.recording === whatIf.parent) return
       const failed = recording?.outcome.kind === 'error'
       if (!failed && liveSession(bugFinder, recording) === null) start()
+    },
+    markBugFinderFocused() {
+      const { bugFinder } = get()
+      if (bugFinder.focused !== bugFinder.reveal) {
+        set({ bugFinder: { ...bugFinder, focused: bugFinder.reveal } })
+      }
     },
     startBugFinder: start,
     answerBugFinder: (given: Answer) => update((finder) => answer(finder, given)),

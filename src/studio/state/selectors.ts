@@ -6,6 +6,17 @@ export function isStale(state: StudioState): boolean {
   return state.recording !== null && state.recordedSource !== state.source
 }
 
+/**
+ * The step a moment link carries: the pen's, when the shown recording is of the program in the
+ * editor (null otherwise). A link replays the real run, so during a what-if it points no later
+ * than the first edit, where the real run and the what-if are still the same.
+ */
+export function momentTime(state: StudioState): number | null {
+  if (state.recording === null || isStale(state)) return null
+  const firstEdit = state.whatIf?.edits[0]?.time
+  return firstEdit === undefined ? state.time : Math.min(state.time, firstEdit)
+}
+
 /** The selected frame, or the innermost frame when none is selected (null when there are none). */
 export function selectedFrame(
   view: StateView | null,

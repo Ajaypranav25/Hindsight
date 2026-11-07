@@ -2,7 +2,7 @@
  * The "what if" affordance of a primitive value (ARCHITECTURE §11.3): a button beside the value
  * and an inline editor. Committing forks the run at the pen with the new value.
  */
-import { useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, type Ref, type RefObject } from 'react'
 import type { ValueView, WriteTarget } from '../../core/index'
 import { formatLiteral, parseLiteralValue } from '../../core/index'
 import { formatCount } from '../lib/format'
@@ -20,24 +20,73 @@ export function literalText(value: ValueView): string {
   }
 }
 
-/** True when a what-if can start: a recording is shown, nothing records, the pen is before N. */
-export function useCanWhatIf(): boolean {
-  return useStudio(
-    (s) => s.recording !== null && s.status.kind !== 'recording' && s.time < s.recording.length,
-  )
+/**
+ * Whether a value can be changed in a what-if: 'ready'; 'busy' while a recording is made (the
+ * button stays, disabled, so focus can wait on it); 'none' without a recording or at its end.
+ */
+export type WhatIfAvailability = 'ready' | 'busy' | 'none'
+
+export function useWhatIfAvailability(): WhatIfAvailability {
+  return useStudio((s) => {
+    if (s.recording === null || s.time >= s.recording.length) return 'none'
+    return s.status.kind === 'recording' ? 'busy' : 'ready'
+  })
+}
+
+/** Marks what-if buttons, so the banner knows focus was left there by an edit. */
+export const WHAT_IF_TRIGGER = 'data-whatif-trigger'
+
+export interface WhatIfEditing {
+  readonly editing: boolean
+  start(): void
+  /** Ends the edit; `returnFocus` (Enter, Escape) puts focus back on the row's what-if button. */
+  finish(returnFocus: boolean): void
+  readonly buttonRef: RefObject<HTMLButtonElement | null>
+}
+
+/** One row's what-if editing state. */
+export function useWhatIfEditing(): WhatIfEditing {
+  const [editing, setEditing] = useState(false)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const refocus = useRef(false)
+  useEffect(() => {
+    if (editing || !refocus.current) return
+    refocus.current = false
+    buttonRef.current?.focus()
+  }, [editing])
+  const start = useCallback(() => setEditing(true), [])
+  const finish = useCallback((returnFocus: boolean) => {
+    // The blur of the removed input must not cancel the return asked for by a key.
+    refocus.current ||= returnFocus
+    setEditing(false)
+  }, [])
+  return { editing, start, finish, buttonRef }
 }
 
 /** A small button that starts editing a value. */
-export function WhatIfButton(props: { readonly label: string; readonly onClick: () => void }) {
+export function WhatIfButton({
+  label,
+  onClick,
+  disabled = false,
+  ref,
+}: {
+  readonly label: string
+  readonly onClick: () => void
+  readonly disabled?: boolean
+  readonly ref?: Ref<HTMLButtonElement>
+}) {
   const time = useStudio((s) => s.time)
-  const text = `What if ${props.label} were different at step ${formatCount(time)}?`
+  const text = `What if ${label} were different at step ${formatCount(time)}?`
   return (
     <button
+      ref={ref}
       type="button"
       className="pn-act pn-act--word"
       aria-label={text}
+      aria-disabled={disabled || undefined}
       title={text}
-      onClick={props.onClick}
+      onClick={disabled ? undefined : onClick}
+      {...{ [WHAT_IF_TRIGGER]: '' }}
     >
       what if
     </button>
@@ -49,7 +98,8 @@ export function WhatIfInput(props: {
   readonly value: ValueView
   readonly target: WriteTarget
   readonly label: string
-  readonly onDone: () => void
+  /** `returnFocus` is true when a key ended the edit (focus then goes back to the row). */
+  readonly onDone: (returnFocus: boolean) => void
 }) {
   const { value, target, label, onDone } = props
   const { forkWhatIf } = useStudioActions()
@@ -64,7 +114,7 @@ export function WhatIfInput(props: {
   const commit = () => {
     const parsed = parseLiteralValue(text)
     if (!parsed.ok) return setError(parsed.error)
-    onDone()
+    onDone(true)
     void forkWhatIf(target, parsed.value, label)
   }
   return (
@@ -88,10 +138,10 @@ export function WhatIfInput(props: {
             commit()
           } else if (event.key === 'Escape') {
             event.preventDefault()
-            onDone()
+            onDone(true)
           }
         }}
-        onBlur={onDone}
+        onBlur={() => onDone(false)}
       />
       <span id={errorId} className="pn-whatif-error" aria-live="polite">
         {error ?? ''}

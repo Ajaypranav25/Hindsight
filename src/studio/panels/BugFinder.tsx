@@ -1,4 +1,12 @@
-import { useEffect, useId, useMemo, useRef, type KeyboardEvent, type RefObject } from 'react'
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  type KeyboardEvent,
+  type ReactNode,
+  type RefObject,
+} from 'react'
 import {
   type Answer,
   callSignature,
@@ -31,12 +39,13 @@ const ANSWER_KEYS: Readonly<Record<string, Answer>> = { r: 'right', w: 'wrong', 
 export function BugFinder() {
   const recording = useStudio((s) => s.recording)
   const bugFinder = useStudio((s) => s.bugFinder)
+  const whatIf = useStudio((s) => s.whatIf)
   const session = liveSession(bugFinder, recording)
   const stale = useStudio(isStale)
-  const { run } = useStudioActions()
   const view = useMemo(() => (session ? finderView(session) : null), [session])
   const container = useRef<HTMLDivElement>(null)
-  useFocusOnChange(container, view?.kind ?? 'intro', bugFinder.reveal)
+  const waiting = whatIf !== null && bugFinder.session?.recording === whatIf.parent
+  useFocusOnChange(container, view?.kind ?? (waiting ? 'waiting' : 'intro'))
 
   if (!recording) {
     return <p className="pn-empty">Run the program, then let Hindsight find the bug.</p>
@@ -44,46 +53,95 @@ export function BugFinder() {
   if (!view && stale) {
     return (
       <div className="bf" ref={container}>
-        <p className="pn-empty">
-          You changed the program since it was recorded. Run it, then let Hindsight find the bug in
-          this version.
-        </p>
-        <button type="button" className="ch-button ch-button-small" onClick={() => void run()}>
-          Run it
-        </button>
+        <StaleNote />
       </div>
     )
   }
   return (
     <div className="bf" ref={container}>
-      {view ? <Interview view={view} /> : <Intro recording={recording} />}
-      <p className="bf-live" role="status" aria-live="polite">
-        {announcement(view)}
-      </p>
+      {view ? (
+        <Interview view={view} />
+      ) : waiting ? (
+        <RealRunNote />
+      ) : (
+        <Intro recording={recording} />
+      )}
+      <LiveText text={announcement(view)} />
     </div>
   )
 }
 
 /**
- * Focuses the panel's heading when the panel is revealed, and when the focused button went away
- * with the view it belonged to (answering the last question, undoing a verdict). Focus elsewhere
- * (the editor, the timeline) is never taken.
+ * Focuses the panel's heading when the panel is revealed (also when the reveal is what mounted
+ * it), and when the focused button went away with the view it belonged to (answering the last
+ * question, undoing a verdict). Focus elsewhere (the editor, the timeline) is never taken.
  */
-function useFocusOnChange(
-  container: RefObject<HTMLDivElement | null>,
-  kind: string,
-  reveal: number,
-): void {
-  const revealed = useRef(reveal)
+function useFocusOnChange(container: RefObject<HTMLDivElement | null>, kind: string): void {
+  const reveal = useStudio((s) => s.bugFinder.reveal)
+  const focused = useStudio((s) => s.bugFinder.focused)
+  const { markBugFinderFocused } = useStudioActions()
   useEffect(() => {
-    if (revealed.current === reveal) return
-    revealed.current = reveal
+    if (focused === reveal) return
     headingIn(container.current)?.focus()
-  }, [reveal, container])
+    markBugFinderFocused()
+  }, [reveal, focused, container, markBugFinderFocused])
   useEffect(() => {
     const active = document.activeElement
     if (active === null || active === document.body) headingIn(container.current)?.focus()
   }, [kind, container])
+}
+
+/**
+ * A polite live region. It is rendered empty and filled once in the page, because screen readers
+ * do not announce the text a live region arrives with (the panel can mount with a question).
+ */
+function LiveText(props: { readonly text: string }) {
+  const region = useRef<HTMLParagraphElement>(null)
+  useEffect(() => {
+    // React renders the region without children, so it never resets this text.
+    if (region.current) region.current.textContent = props.text
+  }, [props.text])
+  return <p ref={region} className="bf-live" role="status" aria-live="polite" />
+}
+
+/** A heading, a sentence and actions, for the panel's states without an interview. */
+function Note(props: { readonly text: string; readonly children: ReactNode }) {
+  const id = useId()
+  return (
+    <section className="bf-intro" aria-labelledby={id}>
+      <h3 id={id} className="pn-label bf-heading" tabIndex={-1}>
+        Find the bug
+      </h3>
+      <p className="bf-text">{props.text}</p>
+      <div className="bf-row">{props.children}</div>
+    </section>
+  )
+}
+
+function StaleNote() {
+  const { run } = useStudioActions()
+  return (
+    <Note text="You changed the program since it was recorded. Run it, then let Hindsight find the bug in this version.">
+      <button type="button" className="ch-button ch-button-small" onClick={() => void run()}>
+        Run it
+      </button>
+    </Note>
+  )
+}
+
+/** During a what-if, an interview about the real run waits for the way back. */
+function RealRunNote() {
+  const { leaveWhatIf, startBugFinder } = useStudioActions()
+  return (
+    <Note text="Your interview is about the real run. Go back to it to carry on, or start a new interview about this what-if.">
+      <button type="button" className="ch-button" onClick={leaveWhatIf}>
+        Continue in the real run
+      </button>
+      <button type="button" className="ch-button ch-button-small" onClick={() => startBugFinder()}>
+        Start a new interview here
+      </button>
+    </Note>
+  )
 }
 
 function headingIn(element: HTMLElement | null): HTMLElement | null {

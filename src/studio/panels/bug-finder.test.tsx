@@ -129,6 +129,61 @@ describe('BugFinder', () => {
     expect(screen.getByText(/raised an error/, { selector: '.bf-outcome' })).toBeTruthy()
   })
 
+  test('a panel that appears with a question announces it', () => {
+    const recording = recordSource(CELSIUS)
+    const Shown = (props: { show: boolean }) => (props.show ? <BugFinder /> : null)
+    const { store, rerender } = renderWithRecording(<Shown show={false} />, recording)
+    act(() => store.getState().startBugFinder())
+    const observer = new MutationObserver(() => {})
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true })
+    rerender(
+      <StudioProvider store={store}>
+        <Shown show />
+      </StudioProvider>,
+    )
+    const records = observer.takeRecords()
+    observer.disconnect()
+    const status = screen.getByRole('status')
+    expect(status.textContent).toMatch(/^Question 1: celsius/)
+    // Screen readers ignore the text a live region arrives with; it must change once in the page.
+    expect(records.some((record) => status.contains(record.target))).toBe(true)
+  })
+
+  test('during a what-if, an interview about the real run can be continued or replaced', async () => {
+    const source =
+      'var scale = 5\nfn half(x) {\n  x * scale / 10\n}\nprint(half(4))\nprint(half(8))\n'
+    const engine = scriptedEngine()
+    const store = createStudioStore(
+      { engine, scheduler: new ManualScheduler(), storage: memoryStorage(), examples: [] },
+      { sharedSource: source },
+    )
+    const running = store.getState().run()
+    const recording = recordSource(source)
+    await engine.resolveNext(recording)
+    await running
+    store.getState().openBugFinder()
+    const fork = async () => {
+      store.getState().seek(Math.floor(recording.length / 2))
+      await store.getState().forkWhatIf({ kind: 'global', name: 'scale' }, 10, 'scale')
+    }
+    await fork()
+    render(
+      <StudioProvider store={store}>
+        <BugFinder />
+      </StudioProvider>,
+    )
+    expect(screen.getByText(/Your interview is about the real run/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Continue in the real run' }))
+    expect(store.getState().whatIf).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Question 1' })).toBeTruthy()
+    expect(document.activeElement?.textContent).toBe('Question 1')
+    await act(fork)
+    fireEvent.click(screen.getByRole('button', { name: 'Start a new interview here' }))
+    expect(store.getState().bugFinder.session?.recording).toBe(store.getState().recording)
+    expect(store.getState().whatIf).not.toBeNull()
+    expect(screen.getByRole('heading', { name: 'Question 1' })).toBeTruthy()
+  })
+
   test('offers to start from the user call at the pen', () => {
     const recording = recordSource(CELSIUS)
     const entry = recording.depthSeries().findIndex((depth) => depth === 1)
@@ -170,13 +225,22 @@ describe('opening the bug finder', () => {
     return store
   }
 
-  test('on desktop the collapsed panel opens with the first question', async () => {
+  /** The header button, focused as a click would leave it. */
+  function clickFindBug() {
+    const button = screen.getByRole('button', { name: 'Find the bug' })
+    button.focus()
+    fireEvent.click(button)
+  }
+
+  test('on desktop the collapsed panel opens with the first question, focused', async () => {
     const store = await renderApp()
     const toggle = screen.getByRole('button', { name: 'Bug finder' })
     expect(toggle.getAttribute('aria-expanded')).toBe('false')
-    act(() => store.getState().openBugFinder())
+    clickFindBug()
     expect(toggle.getAttribute('aria-expanded')).toBe('true')
     expect(screen.getByRole('heading', { name: 'Question 1' })).toBeTruthy()
+    expect(document.activeElement?.textContent).toBe('Question 1')
+    expect(store.getState().bugFinder.focused).toBe(1)
   })
 
   test('on narrow screens the bug finder tab is selected', async () => {
@@ -185,14 +249,22 @@ describe('opening the bug finder', () => {
       addEventListener: () => {},
       removeEventListener: () => {},
     }))
-    const store = await renderApp()
+    await renderApp()
     expect(screen.getByRole('tab', { name: 'Bug finder' }).getAttribute('aria-selected')).toBe(
       'false',
     )
-    act(() => store.getState().openBugFinder())
+    clickFindBug()
     expect(screen.getByRole('tab', { name: 'Bug finder' }).getAttribute('aria-selected')).toBe(
       'true',
     )
     expect(screen.getByRole('heading', { name: 'Question 1' })).toBeTruthy()
+    expect(document.activeElement?.textContent).toBe('Question 1')
+    // Coming back to the tab later leaves focus on the tab.
+    fireEvent.click(screen.getByRole('tab', { name: 'Variables' }))
+    const tab = screen.getByRole('tab', { name: 'Bug finder' })
+    tab.focus()
+    fireEvent.click(tab)
+    expect(screen.getByRole('heading', { name: 'Question 1' })).toBeTruthy()
+    expect(document.activeElement).toBe(tab)
   })
 })

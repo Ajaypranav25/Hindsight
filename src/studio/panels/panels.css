@@ -145,6 +145,16 @@
   background: var(--marker-soft);
 }
 
+/* a what-if button waits, disabled, while a recording is made (it keeps focus meanwhile) */
+.pn-act[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.pn-act[aria-disabled='true']:hover {
+  background: none;
+}
+
 .pn-icon-btn {
   width: 1.75rem;
   height: 1.75rem;
@@ -635,7 +645,7 @@
 
 .pn-whatif-input:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px var(--whatif-soft);
+  box-shadow: var(--focus-ring);
 }
 
 .pn-whatif-input[aria-invalid='true'] {

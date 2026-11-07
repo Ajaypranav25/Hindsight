@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { formatCount } from '../lib/format'
 import { MAX_SHARED_SOURCE_LENGTH, shareFragment } from '../lib/share'
 import { useStudio } from '../state/context'
+import { momentTime } from '../state/selectors'
 import { ShareIcon } from './icons'
 import { usePopover } from './usePopover'
 
@@ -36,8 +37,7 @@ function linkTo(source: string, time: number | null): string | null {
  */
 export function Share() {
   const source = useStudio((s) => s.source)
-  // A moment link: the pen's step, when the shown recording is of the program in the editor.
-  const time = useStudio((s) => (s.recording && s.recordedSource === s.source ? s.time : null))
+  const time = useStudio(momentTime)
   const { open, show, rootRef, triggerRef } = usePopover()
   const [result, setResult] = useState<ShareResult>({ kind: 'none' })
 

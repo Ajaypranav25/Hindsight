@@ -20,7 +20,8 @@ test('the bug finder interviews its way to the buggy function', async ({ page })
 
   await page.getByRole('button', { name: 'Find the bug' }).click()
   const finder = page.locator('.bf-card')
-  await expect(page.getByRole('heading', { name: 'Question 1' })).toBeVisible()
+  // The collapsed panel opens on its first question, with focus on it.
+  await expect(page.getByRole('heading', { name: 'Question 1' })).toBeFocused()
   await expect(finder).toContainText('report(scores = [90, 80, 70])')
   await expect(finder).toContainText('"average 60"')
 

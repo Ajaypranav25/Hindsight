@@ -74,6 +74,67 @@ describe('what-if editing in the Variables panel', () => {
     expect(forkAsync).not.toHaveBeenCalled()
   })
 
+  test('Escape and Enter return focus to the what-if button', async () => {
+    const forkAsync = vi.fn(() => new Promise<ForkResult>(() => {}))
+    renderWithRecording(<Variables />, totals(forkAsync), 3)
+    const whatIf = () => screen.getByRole('button', { name: /What if total were different/ })
+    fireEvent.click(whatIf())
+    fireEvent.keyDown(screen.getByRole('textbox', { name: /What if total were/ }), {
+      key: 'Escape',
+    })
+    expect(document.activeElement).toBe(whatIf())
+    fireEvent.click(whatIf())
+    await act(async () =>
+      fireEvent.keyDown(screen.getByRole('textbox', { name: /What if total were/ }), {
+        key: 'Enter',
+      }),
+    )
+    // While the fork records, the button stays (disabled) so focus has somewhere to wait.
+    expect(document.activeElement).toBe(whatIf())
+    expect(whatIf().getAttribute('aria-disabled')).toBe('true')
+    fireEvent.click(whatIf())
+    expect(screen.queryByRole('textbox')).toBeNull()
+  })
+
+  test('leaving the editor by clicking elsewhere does not pull focus back', () => {
+    renderWithRecording(
+      <>
+        <Variables />
+        <button type="button">elsewhere</button>
+      </>,
+      totals(vi.fn()),
+      3,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /What if total were different/ }))
+    const elsewhere = screen.getByRole('button', { name: 'elsewhere' })
+    act(() => elsewhere.focus())
+    expect(screen.queryByRole('textbox')).toBeNull()
+    expect(document.activeElement).toBe(elsewhere)
+  })
+
+  test('once the fork is shown, focus moves from the what-if button to the banner', async () => {
+    let finish: (result: ForkResult) => void = () => {}
+    const forkAsync = vi.fn(() => new Promise<ForkResult>((resolve) => (finish = resolve)))
+    renderWithRecording(
+      <>
+        <StripChart />
+        <Variables />
+      </>,
+      totals(forkAsync),
+      3,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /What if total were different/ }))
+    await act(async () =>
+      fireEvent.keyDown(screen.getByRole('textbox', { name: /What if total were/ }), {
+        key: 'Enter',
+      }),
+    )
+    await act(async () => finish({ ok: true, recording: totals(vi.fn()) }))
+    const banner = screen.getByRole('group', { name: 'What if' })
+    expect(banner.contains(document.activeElement)).toBe(true)
+    expect(document.activeElement?.textContent).toMatch(/^What if total = 6 at step 3 · /)
+  })
+
   test('no what-if at the end of the run', () => {
     renderWithRecording(<Variables />, totals(vi.fn()), 10)
     expect(screen.queryByRole('button', { name: /What if total/ })).toBeNull()
@@ -142,6 +203,8 @@ describe('the what-if banner and console', () => {
     expect(store.getState().recording).toBe(parent)
     expect(store.getState().whatIf).toBeNull()
     expect(screen.queryByRole('group', { name: 'What if' })).toBeNull()
+    // The banner went away with its button, so focus lands on the timeline.
+    expect(document.activeElement).toBe(screen.getByRole('slider', { name: 'Time' }))
   })
 
   test('the console marks the lines the real run did not print', () => {

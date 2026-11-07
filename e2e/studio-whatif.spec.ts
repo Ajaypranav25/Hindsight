@@ -29,11 +29,17 @@ test('what if: fork at the pen, compare with the real run, go back', async ({
   await expect(outputLines(page).first()).toContainText('total 15')
 
   const variables = page.getByRole('region', { name: 'Variables' })
-  await variables
-    .getByRole('button', { name: `What if total were different at step ${at}?` })
-    .click()
+  const whatIfTotal = variables.getByRole('button', {
+    name: `What if total were different at step ${at}?`,
+  })
+  await whatIfTotal.click()
   const input = variables.getByRole('textbox', { name: /What if total were/ })
   await expect(input).toHaveValue('3')
+  // Escape cancels and gives focus back to the button; the keyboard opens the editor again.
+  await input.press('Escape')
+  await expect(whatIfTotal).toBeFocused()
+  await whatIfTotal.press('Enter')
+  await expect(input).toBeFocused()
   await input.fill('oops')
   await input.press('Enter')
   await expect(variables.getByText('oops is a name, not a value')).toBeVisible()
@@ -42,6 +48,8 @@ test('what if: fork at the pen, compare with the real run, go back', async ({
 
   const banner = page.getByRole('group', { name: 'What if' })
   await expect(banner).toContainText(`What if total = 100 at step ${at}`)
+  // The edit's result takes focus: the sentence saying what changed.
+  await expect(banner.locator('.tl-whatif__text')).toBeFocused()
   await expect(banner).toContainText(/diverges at step [\d,]+ · 1 of 1 output line changed/)
   await expect(statusLine(page)).toContainText(/Finished/)
   await expect(outputLines(page).first()).toContainText('total 112')
@@ -53,6 +61,7 @@ test('what if: fork at the pen, compare with the real run, go back', async ({
 
   await banner.getByRole('button', { name: 'Back to the real run' }).click()
   await expect(page.getByRole('group', { name: 'What if' })).toHaveCount(0)
+  await expect(page.getByRole('slider', { name: 'Time' })).toBeFocused()
   await expect(outputLines(page).first()).toContainText('total 15')
   await expect.poll(() => penStep(page)).toBe(at)
 })
