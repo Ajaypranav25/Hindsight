@@ -14,6 +14,8 @@ import type {
 } from '../../core/api-types'
 import type { Program } from '../../core/bytecode'
 import type { Diagnostic } from '../../core/diagnostics'
+import type { Answer } from '../../core/index'
+import type { BugFinderState } from './bug-finder'
 
 export type ThemeSetting = 'system' | 'light' | 'dark'
 
@@ -84,6 +86,8 @@ export interface StudioState {
   readonly previousSource: string | null
   /** Set while `recording` is a what-if fork of the real run (ARCHITECTURE §7.5). */
   readonly whatIf: WhatIfState | null
+  /** The bug finder's interview (ARCHITECTURE §7.6) and requests to reveal its panel. */
+  readonly bugFinder: BugFinderState
 }
 
 /** One edit of a what-if, as the studio names it. */
@@ -158,6 +162,18 @@ export interface StudioActions {
   forkWhatIf(target: WriteTarget, value: EditValue, name: string): Promise<void>
   /** Leaves what-if mode: the real run comes back with its pen. */
   leaveWhatIf(): void
+  /**
+   * Reveals the bug finder and, unless an interview is open or the run ended with an error,
+   * starts one about the whole program.
+   */
+  openBugFinder(): void
+  /** Starts an interview below the call that begins at step `entry` (the whole program by default). */
+  startBugFinder(entry?: number): void
+  /** Judges the open question about a call. */
+  answerBugFinder(answer: Answer): void
+  /** Takes back the last answer. */
+  undoBugFinder(): void
+  closeBugFinder(): void
 }
 
 export type StudioStore = StudioState & StudioActions

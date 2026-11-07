@@ -7,6 +7,7 @@ import type {
   WriteTarget,
 } from '../../core/api-types'
 import { writeJson } from '../lib/storage'
+import { bugFinderActions } from './bug-finder'
 import {
   ACTION_NOTICE_DURATION_MS,
   AUTO_RUN_DELAY_MS,
@@ -174,6 +175,7 @@ class Controller {
       openSharedSource: (source, time) => this.openSharedSource(source, time),
       forkWhatIf: (target, value, name) => this.whatIf.fork(target, value, name),
       leaveWhatIf: () => this.whatIf.leave(),
+      ...bugFinderActions(this.get, this.set),
     }
   }
 

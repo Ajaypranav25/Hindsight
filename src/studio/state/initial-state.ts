@@ -1,4 +1,5 @@
 import { readJson } from '../lib/storage'
+import { INITIAL_BUG_FINDER } from './bug-finder'
 import { DEFAULT_SETTINGS, isSettings, STORAGE_KEYS } from './defaults'
 import type { Example, KeyValueStorage, StudioState } from './types'
 
@@ -46,5 +47,6 @@ export function initialState(
     originMark: null,
     previousSource: storage.read(STORAGE_KEYS.previousSource),
     whatIf: null,
+    bugFinder: INITIAL_BUG_FINDER,
   }
 }

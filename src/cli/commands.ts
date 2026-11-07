@@ -24,14 +24,14 @@ import { whatIf } from './whatif'
 
 export type ExitCode = 0 | 1 | 2
 
-interface Loaded {
+export interface Loaded {
   readonly file: string
   readonly source: string
   readonly program: Program
 }
 
 /** Reads and compiles a file, printing diagnostics on failure. */
-function load(io: CliIO, style: Style, file: string): Loaded | null {
+export function load(io: CliIO, style: Style, file: string): Loaded | null {
   let source: string
   try {
     source = io.readFile(file)

@@ -73,5 +73,10 @@ export function pickActions(s: StudioStore): StudioActions {
     openSharedSource: s.openSharedSource,
     forkWhatIf: s.forkWhatIf,
     leaveWhatIf: s.leaveWhatIf,
+    openBugFinder: s.openBugFinder,
+    startBugFinder: s.startBugFinder,
+    answerBugFinder: s.answerBugFinder,
+    undoBugFinder: s.undoBugFinder,
+    closeBugFinder: s.closeBugFinder,
   }
 }

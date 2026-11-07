@@ -38,6 +38,12 @@ export type Command =
       readonly maxSteps: number
       readonly seed: number
     }
+  | {
+      readonly kind: 'debug'
+      readonly file: string
+      readonly maxSteps: number
+      readonly seed: number
+    }
 
 export type ParsedArgs =
   { readonly ok: true; readonly command: Command } | { readonly ok: false; readonly error: string }
@@ -53,6 +59,7 @@ Usage:
   hindsight test [DIR]                             run annotated conformance files (default: tests/lang)
   hindsight repl [--seed S]                        interactive prompt
   hindsight whatif FILE --at T --set NAME=VALUE    replay from step T with NAME changed; diff the output
+  hindsight debug FILE [--max-steps N] [--seed S]  find a bug by answering questions about calls
   hindsight --help | --version`
 
 const VALUE_FLAGS = new Set(['--max-steps', '--seed', '--at', '--line', '--name', '--set'])
@@ -68,6 +75,7 @@ const COMMANDS: ReadonlyMap<string, { readonly flags: readonly string[]; readonl
     ['test', { flags: [], arity: 1 }],
     ['repl', { flags: ['--seed'], arity: 0 }],
     ['whatif', { flags: ['--at', '--set', '--max-steps', '--seed'], arity: 1 }],
+    ['debug', { flags: ['--max-steps', '--seed'], arity: 1 }],
   ])
 
 /** Plain decimal integers only: no exponents, hex, signs other than '-', or spaces. */
@@ -177,6 +185,11 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
       return { ok: true, command: { kind: 'repl', seed } }
     case 'whatif':
       return whatIfCommand(positional, flags, maxSteps, seed)
+    case 'debug': {
+      const file = needFile(positional, name)
+      if (typeof file !== 'string') return { ok: false, error: file.error }
+      return { ok: true, command: { kind: 'debug', file, maxSteps, seed } }
+    }
     default:
       return { ok: false, error: `unknown command '${name}'` }
   }

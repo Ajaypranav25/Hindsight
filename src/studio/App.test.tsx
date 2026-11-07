@@ -65,6 +65,7 @@ describe('App', () => {
       'Call stack',
       'Variables',
       'Heap',
+      'Bug finder',
       'Console',
     ])
     expect(tabs[1]!.getAttribute('aria-selected')).toBe('true')

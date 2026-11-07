@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useStudio, useStudioActions } from '../state/context'
 import type { Example } from '../state/types'
 import { ExamplePicker } from './ExamplePicker'
+import { FindBug } from './FindBug'
 import { HelpDialog } from './HelpDialog'
 import { HelpIcon, RunIcon } from './icons'
 import { Settings } from './Settings'
@@ -40,6 +41,7 @@ export function Header(props: { examples?: readonly Example[] }) {
         <Status />
       </div>
       <div className="ch-tools">
+        <FindBug />
         <Share />
         <Settings />
         <button
