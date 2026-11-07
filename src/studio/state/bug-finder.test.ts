@@ -109,6 +109,15 @@ describe('the bug finder in the store', () => {
     expect(store.getState().bugFinder.session?.finder.asked).toBe(0)
   })
 
+  test('no interview starts about a recording older than the program', async () => {
+    const { store } = await setup()
+    store.getState().setSource(CELSIUS.replace('/ 6', '/ 9'))
+    store.getState().openBugFinder()
+    expect(store.getState().bugFinder).toEqual({ reveal: 1, session: null })
+    store.getState().startBugFinder()
+    expect(store.getState().bugFinder.session).toBeNull()
+  })
+
   test('nothing starts before the first recording', () => {
     const store = createStudioStore(
       {

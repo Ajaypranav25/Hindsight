@@ -9,6 +9,7 @@ import {
 } from '../../core/index'
 import { liveSession } from '../state/bug-finder'
 import { useStudio, useStudioActions } from '../state/context'
+import { isStale } from '../state/selectors'
 import {
   afterCallTime,
   announcement,
@@ -31,12 +32,27 @@ export function BugFinder() {
   const recording = useStudio((s) => s.recording)
   const bugFinder = useStudio((s) => s.bugFinder)
   const session = liveSession(bugFinder, recording)
+  const stale = useStudio(isStale)
+  const { run } = useStudioActions()
   const view = useMemo(() => (session ? finderView(session) : null), [session])
   const container = useRef<HTMLDivElement>(null)
   useFocusOnChange(container, view?.kind ?? 'intro', bugFinder.reveal)
 
   if (!recording) {
     return <p className="pn-empty">Run the program, then let Hindsight find the bug.</p>
+  }
+  if (!view && stale) {
+    return (
+      <div className="bf" ref={container}>
+        <p className="pn-empty">
+          You changed the program since it was recorded. Run it, then let Hindsight find the bug in
+          this version.
+        </p>
+        <button type="button" className="ch-button ch-button-small" onClick={() => void run()}>
+          Run it
+        </button>
+      </div>
+    )
   }
   return (
     <div className="bf" ref={container}>

@@ -46,6 +46,26 @@ describe('BugFinder', () => {
     expect(screen.getByText(/Run the program/)).toBeTruthy()
   })
 
+  test('asks for a new run when the program changed since it was recorded', async () => {
+    const engine = scriptedEngine()
+    const store = createStudioStore(
+      { engine, scheduler: new ManualScheduler(), storage: memoryStorage(), examples: [] },
+      { sharedSource: CELSIUS },
+    )
+    const running = store.getState().run()
+    await engine.resolveNext(recordSource(CELSIUS))
+    await running
+    store.getState().setSource(CELSIUS.replace('/ 6', '/ 9'))
+    render(
+      <StudioProvider store={store}>
+        <BugFinder />
+      </StudioProvider>,
+    )
+    expect(screen.getByText(/changed the program since it was recorded/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Run it' }))
+    expect(engine.recorded).toHaveLength(2)
+  })
+
   test('interviews the user down to the callback with the wrong formula', () => {
     const recording = recordSource(CELSIUS)
     const { store } = renderWithRecording(<BugFinder />, recording)

@@ -70,8 +70,9 @@ export function bugFinderActions(
       set({ bugFinder: { ...bugFinder, session: { ...session, finder } } })
   }
   const start = (entry?: number) => {
-    const { bugFinder, recording, settings } = get()
-    if (recording === null) return
+    const { bugFinder, recording, settings, source, recordedSource } = get()
+    // An interview about a recording older than the program would ask about code that is gone.
+    if (recording === null || recordedSource !== source) return
     const session = startSession(recording, settings.justMyCode, entry)
     if (session !== null) set({ bugFinder: { ...bugFinder, session } })
   }
