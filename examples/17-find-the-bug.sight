@@ -1,0 +1,25 @@
+// title: Find the bug
+// summary: Both averages come out too low. Press Find the bug and answer its questions: Hindsight narrows the search to the function whose own code is wrong.
+
+fn total(scores) {
+  var sum = 0
+  for s in scores { sum += s }
+  sum
+}
+
+fn average(scores) {
+  total(scores) / (len(scores) + 1)
+}
+
+fn letter(avg) {
+  if avg >= 90 { "A" } else if avg >= 80 { "B" } else if avg >= 70 { "C" } else { "D" }
+}
+
+let students = [
+  {name: "Ada", scores: [92, 88, 95]},
+  {name: "Grace", scores: [78, 85, 80]},
+]
+for student in students {
+  let avg = average(student.scores)
+  print("{student.name}: {avg} ({letter(avg)})")
+}
