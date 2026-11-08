@@ -11,3 +11,4 @@ blob-report/
 Thumbs.db
 .env
 .env.*
+.vercel
