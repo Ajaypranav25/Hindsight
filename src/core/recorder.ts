@@ -287,6 +287,15 @@ class RecordedRun implements Recording {
     return { ok: true, recording: new RecordedRun(core, prepared.whatIf) }
   }
 
+  /** A replay VM positioner of its own, for scans that must not disturb `stateAt` (tools only). */
+  newSeeker(): Seeker {
+    return new Seeker(this.core.program, this.core.runtime, this.core.seed, this.core.schedule)
+  }
+
+  get protoTable(): ProtoTable {
+    return this.table
+  }
+
   private check(t: number): void {
     if (!Number.isInteger(t) || t < 0 || t > this.length) {
       throw new InternalError(`time ${t} is outside 0..${this.length}`)
@@ -317,4 +326,21 @@ class RecordedRun implements Recording {
 /** The trace behind a recording this module made (for `compareRecordings`), else null. */
 export function recordingCore(recording: Recording): RecordingCore | null {
   return recording instanceof RecordedRun ? recording.core : null
+}
+
+/** What core tools that replay a recording need (scans, slices, queries); null for foreign ones. */
+export interface ReplayAccess {
+  readonly core: RecordingCore
+  readonly table: ProtoTable
+  /** A fresh positioner: `positionAt(t)` gives a VM (hooks off) about to execute step `t`. */
+  newSeeker(): Seeker
+}
+
+export function replayAccess(recording: Recording): ReplayAccess | null {
+  if (!(recording instanceof RecordedRun)) return null
+  return {
+    core: recording.core,
+    table: recording.protoTable,
+    newSeeker: () => recording.newSeeker(),
+  }
 }

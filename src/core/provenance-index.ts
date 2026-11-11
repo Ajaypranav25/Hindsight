@@ -78,21 +78,7 @@ export class ProvenanceIndex {
   }
 
   event(row: number): ProvenanceEvent {
-    const events = this.events
-    const kind = events.kinds[row]!
-    const base = {
-      time: events.times[row]!,
-      kind: EVENT_KINDS[kind]!,
-      target: events.target(row),
-      value: events.value(row),
-    }
-    if (kind !== EventCode.list) return base
-    return {
-      ...base,
-      op: LIST_OPS[events.ops[row]!]!,
-      index: events.b[row]!,
-      count: events.aux[row]!,
-    }
+    return decodeEvent(this.events, row)
   }
 
   private cellAllocated(row: number): void {
@@ -111,6 +97,24 @@ export class ProvenanceIndex {
   private cellClosed(row: number): void {
     const info = this.cells.get(this.events.a[row]!)
     if (info !== undefined) info.closeTime = this.events.times[row]!
+  }
+}
+
+/** Row `row` of the event log as a `ProvenanceEvent` (not for internal `cellClosed` rows). */
+export function decodeEvent(events: EventColumns, row: number): ProvenanceEvent {
+  const kind = events.kinds[row]!
+  const base = {
+    time: events.times[row]!,
+    kind: EVENT_KINDS[kind]!,
+    target: events.target(row),
+    value: events.value(row),
+  }
+  if (kind !== EventCode.list) return base
+  return {
+    ...base,
+    op: LIST_OPS[events.ops[row]!]!,
+    index: events.b[row]!,
+    count: events.aux[row]!,
   }
 }
 

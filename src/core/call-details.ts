@@ -5,6 +5,7 @@
  */
 import type { Recording, RuntimeErrorInfo, ValueView } from './api-types'
 import { instructionLength, Op, type FunctionProto, type Program } from './bytecode'
+import { type CallEffect, callEffects } from './call-effects'
 import type { CallNode } from './calls'
 import { cutText, deepText, keyText, PREVIEW_LENGTH, valueText } from './call-values'
 import { InternalError } from './diagnostics'
@@ -36,6 +37,8 @@ export interface CallDetails {
   readonly result: CallValue | null
   /** The run's error, for a call that raised it. */
   readonly error: RuntimeErrorInfo | null
+  /** What the call changed outside itself and its arguments (globals, captured variables, objects). */
+  readonly effects: readonly CallEffect[]
   /** 1-based first and last line of the function in the main source; null for library code. */
   readonly lines: LineSpan | null
   /**
@@ -57,17 +60,24 @@ const lineIndexes = new WeakMap<Program, LineIndex>()
 export function callDetails(recording: Recording, call: CallNode): CallDetails {
   const error = call.outcome === 'raised' ? runError(recording) : null
   const lines = linesOf(recording.program, call.protoId)
-  if (call.depth === 0) return { call, args: [], result: null, error, lines, key: null }
+  if (call.depth === 0) {
+    return { call, args: [], result: null, error, effects: [], lines, key: null }
+  }
   const after = call.outcome === 'returned' ? call.exit + 1 : recording.length
   const params = parameters(recording, call)
   const args = params.map((param) => argument(recording, call.entry, after, param))
   const result = call.outcome === 'returned' ? returnedValue(recording, call) : null
-  const key = callKey(recording, call, params, after, result, error)
+  const { effects, truncated } = callEffects(recording, call)
+  const base = truncated ? null : callKey(recording, call, params, after, result, error)
+  // Two calls are the same only when they also changed the same things outside themselves.
+  const key =
+    base === null ? null : [base, ...effects.map((effect) => effect.text)].join(KEY_SEPARATOR)
   return {
     call,
     args,
     result: result && { value: result, text: valueText(result) },
     error,
+    effects,
     lines,
     key,
   }
