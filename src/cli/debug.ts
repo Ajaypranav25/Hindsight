@@ -21,7 +21,10 @@ import {
   question,
   record,
   type Recording,
+  remaining,
+  repairExamples,
   startFinder,
+  type Strategy,
   undo,
   verdict,
   verdictReason,
@@ -30,6 +33,7 @@ import type { Command } from './args'
 import { type ExitCode, load, type Loaded } from './commands'
 import { formatRuntimeError, makeStyle, sanitize, type Style } from './format'
 import type { CliIO } from './io'
+import { repairLines, searchRepairs } from './lab'
 
 export type DebugInput = Answer | 'undo' | 'quit'
 export type DebugCommand = Extract<Command, { kind: 'debug' }>
@@ -68,7 +72,7 @@ export function openDebugSession(io: CliIO, command: DebugCommand): DebugSession
   const loaded = load(io, style, command.file)
   if (!loaded) return 1
   const recording = record(loaded.program, { maxSteps: command.maxSteps, seed: command.seed })
-  return new DebugSession(io, style, loaded, callTree(recording))
+  return new DebugSession(io, style, loaded, callTree(recording), command.strategy)
 }
 
 export class DebugSession {
@@ -80,8 +84,9 @@ export class DebugSession {
     private readonly style: Style,
     private readonly loaded: Loaded,
     private readonly tree: CallTree,
+    strategy: Strategy = 'top-down',
   ) {
-    this.state = startFinder(tree, tree.root, { justMyCode: true })
+    this.state = startFinder(tree, tree.root, { justMyCode: true, strategy })
     this.introduce(tree.recording)
     this.next()
   }
@@ -167,6 +172,12 @@ export class DebugSession {
     for (const change of changeTexts(details)) io.stdout(`  ${sanitize(change)}\n`)
     if (details.lines)
       io.stdout(`  ${style.dim(`${sanitize(call.name)} · ${linesText(details.lines)}`)}\n`)
+    if (this.state.strategy === 'divide') {
+      const left = remaining(this.state)
+      io.stdout(
+        `  ${style.dim(`${left.toLocaleString('en-US')} ${left === 1 ? 'call' : 'calls'} still under suspicion`)}\n`,
+      )
+    }
     io.stdout(PROMPT)
   }
 
@@ -185,6 +196,19 @@ export class DebugSession {
     if (result.call.depth > 0) io.stdout(`${style.dim(sanitize(callText(details)))}\n`)
     if (details.lines)
       io.stdout(`\n${codeFrame(this.loaded.source, details.lines, style).join('\n')}\n`)
+    this.printRepairs(result.call.protoId)
+  }
+
+  /** One-token repairs that agree with every answer given (ARCHITECTURE §7.12). */
+  private printRepairs(protoId: number): void {
+    const { io, style, tree } = this
+    const examples = repairExamples(tree, this.state)
+    const result = searchRepairs(tree.recording, { kind: 'examples', protoId, examples })
+    if (result.problem !== null || result.repairs.length === 0) return
+    io.stdout(
+      `\n${style.bold('Repair previews')} (one-token changes that agree with your answers; check what the call returns):\n`,
+    )
+    io.stdout(`${repairLines(result, style).join('\n')}\n`)
   }
 }
 

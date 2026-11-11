@@ -19,6 +19,12 @@ import { compileProgram } from './compiler/index'
 import { type Diagnostic, InternalError, compareDiagnostics } from './diagnostics'
 import { getLibrary } from './library'
 import { parse } from './parser'
+import {
+  type RepairOptions,
+  type RepairRequest,
+  type RepairSearch,
+  repairSearch as repairSearchWith,
+} from './repair'
 import { record as recordWith, recordAsync as recordAsyncWith } from './recorder'
 import type { RuntimeDeps, VM, VMHooks } from './runtime-types'
 import { createVM } from './vm'
@@ -42,6 +48,27 @@ export { compareRecordings } from './compare'
 export { formatLiteral, parseLiteralValue } from './literal'
 export * from './calls'
 export * from './bug-finder'
+export type { CallEffect, CallEffects } from './call-effects'
+export { callEffects } from './call-effects'
+export { eventsBetween } from './events'
+export type { Dependence } from './dependence'
+export { dependenceOf } from './dependence'
+export * from './slice'
+export * from './query'
+export { QUERY_FUNCTIONS, QUERY_SPECIALS } from './query-eval'
+export * from './why-not'
+export * from './inverse'
+export * from './sweep'
+export * from './heap-diff'
+export type {
+  Repair,
+  RepairExample,
+  RepairOptions,
+  RepairRequest,
+  RepairResult,
+  RepairSearch,
+} from './repair'
+export { repairExamples } from './repair'
 
 /** The prelude source (SPEC Appendix A). */
 export function getLibrarySource(): string {
@@ -137,6 +164,18 @@ function outputHooks(outputs: OutputEvent[], onOutput?: (text: string) => void):
 /** Records a run for time travel. */
 export function record(program: Program, options: RecordOptions = {}): Recording {
   return recordWith(program, runtimeDeps(), options)
+}
+
+/**
+ * Searches for one-token repairs of the function a bug was isolated to (ARCHITECTURE §7.12); a
+ * generator that yields after every mutant it has run.
+ */
+export function repairSearch(
+  recording: Recording,
+  request: RepairRequest,
+  options: RepairOptions = {},
+): RepairSearch {
+  return repairSearchWith({ compile, record }, recording, request, options)
 }
 
 /** Records a run in slices, yielding to the host between them. */

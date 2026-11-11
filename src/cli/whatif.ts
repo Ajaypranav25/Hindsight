@@ -12,7 +12,7 @@ import type {
   ValueView,
   WriteTarget,
 } from '../core/index'
-import { compareRecordings, formatLiteral, LineIndex, record } from '../core/index'
+import { compareRecordings, formatLiteral, LineIndex, record, sweep } from '../core/index'
 import type { Command } from './args'
 import { formatValueView, sanitize, type Style } from './format'
 import type { CliIO } from './io'
@@ -49,6 +49,10 @@ export function whatIf(
   if (variable === null) {
     return fail(`no variable named '${command.name}' is visible at step ${count(command.at)}`)
   }
+  if (command.values.length > 1) {
+    io.stdout(`${sweepLines(real, variable, command, style).join('\n')}\n`)
+    return 0
+  }
   const result = real.fork(command.at, { target: variable.target, value: command.value })
   if (!result.ok) return fail(result.error.message)
   const fork = result.recording
@@ -63,6 +67,40 @@ export function whatIf(
   ]
   io.stdout(`${lines.join('\n')}\n`)
   return 0
+}
+
+/** A sweep: one what-if per value, one row each (ARCHITECTURE §7.13). */
+function sweepLines(
+  real: Recording,
+  variable: Variable,
+  command: WhatIfCommand,
+  style: Style,
+): string[] {
+  const { runs, failed } = sweep(real, command.at, variable.target, command.values)
+  const head = `${style.bold(`what if ${sanitize(command.name)} =`)} ${count(command.values.length)} values at step ${count(command.at)} ${style.dim(`(it was ${formatValueView(variable.value)}; the real run takes ${count(real.length)} steps)`)}`
+  const rows = runs.map((run) => {
+    const { removed, added } = run.comparison
+    const output =
+      removed + added === 0 ? 'same output' : `output -${count(removed)} +${count(added)}`
+    const value = sanitize(formatLiteral(run.value)).padEnd(10)
+    const steps = `${count(run.recording.length)} steps`.padEnd(16)
+    const depth = `depth ${count(run.maxDepth)}`.padEnd(10)
+    return `  ${value} ${steps} ${depth} ${outcomeText(run.recording)} · ${output}`
+  })
+  const most = runs.reduce((a, b) => (b.recording.length > a.recording.length ? b : a), runs[0])
+  const errors = failed.map(
+    (entry) =>
+      `  ${sanitize(formatLiteral(entry.value)).padEnd(10)} ${style.error(sanitize(entry.error.message))}`,
+  )
+  const longest =
+    most === undefined || runs.length < 2
+      ? []
+      : [
+          style.dim(
+            `longest: ${sanitize(command.name)} = ${sanitize(formatLiteral(most.value))} (${count(most.recording.length)} steps)`,
+          ),
+        ]
+  return [head, ...rows, ...errors, ...longest]
 }
 
 /** The variable `name` in the innermost frame at the pen: its locals, captures, then globals. */

@@ -209,7 +209,6 @@ function build(recording: Recording): Dependence | null {
     const h = stack.length
     // The previous step's results sit above what it left untouched.
     if (pendingLow !== NONE) for (let i = pendingLow; i < h; i++) setSlot(i, t - 1)
-    pendingLow = NONE
     for (const edit of edits.get(t) ?? []) applyEdit(vm, edit)
 
     // Control: the branch that let this instruction run, else the call that began the frame.

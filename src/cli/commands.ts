@@ -20,6 +20,7 @@ import {
   type Style,
 } from './format'
 import type { CliIO } from './io'
+import { query, repair, slice, solve, whyNotCommand } from './lab'
 import { whatIf } from './whatif'
 
 export type ExitCode = 0 | 1 | 2
@@ -78,6 +79,26 @@ export function runCommand(command: Command, io: CliIO): ExitCode {
     case 'whatif': {
       const loaded = load(io, style, command.file)
       return loaded ? whatIf(io, style, loaded, command) : 1
+    }
+    case 'solve': {
+      const loaded = load(io, style, command.file)
+      return loaded ? solve(io, style, loaded, command) : 1
+    }
+    case 'query': {
+      const loaded = load(io, style, command.file)
+      return loaded ? query(io, style, loaded, command) : 1
+    }
+    case 'whynot': {
+      const loaded = load(io, style, command.file)
+      return loaded ? whyNotCommand(io, style, loaded, command) : 1
+    }
+    case 'slice': {
+      const loaded = load(io, style, command.file)
+      return loaded ? slice(io, style, loaded, command) : 1
+    }
+    case 'repair': {
+      const loaded = load(io, style, command.file)
+      return loaded ? repair(io, style, loaded, command) : 1
     }
     default:
       return 0
