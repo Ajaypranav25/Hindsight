@@ -4,7 +4,7 @@
  */
 import { useCallback, useEffect, useId, useRef, useState, type Ref, type RefObject } from 'react'
 import type { ValueView, WriteTarget } from '../../core/index'
-import { formatLiteral, parseLiteralValue } from '../../core/index'
+import { formatLiteral, isSweepText, parseLiteralValue, parseSweepValues } from '../../core/index'
 import { formatCount } from '../lib/format'
 import { useStudio, useStudioActions } from '../state/context'
 
@@ -104,7 +104,7 @@ export function WhatIfInput(props: {
   readonly onDone: (returnFocus: boolean) => void
 }) {
   const { value, target, label, onDone } = props
-  const { forkWhatIf } = useStudioActions()
+  const { forkWhatIf, sweepWhatIf } = useStudioActions()
   const busy = useWhatIfAvailability() === 'busy'
   const [text, setText] = useState(() => literalText(value))
   const [error, setError] = useState<string | null>(null)
@@ -115,6 +115,14 @@ export function WhatIfInput(props: {
     inputRef.current?.select()
   }, [])
   const commit = () => {
+    // Several values (`1..20`, `1, 5, 27`) fork the run once each: a sweep.
+    if (isSweepText(text)) {
+      const sweep = parseSweepValues(text)
+      if (!sweep.ok) return setError(sweep.error)
+      if (busy) return setError(BUSY_MESSAGE)
+      onDone(true)
+      return void sweepWhatIf(target, sweep.values, label, text)
+    }
     const parsed = parseLiteralValue(text)
     if (!parsed.ok) return setError(parsed.error)
     // A fork waits for the recording in progress; closing now would drop the typed value.
@@ -130,7 +138,7 @@ export function WhatIfInput(props: {
         value={text}
         spellCheck={false}
         autoComplete="off"
-        aria-label={`What if ${label} were (Enter replays from here, Escape cancels)`}
+        aria-label={`What if ${label} were (Enter replays from here, Escape cancels; 1..20 tries every value)`}
         aria-invalid={error !== null}
         aria-describedby={errorId}
         onChange={(event) => {

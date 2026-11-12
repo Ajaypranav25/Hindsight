@@ -26,17 +26,27 @@ export function outcomeText(details: CallDetails): string {
   }
 }
 
-/** `xs became [5, 1]` for each argument the call changed. */
+/** The most side effects a question lists; the rest are counted. */
+export const MAX_EFFECT_TEXTS = 6
+
+/**
+ * What the call changed besides returning: `xs became [5, 1]` for each argument it changed, then
+ * what it changed outside itself (`global total became 118`, `order.paid became true`).
+ */
 export function changeTexts(details: CallDetails): string[] {
-  return details.args.flatMap((arg) =>
+  const args = details.args.flatMap((arg) =>
     arg.after === null ? [] : [`${arg.name} became ${arg.after}`],
   )
+  const effects = details.effects.map((effect) => effect.text)
+  const more = effects.length - MAX_EFFECT_TEXTS
+  const shown = more > 0 ? [...effects.slice(0, MAX_EFFECT_TEXTS), `${more} more changes`] : effects
+  return [...args, ...shown]
 }
 
 /** The question about a call, as one sentence. */
 export function questionText(details: CallDetails): string {
   const changes = changeTexts(details)
-  const effects = changes.length > 0 ? ` (${changes.join(', ')})` : ''
+  const effects = changes.length > 0 ? ` and changed: ${changes.join(', ')}` : ''
   return `${callSignature(details)} ${outcomeText(details)}${effects}. Is that right?`
 }
 

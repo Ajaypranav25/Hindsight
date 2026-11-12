@@ -64,6 +64,11 @@ export class CallIndex {
     return this.parents[call]!
   }
 
+  /** One past the last call of the call's subtree (calls are numbered in pre-order). */
+  subtreeEndOf(call: number): number {
+    return this.subtreeEnds[call]!
+  }
+
   childrenOf(call: number): number[] {
     const children: number[] = []
     const last = this.subtreeEnds[call]!

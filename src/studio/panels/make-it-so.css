@@ -1,0 +1,114 @@
+/* Make it so: the inverse what-if (ARCHITECTURE §7.11). */
+
+.pn-line {
+  position: relative;
+}
+
+.pn-line-wish {
+  position: absolute;
+  top: 0;
+  right: var(--space-2);
+  padding: 0 var(--space-1);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+  opacity: 0;
+}
+
+.pn-line:hover .pn-line-wish,
+.pn-line-wish:focus-visible,
+.pn-line-wish[aria-expanded='true'] {
+  opacity: 1;
+}
+
+.pn-line-wish:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+@media (hover: none) {
+  .pn-line-wish {
+    position: static;
+    opacity: 1;
+    margin: 0 var(--space-3) var(--space-1);
+  }
+}
+
+.pn-wish {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3) var(--space-2);
+}
+
+.pn-wish-label {
+  display: grid;
+  flex: 1 1 12rem;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pn-wish-input {
+  min-width: 0;
+  padding: 2px var(--space-1);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.pn-wish-input:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.pn-wishes {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--rule);
+}
+
+.pn-wishes-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.pn-wishes-head .pn-label {
+  padding: 0;
+  overflow-wrap: anywhere;
+}
+
+.pn-wish-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pn-wish-answer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.pn-failure-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}

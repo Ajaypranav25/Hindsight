@@ -1,7 +1,10 @@
 /** Per-recording data for the strip chart, computed once and memoized. */
 import { useCallback, useMemo, useState } from 'react'
 import type { Recording } from '../../core/api-types'
+import { queryTimes } from '../../core/index'
 import { useStudio } from '../state/context'
+import { liveQuery, liveSweep } from '../state/lab'
+import type { ChartLab } from './chart-lab'
 import type { ChartWhatIf } from './chart-whatif'
 import {
   buildEnvelope,
@@ -59,8 +62,10 @@ export type ViewUpdate = (update: (view: Viewport) => Viewport) => void
 export function useViewport(
   recording: Recording | null,
   time: number,
+  extent = 0,
 ): readonly [Viewport, ViewUpdate] {
-  const length = recording?.length ?? 0
+  // A sweep's runs can outlast the run on display: the chart then spans the longest of them.
+  const length = Math.max(recording?.length ?? 0, extent)
   const [zoom, setZoom] = useState<{ owner: Recording | null; view: Viewport }>(() => ({
     owner: recording,
     view: fullViewport(length),
@@ -82,6 +87,35 @@ export function useViewport(
     [recording, length],
   )
   return [current, update] as const
+}
+
+const NO_INTERVALS: ChartLab['intervals'] = []
+
+/** The query and sweep layers' data, and the steps the chart must span to show the sweep. */
+export function useChartLab(): { readonly lab: ChartLab | null; readonly extent: number } {
+  const query = useStudio((s) => liveQuery(s.lab, s.recording))
+  const sweep = useStudio((s) => liveSweep(s.lab, s.recording))
+  const runs = sweep?.runs ?? null
+  const forkTime = sweep?.time ?? 0
+  const ghosts = useMemo(
+    () => (runs ?? []).map((run) => buildEnvelope(run.recording.depthSeries())),
+    [runs],
+  )
+  const extent = useMemo(
+    () => (runs ?? []).reduce((longest, run) => Math.max(longest, run.recording.length), 0),
+    [runs],
+  )
+  const lab = useMemo((): ChartLab | null => {
+    if (query === null && ghosts.length === 0) return null
+    const when = query?.result.kind === 'when'
+    return {
+      intervals: when && query.result.kind === 'when' ? query.result.intervals : NO_INTERVALS,
+      moments: query === null || when ? NO_TIMES : Float64Array.from(queryTimes(query.result)),
+      ghosts,
+      forkTime,
+    }
+  }, [query, ghosts, forkTime])
+  return useMemo(() => ({ lab, extent }), [lab, extent])
 }
 
 /** The what-if layers' data while a what-if is shown (the ghost is built once per real run). */

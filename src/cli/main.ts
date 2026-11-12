@@ -5,10 +5,11 @@ import { type DebugCommand, openDebugSession } from './debug'
 import { isEntryPoint } from './entry'
 import { sanitize } from './format'
 import { exitQuietlyOnClosedPipe, nodeIO, type CliIO } from './io'
+import { McpServer, serveLine } from './mcp'
 import { ReplSession } from './repl'
 
 /** Kept equal to package.json's version (a test checks). */
-export const VERSION = '0.2.0'
+export const VERSION = '0.3.0'
 
 function startRepl(io: CliIO, seed: number): void {
   const session = new ReplSession(io, seed)
@@ -44,6 +45,13 @@ function startDebug(io: CliIO, command: DebugCommand): number | null {
   return null
 }
 
+/** The MCP server on stdin and stdout: one JSON-RPC message per line, until the input ends. */
+function startMcp(io: CliIO): void {
+  const server = new McpServer(VERSION)
+  const input = createInterface({ input: process.stdin, terminal: false })
+  input.on('line', (line) => serveLine(server, line, io.stdout))
+}
+
 /** Entry point; returns the process exit code (the REPL keeps the process alive instead). */
 export function main(argv: readonly string[], io: CliIO = nodeIO): number | null {
   const parsed = parseArgs(argv)
@@ -66,6 +74,10 @@ export function main(argv: readonly string[], io: CliIO = nodeIO): number | null
     return null
   }
   if (command.kind === 'debug') return startDebug(io, command)
+  if (command.kind === 'mcp') {
+    startMcp(io)
+    return null
+  }
   return runCommand(command, io)
 }
 

@@ -42,7 +42,13 @@ print(average([88, 83, 79]))
 
 function open(source: string, maxSteps = DEFAULT_MAX_STEPS): { io: FakeIO; session: DebugSession } {
   const io = fakeIO({ 'avg.sight': source })
-  const session = openDebugSession(io, { kind: 'debug', file: 'avg.sight', maxSteps, seed: 1 })
+  const session = openDebugSession(io, {
+    kind: 'debug',
+    file: 'avg.sight',
+    strategy: 'top-down',
+    maxSteps,
+    seed: 1,
+  })
   if (typeof session === 'number') throw new Error(`no session: ${io.err.join('')}`)
   return { io, session }
 }
@@ -56,7 +62,13 @@ describe('debug arguments', () => {
   test('parses debug with its options and rejects others', () => {
     expect(parseArgs(['debug', 'a.sight'])).toEqual({
       ok: true,
-      command: { kind: 'debug', file: 'a.sight', maxSteps: DEFAULT_MAX_STEPS, seed: DEFAULT_SEED },
+      command: {
+        kind: 'debug',
+        file: 'a.sight',
+        strategy: 'divide',
+        maxSteps: DEFAULT_MAX_STEPS,
+        seed: DEFAULT_SEED,
+      },
     })
     expect(parseArgs(['debug', 'a.sight', '--max-steps=50', '--seed', '3'])).toMatchObject({
       ok: true,
@@ -184,7 +196,13 @@ describe('the debug interview', () => {
 
   test('a file that does not compile is reported with exit code 1', () => {
     const io = fakeIO({ 'bad.sight': 'let = 1\n' })
-    const result = openDebugSession(io, { kind: 'debug', file: 'bad.sight', maxSteps: 10, seed: 1 })
+    const result = openDebugSession(io, {
+      kind: 'debug',
+      file: 'bad.sight',
+      strategy: 'top-down',
+      maxSteps: 10,
+      seed: 1,
+    })
     expect(result).toBe(1)
     expect(io.err.join('')).toContain('error[')
   })

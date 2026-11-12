@@ -359,3 +359,50 @@
     transition: none;
   }
 }
+
+/* What-if: references compared with the real run's at the same step (ARCHITECTURE §7.13). */
+
+.hp-edge.is-added {
+  stroke: var(--ok);
+  stroke-width: 2;
+}
+
+.hp-edge.is-removed {
+  stroke: var(--error);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+
+.hp-arrow.is-added path {
+  fill: var(--ok);
+}
+
+.hp-arrow.is-removed path {
+  fill: var(--error);
+}
+
+.hp-legend {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  padding: 2px var(--space-3);
+  border-bottom: 1px solid var(--rule);
+  font: var(--text-xs) / 1.45 var(--font-ui);
+  color: var(--ink-muted);
+}
+
+.hp-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.pn-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

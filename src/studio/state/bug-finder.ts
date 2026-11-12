@@ -11,6 +11,7 @@ import {
   type FinderState,
   type Recording,
   startFinder,
+  type Strategy,
   undo,
 } from '../../core/index'
 import type { StudioActions, StudioStore } from './types'
@@ -31,9 +32,19 @@ export interface BugFinderState {
   readonly focused: number
   /** The interview, or null. */
   readonly session: BugFinderSession | null
+  /**
+   * How new interviews choose their questions: `divide` halves the suspects with each answer,
+   * `top-down` asks in call order.
+   */
+  readonly strategy: Strategy
 }
 
-export const INITIAL_BUG_FINDER: BugFinderState = { reveal: 0, focused: 0, session: null }
+export const INITIAL_BUG_FINDER: BugFinderState = {
+  reveal: 0,
+  focused: 0,
+  session: null,
+  strategy: 'divide',
+}
 
 /** The interview in progress about `recording`, or null. */
 export function liveSession(
@@ -49,11 +60,12 @@ export function startSession(
   recording: Recording,
   justMyCode: boolean,
   entry?: number,
+  strategy: Strategy = 'top-down',
 ): BugFinderSession | null {
   const tree = callTree(recording)
   const from = entry === undefined ? tree.root : tree.call(entry)
   if (from === null) return null
-  return { recording, finder: startFinder(tree, from, { justMyCode }) }
+  return { recording, finder: startFinder(tree, from, { justMyCode, strategy }) }
 }
 
 type BugFinderActions = Pick<
@@ -64,6 +76,7 @@ type BugFinderActions = Pick<
   | 'answerBugFinder'
   | 'undoBugFinder'
   | 'closeBugFinder'
+  | 'setBugFinderStrategy'
 >
 
 /** The store's bug-finder actions. */
@@ -83,7 +96,7 @@ export function bugFinderActions(
     const { bugFinder, recording, settings, source, recordedSource } = get()
     // An interview about a recording older than the program would ask about code that is gone.
     if (recording === null || recordedSource !== source) return
-    const session = startSession(recording, settings.justMyCode, entry)
+    const session = startSession(recording, settings.justMyCode, entry, bugFinder.strategy)
     if (session !== null) set({ bugFinder: { ...bugFinder, session } })
   }
   return {
@@ -104,6 +117,14 @@ export function bugFinderActions(
     startBugFinder: start,
     answerBugFinder: (given: Answer) => update((finder) => answer(finder, given)),
     undoBugFinder: () => update(undo),
+    setBugFinderStrategy(strategy: Strategy) {
+      const { bugFinder, recording } = get()
+      if (bugFinder.strategy === strategy) return
+      set({ bugFinder: { ...bugFinder, strategy } })
+      // An open interview starts over from the same call, asked the new way.
+      const session = liveSession(bugFinder, recording)
+      if (session !== null) start(session.finder.start.id)
+    },
     closeBugFinder() {
       const { bugFinder } = get()
       if (bugFinder.session !== null) set({ bugFinder: { ...bugFinder, session: null } })

@@ -10,6 +10,7 @@ import { buildCallIndex, type CallIndex } from './calls-index'
 import { InternalError } from './diagnostics'
 
 export type { CallArgument, CallDetails, CallValue, LineSpan } from './call-details'
+export type { CallEffect } from './call-effects'
 
 /**
  * `returned`: the call came back. `raised`: the run ended with an error while it was running.
@@ -59,6 +60,8 @@ export class CallTree {
   private readonly allChildren = new Map<number, readonly CallNode[]>()
   private readonly userChildren = new Map<number, readonly CallNode[]>()
   private readonly detailCache = new Map<number, CallDetails>()
+  /** `userBefore[i]`: the number of user-code calls numbered below `i` (built on first use). */
+  private userBefore: Int32Array | null = null
 
   constructor(readonly recording: Recording) {}
 
@@ -104,6 +107,27 @@ export class CallTree {
     return this.node(index)
   }
 
+  /**
+   * The number of calls in the call's subtree, itself included (with just-my-code, only the
+   * user-code ones): the weight divide-and-query splits by.
+   */
+  size(call: CallNode, options: CallTreeOptions = {}): number {
+    const index = this.indexOf(call)
+    const end = this.index().subtreeEndOf(index)
+    if (options.justMyCode !== true) return end - index
+    const before = this.userCallsBefore()
+    return before[end]! - before[index]!
+  }
+
+  /** Every call in entry order (the root first); with just-my-code, only the user-code ones. */
+  *calls(options: CallTreeOptions = {}): Generator<CallNode> {
+    const count = this.index().count
+    for (let index = 0; index < count; index++) {
+      const node = this.node(index)
+      if (options.justMyCode !== true || !node.library) yield node
+    }
+  }
+
   details(call: CallNode): CallDetails {
     const index = this.indexOf(call)
     let details = this.detailCache.get(index)
@@ -127,6 +151,20 @@ export class CallTree {
       recording.depthAt(recording.length),
     )
     return this.shape
+  }
+
+  private userCallsBefore(): Int32Array {
+    if (this.userBefore === null) {
+      const { recording } = this
+      const count = this.index().count
+      const before = new Int32Array(count + 1)
+      for (let index = 0; index < count; index++) {
+        const library = index > 0 && recording.locationAt(this.index().entryOf(index))?.library
+        before[index + 1] = before[index]! + (library === true ? 0 : 1)
+      }
+      this.userBefore = before
+    }
+    return this.userBefore
   }
 
   private indexOf(call: CallNode): number {

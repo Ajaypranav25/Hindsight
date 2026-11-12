@@ -11,6 +11,7 @@ import {
   question,
   questionText,
   type Recording,
+  remaining,
   verdict,
   verdictReason,
 } from '../../core/index'
@@ -24,6 +25,8 @@ export type FinderView =
       readonly number: number
       /** Answers carried over from identical calls so far. */
       readonly remembered: number
+      /** Calls still under suspicion, the suspect included. */
+      readonly remaining: number
     }
   | {
       readonly kind: 'verdict'
@@ -41,7 +44,13 @@ export function finderView(session: BugFinderSession): FinderView {
   const call = question(finder)
   if (call !== null) {
     const remembered = finder.judgments.filter((judgment) => judgment.remembered).length
-    return { kind: 'question', details: tree.details(call), number: finder.asked + 1, remembered }
+    return {
+      kind: 'question',
+      details: tree.details(call),
+      number: finder.asked + 1,
+      remembered,
+      remaining: remaining(finder),
+    }
   }
   const result = verdict(finder)
   if (result.kind !== 'found') throw new InternalError('the search ended without a verdict')

@@ -102,6 +102,7 @@ describe('whatif arguments', () => {
         at: 5,
         name: 'n',
         value: -2.5,
+        values: [-2.5],
         maxSteps: 2_000_000,
         seed: 42,
       },

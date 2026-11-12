@@ -36,7 +36,9 @@ describe('bug finder texts', () => {
     const changed = treeOf('fn add(xs) {\n  push(xs, 1)\n}\nlet ys = [5]\nadd(ys)\n')
     const add = changed.details(changed.children(changed.root)[0]!)
     expect(changeTexts(add)).toEqual(['xs became [5, 1]'])
-    expect(questionText(add)).toBe('add(xs = [5]) returned nil (xs became [5, 1]). Is that right?')
+    expect(questionText(add)).toBe(
+      'add(xs = [5]) returned nil and changed: xs became [5, 1]. Is that right?',
+    )
     const raised = treeOf('fn get(xs) {\n  xs[3]\n}\nget([1])\n')
     expect(outcomeText(raised.details(raised.children(raised.root)[0]!))).toMatch(
       /^raised an error: .+ \(R\d{3}\)$/,

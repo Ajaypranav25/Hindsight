@@ -79,5 +79,15 @@ export function pickActions(s: StudioStore): StudioActions {
     answerBugFinder: s.answerBugFinder,
     undoBugFinder: s.undoBugFinder,
     closeBugFinder: s.closeBugFinder,
+    setBugFinderStrategy: s.setBugFinderStrategy,
+    setQueryMarks: s.setQueryMarks,
+    sweepWhatIf: s.sweepWhatIf,
+    openSweepRun: s.openSweepRun,
+    closeSweep: s.closeSweep,
+    askWhyNot: s.askWhyNot,
+    closeWhyNot: s.closeWhyNot,
+    setSlice: s.setSlice,
+    sliceFrom: s.sliceFrom,
+    setDimming: s.setDimming,
   }
 }

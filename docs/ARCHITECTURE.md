@@ -1,6 +1,6 @@
 # Hindsight Architecture
 
-Version 0.2. **Normative for internal contracts.** `docs/SPEC.md` defines the language; this document
+Version 0.3. **Normative for internal contracts.** `docs/SPEC.md` defines the language; this document
 defines how the implementation is split into modules and the exact contracts between them. Contract
 types live in code and are the source of truth for shapes:
 
@@ -609,6 +609,111 @@ code is wrong. It is built only on the public `Recording` API.
   answer on the way was "not sure". Answers are remembered by call key, so identical calls (common
   in recursion) are asked about once.
 
+- **Side effects.** Functions are closures that can assign globals and captured variables and
+  change lists and records in place, so a question also says what the call changed outside itself
+  (`call-effects.ts`, read from the event log between the call's first and last step): a write
+  counts when its target existed before the call began. Objects reachable from the arguments are
+  left to the argument texts ("xs became [5, 1]"). Effects are part of the memo key; a call with
+  more than 20,000 events has no key.
+- **Divide and query** (`strategy: 'divide'`; Shapiro 1982, Hirunkitti 1993): instead of asking the
+  suspect's children in order, every call still under suspicion is weighed by the number of such
+  calls below it (`CallTree.size`), and the question is the call on the heavy path whose weight is
+  closest to half of the suspect's. "Wrong" makes it the suspect; "right" and "not sure" clear its
+  subtree. `remaining(state)` counts the calls still under suspicion. The CLI and the studio start
+  interviews this way; `top-down` remains available.
+
+### 7.7 Events by time (`events.ts`)
+
+`eventsBetween(recording, from, to, limit?)` returns the events with `from <= time < to` in time
+order (the first `limit`, default 10,000, with the total). `Recording.history` answers "what
+happened to this target"; this answers "what happened during these steps".
+
+### 7.8 Dynamic dependence and slices (`dependence*.ts`, `slice.ts`)
+
+The event log records writes. `dependenceOf(recording)` adds reads: it replays the run once beside
+a shadow that remembers, for every stack slot, variable, record field and list element, the step
+that produced what it holds, and stores for every step the earlier steps it depends on (columnar;
+built on first use; null above 4,000,000 steps).
+
+- **Data**: the producers of the operands a step consumed and of the variables, fields or elements
+  it read. A native reads its arguments' contents; a `for` reads the element it binds and the
+  list's shape; list elements follow inserts, removes and pops.
+- **Control**: the latest branch decision of its own call that decided whether the step ran, else
+  the call that began its frame. Which branch controls which instruction is read off the emission
+  recipes (`dependence-control.ts`): the code a branch falls into, the `else` part, the loop
+  condition of the next iteration, and whatever an early `return`, `break` or `continue` skips.
+- **Precision**: values pass through `Dup`, block ends and call arguments without a node of their
+  own; a read of a whole object looks two levels deep and at up to 64 parts per level; a what-if
+  edit has no cause.
+
+`backwardSlice(recording, steps)` follows the edges backwards and returns the marked steps and the
+source lines they ran on; `errorSlice` slices the instruction a failed run stopped on;
+`upstreamWrites` lists the declarations and writes performed by steps of a slice, with names.
+
+### 7.9 The query language (`query.ts`, `query-eval.ts`)
+
+`queryRecording(recording, text, { limit })` jumps to moments by what was true then:
+
+| query                      | result                                                             |
+| -------------------------- | ------------------------------------------------------------------ |
+| `when EXPR` (or `EXPR`)    | the stretches of steps during which the condition held             |
+| `changed(PATH)`            | every write to a variable, field or element (`xs`, `o.f`, `xs[0]`) |
+| `calls(NAME) [where EXPR]` | the calls of a function, filtered by arguments and result (`ret`)  |
+
+Expressions are Hindsight expressions parsed by the real parser and restricted to literals, names,
+arithmetic, comparisons, `and`/`or`/`not`, fields, elements and the functions `len`, `type`, `abs`,
+`has`, `contains`; `x.len` is `len(x)`. Names resolve in the innermost frame (locals, captured
+variables, globals), then to `depth`, `step`, `line`, `function`. Conditions are checked at
+statement starts in user code, by one replay with a raw VM (no state views). An expression with no
+value at a moment (a name out of scope) neither starts nor ends a stretch on its own: the stretch
+continues if the condition holds again and ends at that moment if not. `changed` follows objects by
+id, so a record is found whatever it is called where it is written. `calls` judges a call just
+before its `Return` runs (parameters as they are then, `ret` the value on top of the stack); a call
+that did not return has no `ret`.
+
+### 7.10 Negative provenance (`why-not.ts`)
+
+`whyNot(recording, line)` explains why a line did not run. The line's statement is located in the
+syntax tree together with its guards (the `if`, loop, `match` arm and function around it). From the
+innermost outwards, the first guard whose condition was evaluated while its branch never ran is the
+explanation: the step just after the condition's last evaluation is the decision, its value is read
+from the replay stack, and the variables it mentions are explained with `origin` ("total was 75,
+set at step 810"). Other results: the function was never called (explained through its first call
+site that did not run), the block was entered but always left early or the run ended first
+(`cut-short`), the line did run, or the line holds no code. Call sites are found by name in the
+source text, so shadowing is not resolved.
+
+### 7.11 The inverse what-if (`inverse.ts`)
+
+`solveInverse(recording, goal)` runs a what-if backwards: given a goal (`{kind: 'output', index,
+text}` or `{kind: 'no-error'}`) it finds an earlier value that reaches it. Candidates are the
+`let`/`var` declarations and parameters in the goal's backward slice that held a number or a
+boolean (the latest value per site; a variable that merely holds the printed number is skipped).
+Each is searched alone: a probe tells whether the output moves, the secant method homes in, and
+bisection takes over once two values bracket the goal; whole numbers stay whole, and a fractional
+solution is replaced by the roundest value that still works. Goals with nothing to measure (a
+crash, a text) are probed with nearby values. The search is a generator of fork requests
+(`inverseSearch`) with a sync driver and an async one (`solveInverseAsync`, sliced forks, abort
+signal); it stops at 300 forks, 24 candidates or 3 solutions.
+
+### 7.12 Repair previews (`repair.ts`)
+
+`repairSearch(recording, request)` tries one-token changes inside one function: binary and
+assignment operators, `and`/`or`, number and boolean literals, range ends. Each mutant is compiled
+and recorded from the start (a snapshot belongs to its program) under a step limit of four times
+the original run, then checked: with `{kind: 'examples'}` every call judged right must do the same
+again and every call judged wrong must be made again and return something else
+(`repairExamples(tree, finderState)` turns an interview into examples); with `{kind: 'crash'}` the
+run must finish. A passing mutant is a preview, not a proof: it reports what the wrong calls return
+now so the intended fix can be told from one that is merely different.
+
+### 7.13 Sweeps and heap differences (`sweep.ts`, `heap-diff.ts`)
+
+`parseSweepValues` reads `1..20` (both ends included, also written `1..=20`), `0..100 step 10` or a
+comma list of literals, at most 64 values; `sweep`/`sweepAsync` fork the run once per value at one
+step and report each run with its comparison and deepest call depth. `diffHeaps(a, b)` lists the
+references (from variables into the heap and between objects) that only one of two states has.
+
 ## 8. Public API (`src/core/index.ts`)
 
 ```ts
@@ -624,7 +729,14 @@ getLibrarySource(): string
 compareRecordings(a, b): RecordingComparison             // what-if: divergence and output diff
 parseLiteralValue(text): LiteralResult, formatLiteral(value): string
 callTree(recording): CallTree                            // bug finder: the recorded calls
-startFinder(tree, call, options), question, answer, undo, verdict
+startFinder(tree, call, options), question, answer, undo, verdict, remaining
+eventsBetween, callEffects                               // §7.6, §7.7
+dependenceOf, backwardSlice, errorSlice, upstreamWrites  // §7.8
+parseQuery, queryRecording, runQuery, queryTimes         // §7.9
+whyNot(recording, line): WhyNot                          // §7.10
+solveInverse, solveInverseAsync, inverseSearch           // §7.11
+repairSearch(recording, request), repairExamples         // §7.12
+parseSweepValues, sweep, sweepAsync, heapEdges, diffHeaps // §7.13
 show, repr, LineIndex, and all types from api-types.ts / diagnostics.ts / span.ts / tokens.ts
 ```
 
@@ -649,6 +761,16 @@ show, repr, LineIndex, and all types from api-types.ts / diagnostics.ts / span.t
 | `whatif FILE --at T --set NAME=VALUE` | record, fork at step `T` with `NAME` (resolved in the innermost frame: locals, captures, then globals) set to a literal (§7.5), then print the edit, where the futures diverge, both outcomes and an output diff (`-` real run, `+` what-if)    |
 | `debug FILE`                          | the bug finder (§7.6) as an interview: one question per call (`r` right, `w` wrong, `n` or `?` not sure, `u` undo, `q` quit), answers read line by line from a terminal or a pipe; ends with the verdict and a code frame of the buggy function |
 
+| `whatif FILE --at T --set NAME=1..20` | a sweep (§7.13): one row per value with its steps, deepest depth, outcome and output change, then the longest run |
+| `debug FILE --strategy divide\|top-down` | how questions are chosen (default `divide`, §7.6); questions list side effects and the calls still under suspicion; the verdict is followed by repair previews (§7.12) when a one-token change agrees with the answers |
+| `solve FILE --want TEXT [--output K]` | the inverse what-if (§7.11): earlier values that make output line `K` (default: the last) read `TEXT`; exit 1 when none is found |
+| `solve FILE --no-crash` | earlier values that avoid the run's runtime error |
+| `query FILE QUERY [--limit N]` | the query language (§7.9); prints up to `N` (default 50) stretches, changes or calls |
+| `whynot FILE --line L` | negative provenance (§7.10): the sentence, the guard's line and a `replay` hint |
+| `slice FILE [--at T]` | the source with the lines of the backward slice (§7.8) of step `T` marked; default: the runtime error, else the last output line |
+| `repair FILE` | repair previews (§7.12) for a run that crashed |
+| `mcp` | the MCP server (§9.1) |
+
 Diagnostics print Rust-style with a code frame and caret underline (`error[E020]: …`, `--> file:3:9`,
 the source line, `^^^`, `= hint: …`), colored only when stdout and stderr are both terminals and
 `NO_COLOR` is unset. Each command takes exactly the arguments and options listed above; anything
@@ -661,6 +783,17 @@ since npm installs it as a link named `hindsight`.
 whole text is compiled and run from scratch with the same seed, and only output events beyond the
 previous run's are printed. An entry that fails to compile or raises a runtime error is reported and
 discarded (so E022 applies across entries).
+
+### 9.1 MCP server (`src/cli/mcp.ts`)
+
+`hindsight mcp` serves the debugger over the Model Context Protocol's stdio transport (JSON-RPC
+2.0, one message per line; `initialize`, `ping`, `tools/list`, `tools/call`). Tools: `run_trace`
+(compile and record a program; returns a trace id, the outcome and the output), `seek_state`,
+`query_provenance`, `fork_whatif` (returns a new trace id for the fork), `get_divergence` (a fork
+against its parent, with the output diff and the heap references that differ just after the
+divergence), `query`, `why_not`, `slice` and `solve`. Results are JSON text. A problem with a call
+is a tool result with `isError`, never a protocol error; sources are limited to 200,000 characters
+and `max_steps` to 10,000,000; the server keeps the 16 most recent traces in memory.
 
 ## 10. Testing
 
@@ -819,6 +952,32 @@ tabbed panels); the page may scroll vertically, never horizontally.
   An interview belongs to one recording: during a what-if, an interview about the real run waits
   (the panel offers to continue it in the real run, or to start a new one about the what-if). Opening
   the panel from the header moves focus to its question, also when the panel only now appears.
+- **Bug finder upgrades** (§7.6, §7.12): interviews halve the suspects by default ("Halve the
+  suspects" toggles call order; switching starts the interview over), a question shows the calls
+  still under suspicion and what the call changed outside itself, and the verdict lists repair
+  previews (searched in the background) with "Apply this change", which replaces the program text.
+- **Make it so** (§7.11): every console line has "Make this print…", an inline field holding the
+  line's text; Enter searches for an earlier value that makes the line read the edited text. A
+  runtime error offers "Make this not happen" and "Try one-token fixes". Answers are sentences with
+  "Try it", which forks the run with that value like a manual what-if.
+- **Query bar** (§7.9): a field above the strip chart. Enter runs the query on the run on display:
+  stretches are shaded and moments marked on the chart, a summary sits beside the field, Previous
+  and Next move the pen to the nearest match, List opens the matches, Escape clears. Marks belong
+  to their recording.
+- **Sweep** (§7.13): typing several values (`1..20`, `1, 5, 27`) in a what-if editor forks the run
+  once per value. A banner above the chart lists the runs (value, steps, deepest depth, outcome,
+  output change; the longest marked), the chart spans the longest run and draws every run as a
+  ghost trace from the fork step; a row opens that run as an ordinary what-if, and "Back to the
+  real run" returns to the sweep.
+- **Why a line did not run** (§7.10): a statement that never ran has a hollow mark in the heat
+  gutter; clicking it (or Shift+F9 on the cursor line) shows the explanation in the editor with
+  "Go to the decision", and marks the guard's line.
+- **Lines that led here** (§7.8): after a runtime error (runs up to 1,000,000 steps) the lines
+  outside the error's backward slice are dimmed, with a chip to show all lines; "What led here?"
+  does the same for the pen's step until the pen moves. The slice is computed after display.
+- **Heap ghost edges** (§7.13): during a what-if, references only the what-if has are drawn solid
+  in the ok colour and references only the real run has (at the same step) dashed in the error
+  colour, with a legend and a text description.
 - **Status**: recording progress; "Finished · 56,789 steps · 12 lines"; "Runtime error on line 7 · …"
   (click to jump); "Step limit reached · Record 2M more" (calls `extendAsync`).
 - **Settings**: step budget (500 k / 2 M / 10 M), just-my-code, auto-run, instruction-level

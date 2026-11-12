@@ -12,6 +12,7 @@ import {
   type DepthScale,
   type Viewport,
 } from '../lib/timeline-math'
+import { drawQueryMarks, drawSweepGhosts, labMaxDepth, type ChartLab } from './chart-lab'
 import { drawGhost, drawWhatIfMarks, type ChartWhatIf, type WhatIfLayout } from './chart-whatif'
 
 /** Chart layout in CSS pixels. */
@@ -79,6 +80,8 @@ export interface ChartScene {
   readonly colors: ChartColors
   /** Set while a what-if is shown: the real run's ghost and the fork and divergence marks. */
   readonly whatIf?: ChartWhatIf | null
+  /** A query's matches and a sweep's runs, when there are any. */
+  readonly lab?: ChartLab | null
 }
 
 interface Frame {
@@ -101,7 +104,7 @@ export function drawChart(ctx: CanvasRenderingContext2D, scene: ChartScene): voi
   const baseline = plotBottom - CHART_LAYOUT.baselineGap * px
   const top = CHART_LAYOUT.topMargin * px
   const scale = depthScale(
-    Math.max(scene.env?.maxDepth ?? 0, scene.whatIf?.ghost.maxDepth ?? 0),
+    Math.max(scene.env?.maxDepth ?? 0, scene.whatIf?.ghost.maxDepth ?? 0, labMaxDepth(scene.lab)),
     top + 4 * px,
     baseline,
     CHART_LAYOUT.maxDepthUnit * px,
@@ -113,6 +116,9 @@ export function drawChart(ctx: CanvasRenderingContext2D, scene: ChartScene): voi
   const whatIf = scene.whatIf ?? null
   const layout: WhatIfLayout = { view: scene.view, w, px, top, scale, color: scene.colors.whatIf }
   if (whatIf) drawGhost(ctx, whatIf, { ...layout, color: scene.colors.inkMuted })
+  const lab = scene.lab ?? null
+  if (lab) drawQueryMarks(ctx, lab, layout, scene.colors.marker)
+  if (lab && lab.ghosts.length > 0) drawSweepGhosts(ctx, lab, layout, scene.colors.whatIf)
   drawTrace(frame)
   drawMarkers(frame)
   if (whatIf) drawWhatIfMarks(ctx, whatIf, layout)

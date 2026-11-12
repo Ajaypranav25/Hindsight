@@ -1,0 +1,103 @@
+/* Negative provenance and fault localization in the editor (ARCHITECTURE §11.3). */
+
+/* A line with no causal path to the crash (or to the pen's step). */
+.ed-host .cm-line.ed-line-dim {
+  opacity: 0.42;
+}
+
+/* The guard that kept a line from running, while its explanation is open. */
+.ed-host .cm-line.ed-line-guard {
+  background-image: linear-gradient(90deg, var(--pen-soft), transparent 80%);
+  box-shadow: inset 2px 0 0 var(--pen);
+}
+
+/* A statement that never ran: a hollow tick in the heat gutter that can be asked about. */
+.ed-heat-idle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  cursor: pointer;
+}
+
+.ed-heat-idle::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border: 1px solid var(--ink-faint);
+  border-radius: 50%;
+}
+
+.ed-gutter-heat .cm-gutterElement:hover .ed-heat-idle::before {
+  border-color: var(--pen);
+  background: var(--pen-soft);
+}
+
+.ed-lab {
+  position: absolute;
+  right: var(--space-3);
+  bottom: var(--space-2);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-2);
+  max-width: min(34rem, calc(100% - 2 * var(--space-3)));
+  pointer-events: none;
+}
+
+.ed-lab > * {
+  pointer-events: auto;
+}
+
+.ed-why,
+.ed-slice {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-pop);
+  font: var(--text-sm) / 1.45 var(--font-ui);
+  color: var(--ink);
+}
+
+.ed-why {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-left: 2px solid var(--pen);
+}
+
+.ed-why:focus-visible {
+  outline: none;
+  box-shadow:
+    var(--shadow-pop),
+    0 0 0 2px var(--marker);
+}
+
+.ed-why-text {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ed-why-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.ed-slice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 2px var(--space-2);
+}
+
+.ed-slice:empty {
+  display: none;
+}
+
+.ed-slice-text {
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+}

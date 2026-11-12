@@ -13,6 +13,7 @@ export type ShortcutCommand =
   | { readonly kind: 'end' }
   | { readonly kind: 'toggle-play' }
   | { readonly kind: 'toggle-breakpoint' }
+  | { readonly kind: 'why-not' }
   | { readonly kind: 'run' }
 
 /** The parts of a KeyboardEvent the mapping reads. */
@@ -55,6 +56,8 @@ export function commandForKey(input: KeyInput, focus: FocusContext): ShortcutCom
   const step = STEP_KEYS[input.key]
   if (step) return { kind: 'step', step, direction }
   if (input.key === 'F8') return { kind: 'continue', direction }
+  // Shift+F9: why did the cursor line not run?
+  if (input.key === 'F9' && input.shiftKey) return { kind: 'why-not' }
   if (input.shiftKey) return null
   if (input.key === 'F9') return { kind: 'toggle-breakpoint' }
   if (focus.editable) return null
@@ -89,6 +92,10 @@ export function runCommand(
     case 'toggle-breakpoint':
       if (cursorLine === null) return false
       actions.toggleBreakpoint(cursorLine)
+      return true
+    case 'why-not':
+      if (cursorLine === null) return false
+      actions.askWhyNot(cursorLine)
       return true
     case 'run':
       void actions.run()
@@ -220,6 +227,7 @@ export function shortcutList(apple: boolean): readonly ShortcutHelp[] {
     { keys: ['F7', 'Shift+F7'], action: 'Step out, forward / back' },
     { keys: ['F8', 'Shift+F8'], action: 'Continue to the next / previous breakpoint' },
     { keys: ['F9'], action: 'Toggle a breakpoint on the cursor line' },
+    { keys: ['Shift+F9'], action: 'Ask why the cursor line did not run' },
     { keys: ['Home', 'End'], action: 'Jump to the start / end of the run' },
     { keys: ['Space'], action: 'Play or pause, statement by statement' },
     { keys: ['←', '→'], action: 'Step into back / forward (strip chart focused)' },

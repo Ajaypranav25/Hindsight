@@ -74,7 +74,7 @@ describe('commandForKey', () => {
     expect(commandForKey(key('F10', { ctrlKey: true }), NO_FOCUS)).toBeNull()
     expect(commandForKey(key('Home', { altKey: true }), NO_FOCUS)).toBeNull()
     expect(commandForKey(key('Home', { shiftKey: true }), NO_FOCUS)).toBeNull()
-    expect(commandForKey(key('F9', { shiftKey: true }), NO_FOCUS)).toBeNull()
+    expect(commandForKey(key('F9', { shiftKey: true }), NO_FOCUS)).toEqual({ kind: 'why-not' })
     expect(commandForKey(key('a'), NO_FOCUS)).toBeNull()
     expect(commandForKey(key('a'), EDITING)).toBeNull()
   })

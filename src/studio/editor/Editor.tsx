@@ -7,7 +7,10 @@ import { setEditorCursorLine } from './cursor-line'
 import { scrollStatementIntoView } from './decorations'
 import { culpritLines } from '../panels/bug-finder-model'
 import { minimalChange } from './doc-sync'
+import { activeSlice, liveWhyNot } from '../state/lab'
+import { EditorLab } from './EditorLab'
 import { maxHitCount } from './gutter-math'
+import { idleCodeLines, whyNotGuardLine } from './lab-lines'
 import { LibraryChip } from './LibraryChip'
 import { diagnosticsTransaction } from './lint'
 import { computeOverlay, EMPTY_OVERLAY, originSpanAt, type EditorOverlay } from './overlay'
@@ -19,6 +22,7 @@ import './editor.css'
 const TYPING_GRACE_MS = 1500
 const NO_DIAGNOSTICS: never[] = []
 const NO_HITS: ReadonlyMap<number, number> = new Map()
+const NO_LINES: ReadonlySet<number> = new Set()
 
 /** The code editor: the store's source, with the program's state at the pen drawn over it. */
 export function Editor() {
@@ -32,6 +36,9 @@ export function Editor() {
   const originMark = useStudio((s) => s.originMark)
   const bugFinder = useStudio((s) => s.bugFinder)
   const culprit = useMemo(() => culpritLines(bugFinder, recording), [bugFinder, recording])
+  const keepLines = useStudio((s) => activeSlice(s)?.lines ?? null)
+  const whyMark = useStudio((s) => liveWhyNot(s.lab, s.recording))
+  const guardLine = whyMark === null ? null : whyNotGuardLine(whyMark.why)
   const view = useStateView()
   const actions = useStudioActions()
 
@@ -71,12 +78,29 @@ export function Editor() {
     compileResult && !compileResult.ok ? compileResult.diagnostics : NO_DIAGNOSTICS
   const hitCounts = useMemo(() => recording?.lineHitCounts() ?? NO_HITS, [recording])
   const maxHits = useMemo(() => maxHitCount(hitCounts), [hitCounts])
+  const idleLines = useMemo(
+    () => (recording && !stale ? idleCodeLines(recording) : NO_LINES),
+    [recording, stale],
+  )
   const overlay = useMemo(() => {
     const base = computeOverlay({ view, stale, selectedFrameUid, source })
     const originSpan = stale ? null : originSpanAt(recording, originMark, time, source.length)
     const marked = originSpan ? { ...base, originSpan } : base
-    return culprit ? { ...marked, culprit } : marked
-  }, [view, stale, selectedFrameUid, source, recording, originMark, time, culprit])
+    const found = culprit ? { ...marked, culprit } : marked
+    if (stale || (keepLines === null && guardLine === null)) return found
+    return { ...found, keepLines, guardLine }
+  }, [
+    view,
+    stale,
+    selectedFrameUid,
+    source,
+    recording,
+    originMark,
+    time,
+    culprit,
+    keepLines,
+    guardLine,
+  ])
 
   useEffect(() => {
     const editor = editorRef.current
@@ -93,6 +117,7 @@ export function Editor() {
       breakpoints,
       hitCounts,
       maxHits,
+      idleLines,
       overlay,
     }
     editor.dispatch(diagnosticsTransaction(editor.state, diagnostics, source), {
@@ -108,6 +133,7 @@ export function Editor() {
     breakpoints,
     hitCounts,
     maxHits,
+    idleLines,
     overlay,
     diagnostics,
   ])
@@ -124,6 +150,7 @@ export function Editor() {
     <div className="ed-root">
       <div className="ed-host" ref={hostRef} />
       {overlay.libraryFunction !== null && <LibraryChip name={overlay.libraryFunction} />}
+      <EditorLab />
     </div>
   )
 }

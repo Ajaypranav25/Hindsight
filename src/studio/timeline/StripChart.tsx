@@ -14,11 +14,13 @@ import {
 import { useStudio, useStudioActions } from '../state/context'
 import { isStale } from '../state/selectors'
 import type { RunStatus } from '../state/types'
-import { useChartData, useChartWhatIf, useViewport } from './chart-data'
+import { useChartData, useChartLab, useChartWhatIf, useViewport } from './chart-data'
 import { CHART_LAYOUT } from './chart-draw'
 import { useChartInput, type Hover } from './chart-input'
 import { useChartPaint } from './chart-paint'
 import { useElementSize, usePrefersReducedMotion, useThemeVersion } from './hooks'
+import { QueryBar } from './QueryBar'
+import { SweepBanner } from './SweepBanner'
 import { WhatIfBanner } from './WhatIfBanner'
 import './timeline.css'
 
@@ -43,14 +45,17 @@ export function StripChart() {
   const actions = useStudioActions()
   const data = useChartData(recording)
   const whatIf = useChartWhatIf()
+  const { lab, extent } = useChartLab()
   const helpId = useId()
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const size = useElementSize(wrapRef)
   const themeVersion = useThemeVersion()
   const reducedMotion = usePrefersReducedMotion()
-  const [view, setView] = useViewport(recording, time)
+  const [view, setView] = useViewport(recording, time, extent)
   const length = recording?.length ?? 0
+  /** The steps the chart spans: the run, or the longest run of a sweep. */
+  const span = Math.max(length, extent)
   const progress = progressOf(status, maxSteps)
   const depth = penDepth(recording, time)
   const errorAt = recording?.outcome.kind === 'error' ? length : null
@@ -69,6 +74,7 @@ export function StripChart() {
       reducedMotion,
       themeVersion,
       whatIf,
+      lab,
     }),
     [
       size,
@@ -83,6 +89,7 @@ export function StripChart() {
       reducedMotion,
       themeVersion,
       whatIf,
+      lab,
     ],
   )
   useChartPaint(canvasRef, paintInput)
@@ -93,7 +100,7 @@ export function StripChart() {
     setView,
     width: size.width,
     height: size.height,
-    length,
+    length: span,
     enabled: recording !== null,
     actions,
     resetKey: recording,
@@ -104,7 +111,7 @@ export function StripChart() {
     [recording, time],
   )
   const speed = chartSpeedText(axisTicks(view, size.width, CHART_LAYOUT.tickSpacing).major)
-  const zoomed = recording !== null && isZoomed(view, length)
+  const zoomed = recording !== null && isZoomed(view, span)
   const className = ['tl-chart', stale ? 'tl-chart--stale' : '', recording ? '' : 'tl-chart--empty']
     .filter(Boolean)
     .join(' ')
@@ -112,6 +119,8 @@ export function StripChart() {
   return (
     <div className={className}>
       <WhatIfBanner onLeft={() => canvasRef.current?.focus()} />
+      <SweepBanner onClosed={() => canvasRef.current?.focus()} />
+      <QueryBar />
       <div className="tl-chart__paper" ref={wrapRef}>
         <canvas
           ref={canvasRef}
@@ -149,7 +158,7 @@ export function StripChart() {
           <button
             type="button"
             className="tl-chart__reset"
-            onClick={() => setView(() => fullViewport(length))}
+            onClick={() => setView(() => fullViewport(span))}
           >
             Show whole run
           </button>
