@@ -26,6 +26,8 @@ import {
   type RootChip,
   type RootGroup,
 } from '../lib/heap-layout'
+import type { HeapLayoutDiff } from '../lib/heap-layout-diff'
+import { GhostEdges, HeapDiffLegend, useHeapDiff } from './HeapDiff'
 import './heap.css'
 
 /** Lowest zoom the user can reach with the zoom-out button, keys or the wheel. */
@@ -58,6 +60,7 @@ export function HeapGraph() {
   const frame = useSelectedFrame()
   const recording = useStudio((s) => s.recording)
   const layout = useHeapLayout(view, frame, recording)
+  const diff = useHeapDiff(view, frame, layout)
   if (!view || !recording || !layout) {
     return <Empty title="No recording yet" detail="Run a program to see the objects it builds." />
   }
@@ -69,7 +72,9 @@ export function HeapGraph() {
       />
     )
   }
-  return <HeapCanvas layout={layout} recording={recording} truncated={view.heapTruncated} />
+  return (
+    <HeapCanvas layout={layout} recording={recording} truncated={view.heapTruncated} diff={diff} />
+  )
 }
 
 function Empty(props: { title: string; detail: string }) {
@@ -108,8 +113,14 @@ function useHeapLayout(
   return layout
 }
 
-function HeapCanvas(props: { layout: HeapLayout; recording: Recording; truncated: boolean }) {
-  const { layout, recording } = props
+function HeapCanvas(props: {
+  layout: HeapLayout
+  recording: Recording
+  truncated: boolean
+  /** What differs from the real run during a what-if, else null. */
+  diff: HeapLayoutDiff | null
+}) {
+  const { layout, recording, diff } = props
   const [hover, setHover] = useState<Hover | null>(null)
   const [selected, setSelected] = useState<number | null>(null)
   // The hovered row by identity: its text is derived each render, so it follows the pen.
@@ -126,6 +137,7 @@ function HeapCanvas(props: { layout: HeapLayout; recording: Recording; truncated
   return (
     <div className="hp-root">
       <Toolbar count={layout.boxes.length} onZoom={viewport.zoomBy} onFit={viewport.fit} />
+      {diff && <HeapDiffLegend diff={diff} />}
       <div
         ref={container}
         className="hp-viewport"
@@ -147,6 +159,8 @@ function HeapCanvas(props: { layout: HeapLayout; recording: Recording; truncated
             </pattern>
             <Arrow id={`${ids}-arrow`} className="hp-arrow" />
             <Arrow id={`${ids}-arrow-hot`} className="hp-arrow is-hot" />
+            <Arrow id={`${ids}-arrow-added`} className="hp-arrow is-added" />
+            <Arrow id={`${ids}-arrow-removed`} className="hp-arrow is-removed" />
           </defs>
           <rect
             className="hp-ground"
@@ -178,14 +192,18 @@ function HeapCanvas(props: { layout: HeapLayout; recording: Recording; truncated
                 onReadout={setReadout}
               />
             ))}
+            {diff && <GhostEdges diff={diff} arrowId={`${ids}-arrow-removed`} />}
             {edges.map((edge) => {
               const hot = isHot(edge)
+              const added = diff?.added.has(edge.key) === true
+              const kind = added ? ' is-added' : hot ? ' is-hot' : ''
+              const arrow = added ? '-added' : hot ? '-hot' : ''
               return (
                 <path
                   key={edge.key}
-                  className={hot ? 'hp-edge is-hot' : 'hp-edge'}
+                  className={`hp-edge${kind}`}
                   d={edge.path}
-                  markerEnd={`url(#${ids}-arrow${hot ? '-hot' : ''})`}
+                  markerEnd={`url(#${ids}-arrow${arrow})`}
                 />
               )
             })}

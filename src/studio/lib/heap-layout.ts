@@ -421,7 +421,8 @@ function rootChips(roots: readonly HeapRoot[], drawn: ReadonlySet<number>) {
 // ---------------------------------------------------------------------------------------------
 // Edges
 
-function edgePath(from: Point, to: HeapBox, route: HeapEdge['route']): string {
+/** The curve of a reference from `from` to box `to` (SVG path data). */
+export function edgePath(from: Point, to: HeapBox, route: HeapEdge['route']): string {
   const f = (n: number) => Math.round(n * 10) / 10
   if (route === 'forward') {
     const tx = to.x
