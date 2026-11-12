@@ -16,6 +16,7 @@ import type { Program } from '../../core/bytecode'
 import type { Diagnostic } from '../../core/diagnostics'
 import type { Answer, Strategy } from '../../core/index'
 import type { BugFinderState } from './bug-finder'
+import type { LabState, QueryMarks } from './lab'
 
 export type ThemeSetting = 'system' | 'light' | 'dark'
 
@@ -88,6 +89,8 @@ export interface StudioState {
   readonly whatIf: WhatIfState | null
   /** The bug finder's interview (ARCHITECTURE §7.6) and requests to reveal its panel. */
   readonly bugFinder: BugFinderState
+  /** The query marks and the sweep on the strip chart (ARCHITECTURE §7.9, §7.13). */
+  readonly lab: LabState
 }
 
 /** One edit of a what-if, as the studio names it. */
@@ -178,6 +181,22 @@ export interface StudioActions {
   closeBugFinder(): void
   /** Chooses how interviews pick questions; an open interview starts over that way. */
   setBugFinderStrategy(strategy: Strategy): void
+  /** Marks a query's matches on the strip chart (null clears them). */
+  setQueryMarks(query: QueryMarks | null): void
+  /**
+   * Forks the shown run at the pen once per value of `values`, each with `target` set to it, and
+   * shows the runs together (`name` and `text` label the sweep: `start`, `1..20`).
+   */
+  sweepWhatIf(
+    target: WriteTarget,
+    values: readonly EditValue[],
+    name: string,
+    text: string,
+  ): Promise<void>
+  /** Opens run `index` of the sweep as a what-if. */
+  openSweepRun(index: number): void
+  /** Drops the sweep (stopping it if it is still running). */
+  closeSweep(): void
 }
 
 export type StudioStore = StudioState & StudioActions

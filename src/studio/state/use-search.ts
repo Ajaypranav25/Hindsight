@@ -38,17 +38,13 @@ export function useGeneratorSearch<T>(
     const slice = (): void => {
       if (stopped) return
       const until = Date.now() + SLICE_MS
-      let progress = 0
-      for (;;) {
-        const next = search.next()
-        if (next.done === true) {
-          setState({ key, search: { status: 'done', result: next.value } })
-          return
-        }
-        progress = next.value
-        if (Date.now() >= until) break
+      let next = search.next()
+      while (next.done !== true && Date.now() < until) next = search.next()
+      if (next.done === true) {
+        setState({ key, search: { status: 'done', result: next.value } })
+        return
       }
-      setState({ key, search: { status: 'searching', progress } })
+      setState({ key, search: { status: 'searching', progress: next.value } })
       timer = setTimeout(slice, 0)
     }
     timer = setTimeout(slice, 0)

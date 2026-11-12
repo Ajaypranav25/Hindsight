@@ -3,6 +3,7 @@ import { compile, record } from '../../core/index'
 import type { Diagnostic, Recording } from '../../core/index'
 import { INITIAL_BUG_FINDER } from '../state/bug-finder'
 import { DEFAULT_SETTINGS } from '../state/defaults'
+import { INITIAL_LAB } from '../state/lab'
 import { fakeRecording } from '../state/testing'
 import type { StudioState } from '../state/types'
 import { staleBadge, statusLine } from './status-model'
@@ -28,6 +29,7 @@ function state(patch: Partial<StudioState> = {}): StudioState {
     previousSource: null,
     whatIf: null,
     bugFinder: INITIAL_BUG_FINDER,
+    lab: INITIAL_LAB,
     ...patch,
   }
 }

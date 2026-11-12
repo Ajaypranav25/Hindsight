@@ -8,6 +8,7 @@ import type {
 } from '../../core/api-types'
 import { writeJson } from '../lib/storage'
 import { bugFinderActions } from './bug-finder'
+import { labActions } from './lab'
 import {
   ACTION_NOTICE_DURATION_MS,
   AUTO_RUN_DELAY_MS,
@@ -193,6 +194,7 @@ class Controller {
       forkWhatIf: (target, value, name) => this.whatIf.fork(target, value, name),
       leaveWhatIf: () => this.leaveWhatIf(),
       ...bugFinderActions(this.get, this.set),
+      ...labActions(this.get, this.set),
     }
   }
 
