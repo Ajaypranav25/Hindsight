@@ -338,11 +338,19 @@ export function* inverseSearch(
   }
 
   const printed = target.read(recording).measured
-  for (const candidate of candidates) {
+  // A variable that merely holds the printed number explains little (setting it always works),
+  // so those are tried only when nothing else reaches the goal.
+  const echoes = (candidate: InverseCandidate): boolean =>
+    printed !== undefined &&
+    typeof candidate.original === 'number' &&
+    close(candidate.original, printed)
+  const ordered = [
+    ...candidates.filter((candidate) => !echoes(candidate)),
+    ...candidates.filter(echoes),
+  ]
+  for (const candidate of ordered) {
     if (solutions.length >= maxSolutions || exhausted) break
-    // A variable that merely holds the printed number explains nothing: setting it always works.
-    const { original } = candidate
-    if (printed !== undefined && typeof original === 'number' && close(original, printed)) continue
+    if (echoes(candidate) && solutions.length > 0) break
     tried += 1
     if (typeof candidate.original === 'boolean') {
       yield* probe(candidate, !candidate.original)

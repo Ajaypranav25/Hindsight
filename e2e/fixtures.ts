@@ -105,7 +105,8 @@ export async function currentLineText(page: Page): Promise<string | null> {
 
 /** The console's printed lines (desktop: the Console panel under the editor). */
 export function outputLines(page: Page): Locator {
-  return page.getByRole('list', { name: 'Program output' }).getByRole('button')
+  // The line itself: each line also has a "Make this print…" button.
+  return page.getByRole('list', { name: 'Program output' }).locator('.pn-line-btn')
 }
 
 /** Loads a gallery example through the Examples menu. */

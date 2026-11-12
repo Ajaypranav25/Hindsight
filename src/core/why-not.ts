@@ -191,7 +191,11 @@ function explain(context: Context, line: number, depth: number): WhyNot {
     const decision = decisionOf(guard)
     if (context.within(decision.checked).count === 0) continue
     if (context.within(decision.branch).count > 0) break
-    return guardExplanation(context, line, guard, decision)
+    const explanation = guardExplanation(context, line, guard, decision)
+    // The decision went the line's way after all (the branch held nothing but a `break`, which
+    // leaves no step of its own): control entered and left early.
+    if (wentTheLinesWay(explanation)) break
+    return explanation
   }
   return cutShort(context, line)
 }
@@ -390,6 +394,13 @@ function guardExplanation(
 function topOfStack(recording: Recording, time: number): string {
   const stack = replayAccess(recording)?.newSeeker().positionAt(time).stack ?? []
   return stack.length === 0 ? 'unknown' : preview(stack[stack.length - 1]!, PREVIEW_LENGTH)
+}
+
+function wentTheLinesWay(why: WhyNot): boolean {
+  if (why.kind !== 'guard') return false
+  const falsy = why.value === 'false' || why.value === 'nil'
+  if (why.construct === 'if' || why.construct === 'while') return !falsy
+  return why.construct === 'else' && falsy
 }
 
 /** The first step after `last` back at its depth: the evaluated value is then on the stack. */
