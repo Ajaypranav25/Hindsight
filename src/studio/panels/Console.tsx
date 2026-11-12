@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Diagnostic, OutputEvent, Recording, RecordingComparison } from '../../core/index'
 import { LineIndex } from '../../core/index'
 import { clipText, formatCount } from '../lib/format'
 import { useStudio, useStudioActions } from '../state/context'
+import { type Wish, WishForm, WishResults } from './MakeItSo'
 import { consoleWindow } from './panel-logic'
+import { RepairPreviews } from './RepairPreviews'
 import './panels.css'
 
 /** Program output at the pen: printed lines, future lines ghosted, and how the run ended. */
@@ -59,6 +61,19 @@ function Output(props: { readonly recording: Recording }) {
   const { start, end, printed } = consoleWindow(outputs, time)
   const listRef = useLastPrintedInView(printed)
   const visible = outputs.slice(start, end)
+  // What the user asked the past for; it belongs to the recording it was asked about.
+  const [asked, setAsked] = useState<Wish | null>(null)
+  const [wishing, setWishing] = useState<{ recording: Recording; index: number } | null>(null)
+  const wish = asked?.recording === recording ? asked : null
+  const formAt = wishing?.recording === recording ? wishing.index : null
+  const makeWish = (index: number, text: string) => {
+    setWishing(null)
+    setAsked({
+      recording,
+      goal: { kind: 'output', index, text },
+      label: `output line ${formatCount(index + 1)} to read ${JSON.stringify(text.trim())}`,
+    })
+  }
   return (
     <>
       {outputs.length === 0 && <p className="pn-empty">Nothing printed</p>}
@@ -73,6 +88,9 @@ function Output(props: { readonly recording: Recording }) {
               lastPrinted={start + i === printed - 1}
               changed={changed?.has(start + i) ?? false}
               onSeek={seek}
+              wishing={formAt === start + i}
+              onWishing={(open) => setWishing(open ? { recording, index: start + i } : null)}
+              onWish={(text) => makeWish(start + i, text)}
             />
           ))}
         </ol>
@@ -86,7 +104,15 @@ function Output(props: { readonly recording: Recording }) {
           real run {comparison.removed === 1 ? 'is' : 'are'} not printed in this what-if
         </p>
       )}
-      <RunEnd recording={recording} time={time} onSeek={seek} />
+      <RunEnd
+        recording={recording}
+        time={time}
+        onSeek={seek}
+        onAvoid={() =>
+          setAsked({ recording, goal: { kind: 'no-error' }, label: 'this error not to happen' })
+        }
+      />
+      {wish && <WishResults wish={wish} onClose={() => setAsked(null)} />}
     </>
   )
 }
@@ -98,8 +124,17 @@ function OutputLine(props: {
   /** Not printed by the real run (in what-if mode). */
   readonly changed: boolean
   readonly onSeek: (time: number) => void
+  /** The "make this print" form is open under this line. */
+  readonly wishing: boolean
+  readonly onWishing: (open: boolean) => void
+  readonly onWish: (text: string) => void
 }) {
-  const { event, time, lastPrinted, changed, onSeek } = props
+  const { event, time, lastPrinted, changed, onSeek, wishing, onWishing, onWish } = props
+  const wishButton = useRef<HTMLButtonElement>(null)
+  const closeForm = () => {
+    onWishing(false)
+    wishButton.current?.focus()
+  }
   const atPen = event.time === time
   const future = event.time >= time
   const className = `pn-line${future ? ' pn-line--future' : ''}${atPen ? ' pn-line--now' : ''}`
@@ -120,6 +155,17 @@ function OutputLine(props: {
           </span>
         )}
       </button>
+      <button
+        ref={wishButton}
+        type="button"
+        className="pn-line-wish"
+        aria-expanded={wishing}
+        title="Find an earlier value that makes this line print something else"
+        onClick={() => onWishing(!wishing)}
+      >
+        Make this print…
+      </button>
+      {wishing && <WishForm current={event.text} onWish={onWish} onCancel={closeForm} />}
     </li>
   )
 }
@@ -142,8 +188,11 @@ function RunEnd(props: {
   readonly recording: Recording
   readonly time: number
   readonly onSeek: (t: number) => void
+  /** Asks the past for a value that avoids the error. */
+  readonly onAvoid: () => void
 }) {
-  const { recording, time, onSeek } = props
+  const { recording, time, onSeek, onAvoid } = props
+  const [fixing, setFixing] = useState<Recording | null>(null)
   const outcome = recording.outcome
   const atEnd = time === recording.length
   if (outcome.kind === 'step-limit') {
@@ -172,7 +221,35 @@ function RunEnd(props: {
           Jump to the failure
         </button>
       )}
+      <div className="pn-failure-tools">
+        <button type="button" className="ch-button ch-button-small" onClick={onAvoid}>
+          Make this not happen
+        </button>
+        <button
+          type="button"
+          className="ch-button ch-button-small"
+          aria-expanded={fixing === recording}
+          onClick={() => setFixing(fixing === recording ? null : recording)}
+        >
+          Try one-token fixes
+        </button>
+      </div>
+      {fixing === recording && <CrashFixes recording={recording} />}
     </div>
+  )
+}
+
+const CRASH_REQUEST = { kind: 'crash' } as const
+
+/** One-token changes to the function the run crashed in that make the run finish. */
+function CrashFixes(props: { readonly recording: Recording }) {
+  return (
+    <RepairPreviews
+      recording={props.recording}
+      request={CRASH_REQUEST}
+      basis="the run finishing without an error"
+      whenNone="No one-token change makes the run finish."
+    />
   )
 }
 

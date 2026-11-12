@@ -23,8 +23,10 @@ export function RepairPreviews(props: {
   readonly request: RepairRequest
   /** What the previews were checked against, for the note under the heading. */
   readonly basis: string
+  /** Said when the search ends without a repair (nothing is shown by default). */
+  readonly whenNone?: string
 }) {
-  const { recording, request, basis } = props
+  const { recording, request, basis, whenNone } = props
   const search = useGeneratorSearch<RepairResult>(request, () => repairSearch(recording, request))
   const { setSource } = useStudioActions()
   if (search.status !== 'done') {
@@ -33,7 +35,9 @@ export function RepairPreviews(props: {
     ) : null
   }
   const { repairs } = search.result
-  if (repairs.length === 0) return null
+  if (repairs.length === 0) {
+    return whenNone === undefined ? null : <p className="pn-note">{whenNone}</p>
+  }
   return (
     <section className="bf-repairs" aria-label="Repair previews">
       <h4 className="pn-label">Repair previews</h4>
