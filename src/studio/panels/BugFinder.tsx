@@ -26,6 +26,7 @@ import {
   type FinderView,
   runError,
 } from './bug-finder-model'
+import { InterviewRepairs } from './RepairPreviews'
 import './bug-finder.css'
 
 /** Keys that answer while focus is inside the question (no modifiers, not while typing). */
@@ -208,8 +209,15 @@ function Intro(props: { recording: Recording }) {
 
 function Interview(props: { view: FinderView }) {
   const { view } = props
-  const { answerBugFinder, undoBugFinder, startBugFinder, closeBugFinder, seek } =
-    useStudioActions()
+  const {
+    answerBugFinder,
+    undoBugFinder,
+    startBugFinder,
+    closeBugFinder,
+    setBugFinderStrategy,
+    seek,
+  } = useStudioActions()
+  const strategy = useStudio((s) => s.bugFinder.strategy)
   const start = useStudio((s) => s.bugFinder.session?.finder.start ?? null)
   const asked = useStudio((s) => s.bugFinder.session?.finder.asked ?? 0)
   const call = view.details.call
@@ -278,6 +286,19 @@ function Interview(props: { view: FinderView }) {
         >
           Start over
         </button>
+        <button
+          type="button"
+          className="ch-button ch-button-small"
+          aria-pressed={strategy === 'divide'}
+          title={
+            strategy === 'divide'
+              ? 'Each question halves the calls under suspicion. Press to ask in call order instead.'
+              : 'Questions follow the order of the calls. Press to halve the suspects with each answer.'
+          }
+          onClick={() => setBugFinderStrategy(strategy === 'divide' ? 'top-down' : 'divide')}
+        >
+          Halve the suspects
+        </button>
       </div>
     </section>
   )
@@ -322,6 +343,11 @@ function Question(props: {
           Not sure
         </button>
       </div>
+      <p className="pn-note bf-remaining">
+        {view.remaining === 1
+          ? '1 call still under suspicion.'
+          : `${view.remaining.toLocaleString('en-US')} calls still under suspicion.`}
+      </p>
       {view.remembered > 0 && (
         <p className="pn-note">
           {view.remembered === 1
@@ -342,6 +368,7 @@ function VerdictBody(props: { view: FinderView & { kind: 'verdict' } }) {
       </p>
       <p className="bf-text">{view.reason}</p>
       {view.details.call.depth > 0 && <CallLine details={view.details} />}
+      <InterviewRepairs />
     </>
   )
 }

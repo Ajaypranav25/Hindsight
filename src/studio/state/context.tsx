@@ -79,5 +79,6 @@ export function pickActions(s: StudioStore): StudioActions {
     answerBugFinder: s.answerBugFinder,
     undoBugFinder: s.undoBugFinder,
     closeBugFinder: s.closeBugFinder,
+    setBugFinderStrategy: s.setBugFinderStrategy,
   }
 }

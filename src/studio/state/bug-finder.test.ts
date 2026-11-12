@@ -40,7 +40,12 @@ function openQuestion(store: Awaited<ReturnType<typeof setup>>['store']) {
 describe('the bug finder in the store', () => {
   test('opening it reveals the panel and starts an interview about the whole program', async () => {
     const { store } = await setup()
-    expect(store.getState().bugFinder).toEqual({ reveal: 0, focused: 0, session: null })
+    expect(store.getState().bugFinder).toEqual({
+      reveal: 0,
+      focused: 0,
+      session: null,
+      strategy: 'divide',
+    })
     store.getState().openBugFinder()
     expect(store.getState().bugFinder.reveal).toBe(1)
     expect(openQuestion(store)?.name).toBe('celsius')
@@ -84,6 +89,7 @@ describe('the bug finder in the store', () => {
   test('follows the just-my-code setting when an interview starts', async () => {
     const { store } = await setup()
     store.getState().updateSettings({ justMyCode: false })
+    store.getState().setBugFinderStrategy('top-down')
     store.getState().startBugFinder()
     store.getState().answerBugFinder('wrong')
     expect(openQuestion(store)?.name).toBe('map')
@@ -104,7 +110,12 @@ describe('the bug finder in the store', () => {
   test('after a run that failed, opening only reveals the panel', async () => {
     const { store } = await setup('fn get(xs) {\n  xs[3]\n}\nprint(get([1]))\n')
     store.getState().openBugFinder()
-    expect(store.getState().bugFinder).toEqual({ reveal: 1, focused: 0, session: null })
+    expect(store.getState().bugFinder).toEqual({
+      reveal: 1,
+      focused: 0,
+      session: null,
+      strategy: 'divide',
+    })
     store.getState().startBugFinder()
     expect(openQuestion(store)?.outcome).toBe('raised')
   })
@@ -142,7 +153,12 @@ describe('the bug finder in the store', () => {
     const { store } = await setup()
     store.getState().setSource(CELSIUS.replace('/ 6', '/ 9'))
     store.getState().openBugFinder()
-    expect(store.getState().bugFinder).toEqual({ reveal: 1, focused: 0, session: null })
+    expect(store.getState().bugFinder).toEqual({
+      reveal: 1,
+      focused: 0,
+      session: null,
+      strategy: 'divide',
+    })
     store.getState().startBugFinder()
     expect(store.getState().bugFinder.session).toBeNull()
   })
@@ -158,6 +174,11 @@ describe('the bug finder in the store', () => {
       { sharedSource: CELSIUS },
     )
     store.getState().openBugFinder()
-    expect(store.getState().bugFinder).toEqual({ reveal: 1, focused: 0, session: null })
+    expect(store.getState().bugFinder).toEqual({
+      reveal: 1,
+      focused: 0,
+      session: null,
+      strategy: 'divide',
+    })
   })
 })

@@ -69,6 +69,7 @@ describe('BugFinder', () => {
   test('interviews the user down to the callback with the wrong formula', () => {
     const recording = recordSource(CELSIUS)
     const { store } = renderWithRecording(<BugFinder />, recording)
+    act(() => store.getState().setBugFinderStrategy('top-down'))
     fireEvent.click(screen.getByRole('button', { name: 'Find the bug' }))
     expect(screen.getByRole('heading', { name: 'Question 1' })).toBeTruthy()
     expect(screen.getByText('celsius(temps = [32, 212])')).toBeTruthy()

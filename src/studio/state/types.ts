@@ -14,7 +14,7 @@ import type {
 } from '../../core/api-types'
 import type { Program } from '../../core/bytecode'
 import type { Diagnostic } from '../../core/diagnostics'
-import type { Answer } from '../../core/index'
+import type { Answer, Strategy } from '../../core/index'
 import type { BugFinderState } from './bug-finder'
 
 export type ThemeSetting = 'system' | 'light' | 'dark'
@@ -176,6 +176,8 @@ export interface StudioActions {
   /** Takes back the last answer. */
   undoBugFinder(): void
   closeBugFinder(): void
+  /** Chooses how interviews pick questions; an open interview starts over that way. */
+  setBugFinderStrategy(strategy: Strategy): void
 }
 
 export type StudioStore = StudioState & StudioActions
