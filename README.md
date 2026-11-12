@@ -105,6 +105,12 @@ npm run sight -- test                                            # the conforman
 npm run sight -- repl
 npm run sight -- whatif examples/18-what-if.sight --at 1144 --set start=27   # fork the run
 npm run sight -- debug examples/17-find-the-bug.sight                       # find the bug
+npm run sight -- solve examples/18-what-if.sight --want "longest: 111"      # what past prints this?
+npm run sight -- query examples/18-what-if.sight 'calls(steps) where ret > 15'
+npm run sight -- whynot FILE --line 12        # why did line 12 never run?
+npm run sight -- slice FILE                   # which lines led to the crash (or the last output)?
+npm run sight -- repair FILE                  # one-token fixes for a crash
+npm run sight -- mcp                          # the debugger as an MCP server for AI agents
 ```
 
 `whatif` forks the recorded run and compares the two futures:
@@ -139,6 +145,37 @@ Every call it makes returned the right value, but its own result is wrong.
   11 |   total(scores) / (len(scores) + 1)
   12 | }
 ```
+
+`debug` asks by halving the calls under suspicion (`--strategy top-down` asks in call order), shows
+what a call changed outside itself, and ends with one-token repairs that agree with your answers.
+
+`solve` runs a what-if backwards, and `query` finds moments by condition (`when x > 3 and depth > 1`,
+`changed(order.paid)`, `calls(f) where ret < 0`):
+
+```
+goal: output line 13 to read "longest: 111" (it reads "longest: 19")
+✓ If count at step 1,149 had been 92 instead of 0, line 20 would have printed longest: 111.  (line 5)
+tried 5 earlier values in 11 what-if runs
+
+2 calls
+  step 691       steps(n = 7) returned 16
+  step 1,147     steps(n = 9) returned 19
+```
+
+`whatif --set start=1..20` sweeps a range and prints one row per value.
+
+### MCP server
+
+`hindsight mcp` speaks the Model Context Protocol over stdio, so an AI agent can run a `.sight`
+program, look at any step, ask where a value came from, fork a what-if and check its fix:
+
+```json
+{ "mcpServers": { "hindsight": { "command": "hindsight", "args": ["mcp"] } } }
+```
+
+From a checkout without a linked build, use `"command": "npx", "args": ["tsx", "src/cli/main.ts",
+"mcp"]` with the repository as the working directory. Tools: `run_trace`, `seek_state`,
+`query_provenance`, `fork_whatif`, `get_divergence`, `query`, `why_not`, `slice`, `solve`.
 
 `why` answers the question a debugger usually makes you hunt for:
 
@@ -180,6 +217,12 @@ source ─▶ lexer ─▶ parser ─▶ compiler ─▶ bytecode + debug info
   come from each call's first step and results from the caller's operand stack just after the
   return, so nothing extra is recorded. Answers are remembered per call, so recursion costs one
   question per distinct call.
+
+- **Slices, queries and searches** all rest on the same determinism. One extra replay beside a
+  shadow of the VM gives every step the steps it depended on (data and control), so a backward
+  slice says which lines could have caused a crash; queries are evaluated against the replay at
+  statement starts; the inverse what-if and the repair previews simply run many forks or mutants
+  and keep the ones that reach the goal.
 
 Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
