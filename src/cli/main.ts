@@ -9,7 +9,7 @@ import { McpServer, serveLine } from './mcp'
 import { ReplSession } from './repl'
 
 /** Kept equal to package.json's version (a test checks). */
-export const VERSION = '0.2.0'
+export const VERSION = '0.3.0'
 
 function startRepl(io: CliIO, seed: number): void {
   const session = new ReplSession(io, seed)
