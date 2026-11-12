@@ -47,7 +47,21 @@ class HeatMarker extends GutterMarker {
   }
 }
 
+/** A statement that never ran: clicking it asks why (ARCHITECTURE §7.10). */
+class IdleMarker extends GutterMarker {
+  override eq(other: GutterMarker): boolean {
+    return other instanceof IdleMarker
+  }
+  override toDOM(): Node {
+    const cell = document.createElement('span')
+    cell.className = 'ed-heat-idle'
+    cell.title = 'Did not run · click to ask why'
+    return cell
+  }
+}
+
 const BREAKPOINT = new BreakpointMarker()
+const IDLE = new IdleMarker()
 
 function lineNumber(view: EditorView, block: BlockInfo): number {
   return view.state.doc.lineAt(block.from).number
@@ -83,6 +97,9 @@ const heatGutter = gutter({
       const marker = new HeatMarker(count, heatLevel(count, studio.maxHits))
       ranges.push(marker.range(doc.line(line).from))
     }
+    for (const line of studio.idleLines) {
+      if (line >= 1 && line <= doc.lines) ranges.push(IDLE.range(doc.line(line).from))
+    }
     return RangeSet.of(ranges, true)
   },
   initialSpacer: () => new HeatMarker(0, 1),
@@ -90,9 +107,15 @@ const heatGutter = gutter({
     mousedown(view, block, event) {
       const studio = liveStudio(view.state)
       if (!studio?.recording || (event as MouseEvent).button !== 0) return false
-      const target = nextHit(studio.recording.lineHits(lineNumber(view, block)), studio.time)
+      const line = lineNumber(view, block)
+      const actions = view.state.facet(studioActions)
+      if (studio.idleLines.has(line)) {
+        actions?.askWhyNot(line)
+        return true
+      }
+      const target = nextHit(studio.recording.lineHits(line), studio.time)
       if (target === null) return false
-      view.state.facet(studioActions)?.seek(target)
+      actions?.seek(target)
       return true
     },
   },

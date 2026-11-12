@@ -15,9 +15,11 @@ import {
   type Recording,
   sweepAsync,
   type SweepRun,
+  type WhyNot,
+  whyNot,
   type WriteTarget,
 } from '../../core/index'
-import type { StudioActions, StudioStore } from './types'
+import type { StudioActions, StudioState, StudioStore } from './types'
 import { PEN_AT_END_NOTICE, whatIfLabel } from './what-if'
 
 /** A query's answer, marked on the strip chart of the recording it was asked about. */
@@ -45,12 +47,73 @@ export interface SweepState {
   readonly failed: readonly { readonly value: EditValue; readonly error: ForkError }[]
 }
 
+/** The explanation of why a line did not run, shown in the editor. */
+export interface WhyNotMark {
+  readonly recording: Recording
+  readonly line: number
+  readonly why: WhyNot
+}
+
+/** The lines with a causal path to step `at` (null: the run is too long to analyze). */
+export interface SliceMark {
+  readonly recording: Recording
+  readonly at: number
+  readonly lines: ReadonlySet<number> | null
+}
+
 export interface LabState {
   readonly query: QueryMarks | null
   readonly sweep: SweepState | null
+  readonly whyNot: WhyNotMark | null
+  /** The slice last computed for the editor. */
+  readonly slice: SliceMark | null
+  /** "What led here?": the step the user asked to trace; it lasts while the pen stays there. */
+  readonly sliceAt: { readonly recording: Recording; readonly time: number } | null
+  /** Dim the lines that did not lead to a runtime error. */
+  readonly dimming: boolean
 }
 
-export const INITIAL_LAB: LabState = { query: null, sweep: null }
+export const INITIAL_LAB: LabState = {
+  query: null,
+  sweep: null,
+  whyNot: null,
+  slice: null,
+  sliceAt: null,
+  dimming: true,
+}
+
+/** Runs longer than this are traced only when the user asks ("What led here?"). */
+export const MAX_AUTO_SLICE_STEPS = 1_000_000
+
+/** The explanation for `recording`, or null. */
+export function liveWhyNot(lab: LabState, recording: Recording | null): WhyNotMark | null {
+  return lab.whyNot !== null && lab.whyNot.recording === recording ? lab.whyNot : null
+}
+
+/**
+ * The step the editor wants traced: the pen's when the user asked there, else the failure of a
+ * run that ended in an error (while dimming is on and the run is short enough); null for none.
+ */
+export function wantedSliceStep(state: StudioState): number | null {
+  const { recording, time, lab } = state
+  if (recording === null || state.recordedSource !== state.source) return null
+  const asked = lab.sliceAt
+  if (asked !== null && asked.recording === recording && asked.time === time) return time
+  const failed = recording.outcome.kind === 'error'
+  return failed && lab.dimming && recording.length <= MAX_AUTO_SLICE_STEPS ? recording.length : null
+}
+
+/** The computed slice the editor shows now, or null (none wanted, or not computed yet). */
+export function activeSlice(state: StudioState): SliceMark | null {
+  const wanted = wantedSliceStep(state)
+  const { slice } = state.lab
+  return wanted !== null &&
+    slice !== null &&
+    slice.recording === state.recording &&
+    slice.at === wanted
+    ? slice
+    : null
+}
 
 /** The query marks for `recording`, or null. */
 export function liveQuery(lab: LabState, recording: Recording | null): QueryMarks | null {
@@ -64,7 +127,15 @@ export function liveSweep(lab: LabState, recording: Recording | null): SweepStat
 
 type LabActions = Pick<
   StudioActions,
-  'setQueryMarks' | 'sweepWhatIf' | 'openSweepRun' | 'closeSweep'
+  | 'setQueryMarks'
+  | 'sweepWhatIf'
+  | 'openSweepRun'
+  | 'closeSweep'
+  | 'askWhyNot'
+  | 'closeWhyNot'
+  | 'setSlice'
+  | 'sliceFrom'
+  | 'setDimming'
 >
 
 export function labActions(
@@ -172,6 +243,31 @@ export function labActions(
     closeSweep() {
       stop()
       if (get().lab.sweep !== null) set({ lab: { ...get().lab, sweep: null } })
+    },
+
+    askWhyNot(line) {
+      const { recording, source, recordedSource, lab } = get()
+      // Lines of an edited program no longer match the recording.
+      if (recording === null || recordedSource !== source) return
+      set({ lab: { ...lab, whyNot: { recording, line, why: whyNot(recording, line) } } })
+    },
+
+    closeWhyNot() {
+      if (get().lab.whyNot !== null) set({ lab: { ...get().lab, whyNot: null } })
+    },
+
+    setSlice(slice) {
+      set({ lab: { ...get().lab, slice } })
+    },
+
+    sliceFrom(time) {
+      const { recording, lab } = get()
+      const sliceAt = time === null || recording === null ? null : { recording, time }
+      set({ lab: { ...lab, sliceAt } })
+    },
+
+    setDimming(dimming) {
+      set({ lab: { ...get().lab, dimming } })
     },
   }
 }

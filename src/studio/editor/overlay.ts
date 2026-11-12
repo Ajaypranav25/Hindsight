@@ -28,6 +28,10 @@ export interface EditorOverlay {
   readonly originSpan: Span | null
   /** Lines of the function the bug finder found (1-based, inclusive), or null. */
   readonly culprit?: { readonly start: number; readonly end: number } | null
+  /** The lines that led to a crash or to the pen's step: every other line is dimmed. */
+  readonly keepLines?: ReadonlySet<number> | null
+  /** The line of the guard that kept another line from running, while that is explained. */
+  readonly guardLine?: number | null
 }
 
 export const EMPTY_OVERLAY: EditorOverlay = {

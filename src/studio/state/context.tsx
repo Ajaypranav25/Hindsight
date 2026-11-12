@@ -84,5 +84,10 @@ export function pickActions(s: StudioStore): StudioActions {
     sweepWhatIf: s.sweepWhatIf,
     openSweepRun: s.openSweepRun,
     closeSweep: s.closeSweep,
+    askWhyNot: s.askWhyNot,
+    closeWhyNot: s.closeWhyNot,
+    setSlice: s.setSlice,
+    sliceFrom: s.sliceFrom,
+    setDimming: s.setDimming,
   }
 }

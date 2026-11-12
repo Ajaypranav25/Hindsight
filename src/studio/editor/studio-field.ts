@@ -15,6 +15,8 @@ export interface EditorStudio {
   readonly breakpoints: ReadonlySet<number>
   readonly hitCounts: ReadonlyMap<number, number>
   readonly maxHits: number
+  /** Lines holding a statement that never ran (the heat gutter marks them). */
+  readonly idleLines: ReadonlySet<number>
   readonly overlay: EditorOverlay
 }
 
@@ -27,6 +29,7 @@ export const EMPTY_STUDIO: EditorStudio = {
   breakpoints: new Set(),
   hitCounts: new Map(),
   maxHits: 0,
+  idleLines: new Set(),
   overlay: EMPTY_OVERLAY,
 }
 

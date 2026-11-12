@@ -16,7 +16,7 @@ import type { Program } from '../../core/bytecode'
 import type { Diagnostic } from '../../core/diagnostics'
 import type { Answer, Strategy } from '../../core/index'
 import type { BugFinderState } from './bug-finder'
-import type { LabState, QueryMarks } from './lab'
+import type { LabState, QueryMarks, SliceMark } from './lab'
 
 export type ThemeSetting = 'system' | 'light' | 'dark'
 
@@ -197,6 +197,15 @@ export interface StudioActions {
   openSweepRun(index: number): void
   /** Drops the sweep (stopping it if it is still running). */
   closeSweep(): void
+  /** Explains in the editor why `line` did not run (ARCHITECTURE §7.10). */
+  askWhyNot(line: number): void
+  closeWhyNot(): void
+  /** Stores the slice computed for the editor. */
+  setSlice(slice: SliceMark | null): void
+  /** "What led here?": traces the causes of step `time` (null: stop). */
+  sliceFrom(time: number | null): void
+  /** Turns the dimming of lines that did not lead to a runtime error on or off. */
+  setDimming(dimming: boolean): void
 }
 
 export type StudioStore = StudioState & StudioActions
