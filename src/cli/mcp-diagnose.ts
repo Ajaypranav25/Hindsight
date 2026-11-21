@@ -18,9 +18,11 @@ import {
   solveInverse,
   type Span,
   type StateView,
+  type TracedValue,
   upstreamWrites,
   type ValueView,
 } from '../core/index'
+import { deepText } from '../core/call-values'
 import { searchRepairs } from './lab'
 import { MUTANTS, REPAIRS, repairsJson } from './mcp-repair'
 import {
@@ -48,6 +50,8 @@ const MAX_SLICE_LINES = 80
 const MAX_CHAIN = 40
 const MAX_READS = 16
 const MAX_HOT_LINES = 5
+const CHAIN_TEXT = 120
+const RANGE = { offset: 0, limit: 1 } as const
 const VALUE_LIMITS = { depth: 1, items: 10 } as const
 /** Steps all repair mutants may run together; caps the mutant count on long runs. */
 const REPAIR_STEP_BUDGET = 40_000_000
@@ -214,6 +218,7 @@ function statementJson(recording: Recording, source: string, state: StateView): 
   for (const name of readsOf(source, span)) {
     const value = lookup(frame, state, name)
     if (value === null) continue
+    if (value.kind === 'ref' && (value.type === 'function' || value.type === 'builtin')) continue
     values.push([name, deepValueJson(recording, state.time, value, VALUE_LIMITS).json])
   }
   const text = source.slice(span.start, span.end)
@@ -234,7 +239,10 @@ function sliceJson(recording: Recording, source: string, slice: Slice | null): J
   }
   const lines = [...slice.lines].sort((a, b) => a - b)
   const ran = [...recording.lineHitCounts().keys()].sort((a, b) => a - b)
-  const writes = upstreamWrites(recording, slice).filter((write) => write.name !== null)
+  // Function declarations feed every call; they explain nothing, so they are left out.
+  const writes = upstreamWrites(recording, slice).filter(
+    (write) => write.name !== null && !isFunction(recording, write.event.time, write.event.value),
+  )
   const chain = writes.slice(-MAX_CHAIN)
   return {
     slice: {
@@ -247,7 +255,7 @@ function sliceJson(recording: Recording, source: string, slice: Slice | null): J
     },
     causal_chain: chain.map((write) => ({
       name: write.name,
-      value: tracedJson(write.event.value),
+      value: chainValue(recording, write.event.time, write.event.value),
       step: write.event.time,
       line: write.line,
     })),
@@ -258,6 +266,23 @@ function sliceJson(recording: Recording, source: string, slice: Slice | null): J
         }
       : {}),
   }
+}
+
+function isFunction(recording: Recording, time: number, value: TracedValue): boolean {
+  if (value === null || typeof value !== 'object') return false
+  const type = recording.objectAt(Math.min(time + 1, recording.length), value.ref, RANGE)?.type
+  return type === 'function' || type === 'builtin'
+}
+
+/** A written value: primitives as they are, objects with their text just after the write. */
+function chainValue(recording: Recording, time: number, value: TracedValue): Json {
+  if (value === null || typeof value !== 'object') return tracedJson(value)
+  const at = Math.min(time + 1, recording.length)
+  const object = recording.objectAt(at, value.ref, RANGE)
+  if (object === null) return tracedJson(value)
+  const view: ValueView = { kind: 'ref', id: value.ref, type: object.type, preview: '' }
+  const text = deepText(recording, at, view, 'display', CHAIN_TEXT)
+  return { object: value.ref, type: object.type, text: text?.text ?? null }
 }
 
 // --- wrong output and runs that stopped ---------------------------------------------------------

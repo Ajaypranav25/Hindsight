@@ -6,6 +6,7 @@ import {
   type CallDetails,
   callSignature,
   changeTexts,
+  formatLiteral,
   LineIndex,
   outcomeText,
   type ProvenanceEvent,
@@ -223,4 +224,55 @@ export function page<T>(
   const shown = items.slice(offset, offset + limit)
   const end = offset + shown.length
   return { items: shown, total: items.length, next: end < items.length ? end : null }
+}
+
+/** The most values `jsonLiteral` converts in one call. */
+export const MAX_LITERAL_VALUES = 10_000
+
+type LiteralTask = { readonly text: string } | { readonly value: unknown }
+
+/**
+ * A JSON value as Hindsight literal text: arrays become lists, objects records (string keys),
+ * null `nil`. Built with an explicit work stack; non-finite numbers and oversized values are
+ * tool errors naming `what`.
+ */
+export function jsonLiteral(root: unknown, what: string): string {
+  let out = ''
+  let values = 0
+  const work: LiteralTask[] = [{ value: root }]
+  while (work.length > 0) {
+    const task = work.pop()!
+    if ('text' in task) {
+      out += task.text
+      continue
+    }
+    if (++values > MAX_LITERAL_VALUES) throw new ToolError(`${what} is too large`)
+    const { value } = task
+    if (value === null || typeof value === 'boolean' || typeof value === 'string') {
+      out += formatLiteral(value)
+    } else if (typeof value === 'number') {
+      if (!Number.isFinite(value)) throw new ToolError(`${what} must use finite numbers`)
+      out += formatLiteral(value)
+    } else if (Array.isArray(value)) {
+      work.push({ text: ']' })
+      for (let i = value.length - 1; i >= 0; i--) {
+        work.push({ value: value[i] })
+        if (i > 0) work.push({ text: ', ' })
+      }
+      work.push({ text: '[' })
+    } else if (typeof value === 'object') {
+      const entries = Object.entries(value as Record<string, unknown>)
+      work.push({ text: '}' })
+      for (let i = entries.length - 1; i >= 0; i--) {
+        const [key, item] = entries[i]!
+        work.push({ value: item })
+        work.push({ text: `${formatLiteral(key)}: ` })
+        if (i > 0) work.push({ text: ', ' })
+      }
+      work.push({ text: '{' })
+    } else {
+      throw new ToolError(`${what} must be a JSON value or literal text`)
+    }
+  }
+  return out
 }

@@ -23,6 +23,7 @@ import {
   clampedArg,
   type Json,
   type JsonObject,
+  jsonLiteral,
   MAX_STEPS,
   outcomeJson,
   schema,
@@ -61,7 +62,7 @@ export function diffTool(context: ToolContext): Tool {
         },
         set: {
           description:
-            'B\'s input: {"name": a top-level let/var, "value": a literal as text such as 5, "[70, 80]" or "\\"text\\"" (a string that is not a literal is taken as text), or a number, boolean or null}; or "NAME=VALUE"',
+            'B\'s input: {"name": a top-level let/var, "value": a literal as text such as 5, "[70, 80]" or "\\"text\\"" (a string that is not a literal is taken as text), or a JSON value: number, boolean, null, array, object}; or "NAME=VALUE"',
           anyOf: [
             {
               type: 'object',
@@ -134,17 +135,7 @@ export function setting(given: unknown): { readonly name: string; readonly value
   }
   const { name, value } = given as { name?: unknown; value?: unknown }
   if (typeof name !== 'string' || name === '') throw new ToolError('set.name must be a name')
-  if (value === null || typeof value === 'number' || typeof value === 'boolean') {
-    if (typeof value === 'number' && !Number.isFinite(value)) {
-      throw new ToolError('set.value must be a finite number')
-    }
-    return { name, value: formatLiteral(value) }
-  }
-  if (typeof value !== 'string') {
-    throw new ToolError(
-      'set.value must be literal text (lists and records too), a number, boolean or null',
-    )
-  }
+  if (typeof value !== 'string') return { name, value: jsonLiteral(value, 'set.value') }
   // Literal text as is; anything that is not a literal (and not a list or record) is a text value.
   const probe = withInput('let v = nil\n', 'v', value)
   const looksStructured = /^\s*[[{]/.test(value)
@@ -202,17 +193,21 @@ function originJson(origin: OriginGroup): Json {
   }
 }
 
-function headline(diff: RunDiff): string {
+function headline(diff: RunDiff, input: JsonObject | null): string {
   if (diff.same) return 'The runs behave the same: same outcome, same output, same calls.'
   const first = diff.origins.items[0]
   if (first === undefined) {
     return 'The runs differ, but no origin was found: every changed call was given different inputs (or the alignment budget ran out).'
   }
+  const others =
+    diff.origins.total > first.count ? `, and ${diff.origins.total - first.count} more` : ''
+  if (first.a.depth === 0 && input !== null) {
+    // The top-level code is where the input was changed: that is the origin, not a mistake there.
+    return `The difference starts at the input: ${String(input.name)} = ${String(input.now)} on line ${String(input.line)} instead of ${String(input.was)}; the top-level code then makes its calls with other values${others === '' ? '' : ` (${diff.origins.total} origins)`}.`
+  }
   const name = first.a.depth === 0 ? 'the top-level code' : first.a.name
   const lines = first.b.lines ?? first.a.lines
   const where = lines === null ? '' : ` (lines ${lines.start}–${lines.end} of B)`
-  const others =
-    diff.origins.total > first.count ? `, and ${diff.origins.total - first.count} more` : ''
   return `The difference starts in ${name}${where}: ${originReason(first)}${others}.`
 }
 
@@ -226,7 +221,7 @@ function diffJson(sides: Sides, diff: RunDiff): Json {
     calls: summary.calls,
   })
   return {
-    summary: headline(diff),
+    summary: headline(diff, sides.input),
     same: diff.same,
     same_outcome: diff.sameOutcome,
     ...(sides.input === null ? {} : { input: sides.input }),

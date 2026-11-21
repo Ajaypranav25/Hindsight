@@ -12,7 +12,6 @@ import {
   type CallTree,
   callTree,
   compile,
-  formatLiteral,
   parse,
   type Recording,
   type RepairExample,
@@ -27,6 +26,7 @@ import {
   choiceArg,
   integerArg,
   type Json,
+  jsonLiteral,
   type JsonObject,
   MAX_STEPS,
   schema,
@@ -232,11 +232,9 @@ interface Expectation {
   readonly canonical: string | null
 }
 
+/** Literal text as given, or a JSON value (number, list, record, …) written as a literal. */
 function literalText(value: unknown, what: string): string {
-  if (typeof value === 'string') return value.trim()
-  if (value === null || typeof value === 'number' || typeof value === 'boolean')
-    return formatLiteral(value)
-  throw new ToolError(`${what} must be a literal as text, or a number, boolean or null`)
+  return typeof value === 'string' ? value.trim() : jsonLiteral(value, what)
 }
 
 /** The canonical (`repr`) text of a literal expression, or null when it is not one. */
