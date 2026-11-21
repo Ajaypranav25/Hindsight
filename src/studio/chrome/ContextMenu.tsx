@@ -5,7 +5,14 @@
  * closes it and gives focus back to where it was opened from. A click elsewhere, a scroll or a
  * resize closes it too. It is drawn in a portal so a scrolling panel cannot clip it.
  */
-import { type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import {
+  type KeyboardEvent,
+  type RefObject,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react'
 import { createPortal } from 'react-dom'
 import './context-menu.css'
 
@@ -55,8 +62,10 @@ export function ContextMenu(props: {
   readonly actions: readonly MenuAction[]
   /** Closes the menu; `restoreFocus` asks for focus to go back to where it was opened from. */
   readonly onClose: (restoreFocus: boolean) => void
+  /** A press inside this element is not a press outside the menu (the button that toggles it). */
+  readonly owner?: RefObject<Element | null>
 }) {
-  const { label, anchor, actions, onClose } = props
+  const { label, anchor, actions, onClose, owner } = props
   const menuRef = useRef<HTMLUListElement>(null)
   const [place, setPlace] = useState<MenuAnchor>(anchor)
 
@@ -73,7 +82,9 @@ export function ContextMenu(props: {
 
   useEffect(() => {
     const outside = (event: Event) => {
-      if (!menuRef.current?.contains(event.target as Node)) onClose(false)
+      const target = event.target as Node
+      if (menuRef.current?.contains(target) || owner?.current?.contains(target)) return
+      onClose(false)
     }
     const close = () => onClose(false)
     document.addEventListener('mousedown', outside, true)
@@ -86,7 +97,7 @@ export function ContextMenu(props: {
       window.removeEventListener('resize', close)
       window.removeEventListener('blur', close)
     }
-  }, [onClose])
+  }, [onClose, owner])
 
   const choose = (action: MenuAction) => {
     onClose(action.restoreFocus !== false)
