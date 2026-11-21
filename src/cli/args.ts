@@ -88,6 +88,17 @@ export type Command =
       readonly maxSteps: number
       readonly seed: number
     }
+  | {
+      readonly kind: 'diff'
+      readonly fileA: string
+      /** The second program; null when B is `fileA` with an input set. */
+      readonly fileB: string | null
+      /** `--set NAME=VALUE`: B is A with the top-level binding NAME initialized to VALUE. */
+      readonly set: { readonly name: string; readonly value: string } | null
+      readonly limit: number
+      readonly maxSteps: number
+      readonly seed: number
+    }
   | { readonly kind: 'mcp' }
 
 export type ParsedArgs =
@@ -116,6 +127,10 @@ Usage:
   hindsight slice FILE [--at T]                    mark the lines that led to step T (default: the
                                                    crash, else the last output line)
   hindsight repair FILE                            try one-token fixes for a crash
+  hindsight diff A B [--limit N]                   compare two programs' runs call by call and
+                                                   name the calls where the difference starts
+  hindsight diff FILE --set NAME=VALUE             compare a run with one in which the top-level
+                                                   binding NAME starts as the literal VALUE
   hindsight mcp                                    serve the debugger to AI agents (MCP over stdio)
   hindsight --help | --version`
 
@@ -151,6 +166,7 @@ const COMMANDS: ReadonlyMap<string, { readonly flags: readonly string[]; readonl
     ['whynot', { flags: ['--line', '--max-steps', '--seed'], arity: 1 }],
     ['slice', { flags: ['--at', '--max-steps', '--seed'], arity: 1 }],
     ['repair', { flags: ['--max-steps', '--seed'], arity: 1 }],
+    ['diff', { flags: ['--set', '--limit', '--max-steps', '--seed'], arity: 2 }],
     ['mcp', { flags: [], arity: 0 }],
   ])
 
@@ -305,6 +321,8 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
       if (typeof file !== 'string') return { ok: false, error: file.error }
       return { ok: true, command: { kind: 'repair', file, maxSteps, seed } }
     }
+    case 'diff':
+      return diffCommand(positional, flags, maxSteps, seed)
     case 'mcp':
       return { ok: true, command: { kind: 'mcp' } }
     default:
@@ -363,5 +381,32 @@ function solveCommand(
   return {
     ok: true,
     command: { kind: 'solve', file, goal: { kind: 'output', line, text: want }, maxSteps, seed },
+  }
+}
+
+/** `diff A B` or `diff FILE --set NAME=VALUE` (VALUE: a literal, checked against the program). */
+function diffCommand(
+  positional: readonly string[],
+  flags: ReadonlyMap<string, string>,
+  maxSteps: number,
+  seed: number,
+): ParsedArgs {
+  const fileA = positional[1]
+  const fileB = positional[2] ?? null
+  const limit = integerFlag(flags, '--limit', 50, 1)
+  if (typeof limit === 'string') return { ok: false, error: limit }
+  if (!flags.has('--set')) {
+    if (fileA === undefined || fileB === null)
+      return { ok: false, error: "'diff' needs two files (or FILE --set NAME=VALUE)" }
+    return { ok: true, command: { kind: 'diff', fileA, fileB, set: null, limit, maxSteps, seed } }
+  }
+  if (fileA === undefined) return { ok: false, error: "'diff' needs a FILE" }
+  if (fileB !== null) return { ok: false, error: "'diff' takes two files or --set, not both" }
+  const set = NAME_AND_VALUE.exec(flags.get('--set') ?? '')
+  if (set === null) return { ok: false, error: "'diff' needs --set NAME=VALUE" }
+  const [, name = '', value = ''] = set
+  return {
+    ok: true,
+    command: { kind: 'diff', fileA, fileB, set: { name, value }, limit, maxSteps, seed },
   }
 }
