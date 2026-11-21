@@ -15,6 +15,7 @@ import {
 } from '../core/index'
 import {
   type Args,
+  booleanArg,
   choiceArg,
   clampedArg,
   eventJson,
@@ -226,7 +227,7 @@ function seekState(context: ToolContext, args: Args): Json {
     depth: integerArg(args, 'max_depth', DEFAULT_VALUE_LIMITS.depth, 0, MAX_VALUE_DEPTH),
     items: integerArg(args, 'max_items', DEFAULT_VALUE_LIMITS.items, 1, MAX_VALUE_ITEMS),
   }
-  const globals = args.include_globals === undefined ? true : args.include_globals === true
+  const globals = booleanArg(args, 'include_globals', true)
   return stateJson(trace.recording, trace.recording.stateAt(step), {
     limits,
     frames: frameChoice(args),

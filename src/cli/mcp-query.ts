@@ -64,7 +64,9 @@ function runQueryTool(context: ToolContext, args: Args): Json {
   const offset = integerArg(args, 'offset', 0, 0, QUERY_CAP)
   const limit = clampedArg(args, 'limit', QUERY_DEFAULT_LIMIT, 1, QUERY_MAX_LIMIT)
   const summary = booleanArg(args, 'summary', false)
-  const wanted = summary ? QUERY_CAP : Math.min(QUERY_CAP, offset + limit)
+  // `changed` samples a binding's history evenly once it is cut, so its pages need every event.
+  const sampled = /^\s*changed\s*\(/.test(text)
+  const wanted = summary || sampled ? QUERY_CAP : Math.min(QUERY_CAP, offset + limit)
   const outcome = queryRecording(trace.recording, text, { limit: wanted })
   if (!outcome.ok) throw new ToolError(outcome.error)
   const { recording } = trace
