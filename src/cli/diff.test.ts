@@ -104,7 +104,9 @@ describe('hindsight diff FILE --set NAME=VALUE', () => {
       'diff a.sight: A as written, B with scores = [70, 80] (line 9; it was [92, 88, 95])',
     )
     expect(out).toContain('(given other inputs)')
-    expect(out).toContain('✓ the top-level code')
+    expect(out).toContain(
+      '✓ the top-level code (line 9, where scores is set): given the same inputs, it behaves differently and passes other values to the calls it makes',
+    )
   })
 
   test('the same value again behaves the same', () => {

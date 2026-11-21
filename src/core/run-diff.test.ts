@@ -73,6 +73,7 @@ describe('diffRuns: where a change starts', () => {
     expect(origin).toMatchObject({
       count: 1,
       inputsChanged: false,
+      passesChanges: false,
       changes: ['result'],
       a: { name: 'average', did: 'returned 68.75', lines: { start: 6, end: 8 } },
       b: { name: 'average', did: 'returned 91.66666666666667' },
@@ -120,7 +121,9 @@ describe('diffRuns: where a change starts', () => {
     const diff = diffRuns(recorded(AVERAGE), recorded(input.source))
 
     // Assert
-    expect(diff.origins.items).toMatchObject([{ a: { name: '<top level>' }, changes: ['output'] }])
+    expect(diff.origins.items).toMatchObject([
+      { a: { name: '<top level>' }, changes: ['output'], passesChanges: true },
+    ])
     const average = diff.changed.items.find((change) => change.a.name === 'average')
     expect(average).toMatchObject({
       inputsChanged: true,

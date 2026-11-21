@@ -78,6 +78,8 @@ export interface ChangedCall {
 export interface OriginGroup extends ChangedCall {
   /** Identical origins (the same call doing the same things), common in recursion. */
   readonly count: number
+  /** Some calls it made behaved differently because it gave them other inputs. */
+  readonly passesChanges: boolean
 }
 
 export interface DiffList<T> {
@@ -175,7 +177,7 @@ export function diffRuns(a: Recording, b: Recording, options: RunDiffOptions = {
       items: changedPairs.slice(0, limit).map((pair) => changedCall(treeA, treeB, pair)),
       total: changedPairs.length,
     },
-    origins: groupOrigins(treeA, treeB, originPairs, limit),
+    origins: groupOrigins(treeA, treeB, pairs, originPairs, limit),
     matched: pairs.length,
     compared: pairs.filter((pair) => pair.compared).length,
     truncated: { nodes: aligned.truncated, compared: truncatedCompare },
@@ -342,19 +344,24 @@ function changedCall(treeA: CallTree, treeB: CallTree, pair: Pair): ChangedCall 
 function groupOrigins(
   treeA: CallTree,
   treeB: CallTree,
+  pairs: readonly Pair[],
   origins: readonly Pair[],
   limit: number,
 ): DiffList<OriginGroup> {
-  const groups = new Map<string, { first: ChangedCall; count: number }>()
+  const groups = new Map<string, { first: ChangedCall; count: number; passes: boolean }>()
   for (const pair of origins) {
     const change = changedCall(treeA, treeB, pair)
+    const passes = (pair.children ?? []).some((index) => {
+      const child = pairs[index]!
+      return child.behaviorChanged && child.inputsChanged
+    })
     const key = [change.a.name, change.a.signature, change.a.did, change.b.did].join('\u0000')
     const group = groups.get(key)
-    if (group === undefined) groups.set(key, { first: change, count: 1 })
+    if (group === undefined) groups.set(key, { first: change, count: 1, passes })
     else group.count += 1
   }
   const items = [...groups.values()]
     .slice(0, limit)
-    .map((group) => ({ ...group.first, count: group.count }))
+    .map((group) => ({ ...group.first, count: group.count, passesChanges: group.passes }))
   return { items, total: origins.length }
 }

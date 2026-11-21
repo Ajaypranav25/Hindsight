@@ -34,6 +34,8 @@ interface Sides {
   readonly a: Loaded
   readonly b: Loaded
   readonly header: string
+  /** Where B's input was set: the top level's own change, shown with its origin. */
+  readonly input: string | null
 }
 
 export function diffCommand(io: CliIO, command: DiffCommand): ExitCode {
@@ -48,7 +50,7 @@ export function diffCommand(io: CliIO, command: DiffCommand): ExitCode {
     style.bold(sides.header),
     runLine('A', a, diff.a.calls),
     runLine('B', b, diff.b.calls),
-    ...(diff.same ? [style.ok(sameText(diff))] : differenceLines(diff, style)),
+    ...(diff.same ? [style.ok(sameText(diff))] : differenceLines(diff, sides.input, style)),
     ...budgetLines(diff, style),
   ]
   io.stdout(`${lines.join('\n')}\n`)
@@ -61,7 +63,7 @@ function loadSides(io: CliIO, style: Style, command: DiffCommand): Sides | null 
   if (command.set === null) {
     const b = load(io, style, command.fileB ?? '')
     if (b === null) return null
-    return { a, b, header: `diff A = ${sanitize(a.file)}, B = ${sanitize(b.file)}` }
+    return { a, b, header: `diff A = ${sanitize(a.file)}, B = ${sanitize(b.file)}`, input: null }
   }
   const { name, value } = command.set
   const input = withInput(a.source, name, value)
@@ -78,7 +80,7 @@ function loadSides(io: CliIO, style: Style, command: DiffCommand): Sides | null 
   }
   const b: Loaded = { file: label, source: input.source, program: compiled.program }
   const header = `diff ${sanitize(a.file)}: A as written, B with ${sanitize(name)} = ${sanitize(input.now)} (line ${input.line}; it was ${sanitize(input.was)})`
-  return { a, b, header }
+  return { a, b, header, input: `line ${input.line}, where ${name} is set` }
 }
 
 function runLine(label: string, recording: Recording, calls: number): string {
@@ -89,7 +91,7 @@ function sameText(diff: RunDiff): string {
   return `the runs behave the same: same outcome, same output, ${plural(diff.matched, 'matched call')}`
 }
 
-function differenceLines(diff: RunDiff, style: Style): string[] {
+function differenceLines(diff: RunDiff, input: string | null, style: Style): string[] {
   return [
     ...outputLines(diff, style),
     ...unmatchedLines('calls only in A', '-', diff.onlyA, style),
@@ -98,7 +100,7 @@ function differenceLines(diff: RunDiff, style: Style): string[] {
       style.dim(`renamed: ${sanitize(rename.from)} → ${sanitize(rename.to)}`),
     ),
     ...changedLines(diff.changed, style),
-    ...originLines(diff, style),
+    ...originLines(diff, input, style),
   ]
 }
 
@@ -171,17 +173,21 @@ export function originReason(origin: OriginGroup): string {
   const behavior = origin.changes.some((aspect) => aspect !== 'calls')
   if (calls && !behavior) return 'given the same inputs, it makes calls the other run does not'
   if (calls) return 'given the same inputs, it behaves differently and makes different calls'
+  if (origin.passesChanges) {
+    return 'given the same inputs, it behaves differently and passes other values to the calls it makes'
+  }
   return 'given the same inputs, it behaves differently while the calls it makes behave the same'
 }
 
-function originLines(diff: RunDiff, style: Style): string[] {
+function originLines(diff: RunDiff, input: string | null, style: Style): string[] {
   const { origins } = diff
   if (origins.total === 0) {
     return [style.dim('no origin found: no call given the same inputs behaved differently')]
   }
   const rows = origins.items.flatMap((origin) => {
     const repeats = origin.count > 1 ? style.dim(` (${count(origin.count)} identical calls)`) : ''
-    const lines = origin.a.depth === 0 ? '' : linesLabel(origin.a.lines, origin.b.lines)
+    const top = input === null ? '' : ` (${sanitize(input)})`
+    const lines = origin.a.depth === 0 ? top : linesLabel(origin.a.lines, origin.b.lines)
     const where = `${nameOf(origin.a)}${lines}`
     return [
       `  ${style.ok('✓')} ${style.bold(where)}: ${originReason(origin)}${repeats}`,
