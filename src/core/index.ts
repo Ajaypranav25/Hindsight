@@ -26,6 +26,8 @@ import {
   repairSearch as repairSearchWith,
 } from './repair'
 import { record as recordWith, recordAsync as recordAsyncWith } from './recorder'
+import { type InferOptions, type InferResult, inferContractsWith } from './infer'
+import type { CallTree } from './calls'
 import type { RuntimeDeps, VM, VMHooks } from './runtime-types'
 import { createVM } from './vm'
 
@@ -77,6 +79,17 @@ export * from './run-diff'
 export type { InputResult } from './run-input'
 export { withInput } from './run-input'
 export * from './profile'
+export type {
+  ClauseText,
+  ContractAddition,
+  ContractSuggestion,
+  FunctionContracts,
+  InferOptions,
+  InferResult,
+  InsertedContracts,
+  TemplateKind,
+} from './infer'
+export { clauseTexts, insertContracts, withContracts } from './infer'
 
 /** The prelude source (SPEC Appendix A). */
 export function getLibrarySource(): string {
@@ -184,6 +197,19 @@ export function repairSearch(
   options: RepairOptions = {},
 ): RepairSearch {
   return repairSearchWith({ compile, record }, recording, request, options)
+}
+
+/**
+ * Likely contracts for the functions of a recorded run (ARCHITECTURE §7.16), each checked by
+ * recording the program again with the clauses written in.
+ */
+export function inferContracts(
+  recording: Recording,
+  tree: CallTree,
+  options: InferOptions = {},
+): InferResult {
+  if (tree.recording !== recording) throw new InternalError('the call tree is of another recording')
+  return inferContractsWith({ compile, record }, tree, options)
 }
 
 /** Records a run in slices, yielding to the host between them. */
