@@ -164,6 +164,24 @@ tried 5 earlier values in 11 what-if runs
 
 `whatif --set start=1..20` sweeps a range and prints one row per value.
 
+### Trace files
+
+A moment link stops working once a program passes 60,000 characters. A `.sighttrace` file holds the
+same moment for any size: the program, its seed and step limit, the what-if edits and the pen, plus
+a fingerprint of the run. It is small because it never stores the trace: the VM is deterministic,
+so opening the file records the run again and checks the fingerprint. If another Hindsight version
+replays it differently, you are told where the runs first differ.
+
+```sh
+hindsight record examples/02-bug-hunt.sight          # writes examples/02-bug-hunt.sighttrace
+hindsight replay examples/02-bug-hunt.sighttrace     # the state at the saved step
+hindsight slice examples/02-bug-hunt.sighttrace      # run, replay, why, whynot, slice, query accept one
+```
+
+In the studio, the button next to **Copy link** downloads the run on display as a trace (what-if
+edits included) and opens one; you can also drop a `.sighttrace` file on the editor. The pen lands
+on the saved step with the what-if edits applied again.
+
 ### MCP server
 
 `hindsight mcp` speaks the Model Context Protocol over stdio, so an AI agent can run a `.sight`

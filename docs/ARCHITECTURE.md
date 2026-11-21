@@ -714,6 +714,50 @@ comma list of literals, at most 64 values; `sweep`/`sweepAsync` fork the run onc
 step and report each run with its comparison and deepest call depth. `diffHeaps(a, b)` lists the
 references (from variables into the heap and between objects) that only one of two states has.
 
+### 7.14 Trace files (`trace-file.ts`, `trace-format.ts`, `trace-validate.ts`, `trace-hash.ts`, `trace-open.ts`)
+
+A moment link carries the program and a step in the URL, which stops working past 60,000
+characters. A `.sighttrace` file carries the same moment without that limit, plus the what-if chain.
+It never stores the trace itself: the VM is deterministic, so a file holds what is needed to record
+the run again and a fingerprint to check that the new run is the saved one.
+
+**Layout.** The 8-byte magic `SIGHTTRC`, a little-endian u16 format version (1), a u8 of flags (bit
+0: the payload is gzip-compressed; other bits must be 0), then the payload: the bundle as UTF-8
+JSON. `encodeTraceFile` compresses with the host's `CompressionStream` when there is one (reached
+through `globalThis` with narrow local interfaces, so core stays free of DOM and Node types) and
+writes an uncompressed payload otherwise; `encodeTraceFileSync(bundle, gzip?)` and
+`decodeTraceFileSync(bytes, gunzip?)` take a codec instead (the CLI passes `node:zlib`).
+
+**Bundle** (`TraceBundle`): `format: 'hindsight-trace'`, `version: 1`, `hindsightVersion`, `title`
+(an example title or file name, or null), `source`, `seed`, `maxSteps` (the real run's step
+limit), `edits` (the what-if chain, oldest first, as `TimedEdit` fork requests, each on the run the
+previous one made), `forkMaxSteps`, `time` (the pen, in `0..length` of the final run), `outcome`
+(a summary: `finished`, `step-limit`, `aborted`, or `error` with code, message and 1-based line),
+`length`, `output` (the final run's lines), `fingerprint` and `checkpoints`.
+
+**Fingerprint** (`trace-hash.ts`). FNV-1a (64-bit, as two 32-bit halves) over the per-step trace
+columns (prototype id, ip, depth and the opcode at that ip) in step order, then the output texts and
+the outcome, written as
+`fnv1a64:<16 hex digits>`. The same pass records running hashes at every `stride`-th step (at most
+1,024 checkpoints), so a replay that differs is located: `firstDifference` names the first
+differing checkpoint window, narrowed to one step when the stride is 1.
+
+**Opening.** `replayTrace(deps, bundle)` (and `replayTraceAsync`, in slices, abortable) compiles
+the source, records it with the saved seed and step limit, re-applies the edits with `fork` (under
+`forkMaxSteps`) and verifies the final run: `{verified: true}`, or `{verified: false, message,
+firstDifference}` when another Hindsight version replays differently or an edit can no longer be
+applied. It takes `compile`/`record` as dependencies (as `repairSearch` does) so the studio passes
+its own engine; `openTraceBundle`, `openTraceFile(bytes, options)` and
+`openTraceFileSync(bytes, gunzip?)` in `index.ts` bind the core's. `traceBundle({recording, base,
+time, hindsightVersion, title})` describes a recording (the real run behind a what-if is `base`).
+
+**Untrusted input.** Files over 32 MB and payloads over 64 MB (after decompression, enforced while
+streaming) are refused; the header, UTF-8 (fatal decoding) and JSON are checked; `validateBundle`
+copies every field into a fresh object after checking its type and range (sources up to 200,000
+characters, step limits up to 10,000,000, at most 100 edits with literal values and plain names,
+integers in range, a well-formed fingerprint), so keys such as `__proto__` are never merged
+anywhere. Every failure is a `{ok: false, error}` result, never an exception.
+
 ## 8. Public API (`src/core/index.ts`)
 
 ```ts
@@ -737,6 +781,10 @@ whyNot(recording, line): WhyNot                          // §7.10
 solveInverse, solveInverseAsync, inverseSearch           // §7.11
 repairSearch(recording, request), repairExamples         // §7.12
 parseSweepValues, sweep, sweepAsync, heapEdges, diffHeaps // §7.13
+encodeTraceFile, encodeTraceFileSync, decodeTraceFile,    // §7.14 trace files
+  decodeTraceFileSync, validateBundle, traceBundle, fingerprintRecording,
+  openTraceFile, openTraceFileSync, openTraceBundle, openTraceBundleAsync,
+  replayTrace, replayTraceAsync, verifyTrace, TRACE_FILE_EXTENSION, MAX_TRACE_*
 show, repr, LineIndex, and all types from api-types.ts / diagnostics.ts / span.ts / tokens.ts
 ```
 
@@ -770,6 +818,8 @@ show, repr, LineIndex, and all types from api-types.ts / diagnostics.ts / span.t
 | `slice FILE [--at T]` | the source with the lines of the backward slice (§7.8) of step `T` marked; default: the runtime error, else the last output line |
 | `repair FILE` | repair previews (§7.12) for a run that crashed |
 | `mcp` | the MCP server (§9.1) |
+| `record FILE [-o OUT.sighttrace] [--max-steps N] [--seed S]` | record and write a trace file (§7.14; default name: FILE with the `.sighttrace` extension), then print the steps, outcome, output lines and file size; refuses to overwrite FILE |
+| `run`, `replay`, `why`, `whynot`, `slice`, `query` with a `.sighttrace` in place of FILE | the file's program is recorded again with its seed, step limit and what-if edits (the what-if run is shown) and verified; a replay that differs prints `warning: …` on stderr and the command carries on; `replay` without `--at` uses the saved pen; `--max-steps`/`--seed` do not apply |
 
 Diagnostics print Rust-style with a code frame and caret underline (`error[E020]: …`, `--> file:3:9`,
 the source line, `^^^`, `= hint: …`), colored only when stdout and stderr are both terminals and
@@ -991,6 +1041,16 @@ tabbed panels); the page may scroll vertically, never horizontally.
   so the link is used once and later edits survive a reload; a link pasted into an open studio
   loads on `hashchange` like an example (it runs only when auto-run is on). The current source and
   settings persist in `localStorage` (every access wrapped in try/catch).
+- **Trace files**: the Share group's second button opens a menu with "Download trace" (the run on
+  display as a `.sighttrace` file, §7.14, named after the program's `// title:` header, else
+  `program.sighttrace`, with its what-if edits and the pen) and "Open trace…" (a file input); a
+  `.sighttrace` dropped on the editor opens too (capture-phase handlers on the editor root, ahead of
+  CodeMirror's text drop). Opening keeps the user's program as for a link, records the file's
+  program with `replayTraceAsync` (it supersedes a run in flight, and a newer run wins), re-applies
+  the what-if edits so the what-if banner shows the fork against the real run, puts the pen on the
+  saved step and says so in a notice; a fingerprint mismatch or an edit that no longer applies is an
+  error-tone notice, and a damaged file leaves the program untouched (`state/trace.ts`,
+  `lib/trace-download.ts`, `chrome/TraceMenu.tsx`, `editor/trace-drop.ts`).
 - **Previous program**: only one program is stored, so before a share link or an example replaces
   a program the user wrote, that program is kept as `hindsight:previous-source`. Text that arrived
   with a link or an example and has not been edited is not the user's (`hindsight:source-delivered`
