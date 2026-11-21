@@ -7,7 +7,12 @@ export const PERF_TESTS = '**/*.perf.test.{ts,tsx}'
 export default defineConfig({
   plugins: [react()],
   test: {
-    include: ['src/**/*.test.{ts,tsx}', 'tests/**/*.test.{ts,tsx}'],
+    // editors/vscode/src: the extension's vscode-free modules (its glue/ needs VS Code to run).
+    include: [
+      'src/**/*.test.{ts,tsx}',
+      'tests/**/*.test.{ts,tsx}',
+      'editors/vscode/src/**/*.test.ts',
+    ],
     exclude: [...configDefaults.exclude, PERF_TESTS],
     environment: 'node',
     testTimeout: 20_000,
