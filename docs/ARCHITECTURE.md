@@ -34,6 +34,7 @@ tests/lang/**.sight   the conformance corpus (§10.2)
 tests/*.test.ts       cross-module tests (corpus runner, time-travel properties, API)
 e2e/                  Playwright tests for the studio
 examples/             gallery programs shown in the studio
+editors/vscode/       the VS Code extension (§12); its own package.json and node_modules
 ```
 
 Module dependency direction (no cycles):
@@ -893,6 +894,50 @@ Replacing the text instead of forking the run after the declaration (§7.5) lets
 or a record, not just a primitive, and keeps step numbers meaningful within each run; the whole
 initializer is replaced, so calls it made are not made with the new input.
 
+### 7.15 Trace files (`trace-file.ts`, `trace-format.ts`, `trace-validate.ts`, `trace-hash.ts`, `trace-open.ts`)
+
+A moment link carries the program and a step in the URL, which stops working past 60,000
+characters. A `.sighttrace` file carries the same moment without that limit, plus the what-if chain.
+It never stores the trace itself: the VM is deterministic, so a file holds what is needed to record
+the run again and a fingerprint to check that the new run is the saved one.
+
+**Layout.** The 8-byte magic `SIGHTTRC`, a little-endian u16 format version (1), a u8 of flags (bit
+0: the payload is gzip-compressed; other bits must be 0), then the payload: the bundle as UTF-8
+JSON. `encodeTraceFile` compresses with the host's `CompressionStream` when there is one (reached
+through `globalThis` with narrow local interfaces, so core stays free of DOM and Node types) and
+writes an uncompressed payload otherwise; `encodeTraceFileSync(bundle, gzip?)` and
+`decodeTraceFileSync(bytes, gunzip?)` take a codec instead (the CLI passes `node:zlib`).
+
+**Bundle** (`TraceBundle`): `format: 'hindsight-trace'`, `version: 1`, `hindsightVersion`, `title`
+(an example title or file name, or null), `source`, `seed`, `maxSteps` (the real run's step
+limit), `edits` (the what-if chain, oldest first, as `TimedEdit` fork requests, each on the run the
+previous one made), `forkMaxSteps`, `time` (the pen, in `0..length` of the final run), `outcome`
+(a summary: `finished`, `step-limit`, `aborted`, or `error` with code, message and 1-based line),
+`length`, `output` (the final run's lines), `fingerprint` and `checkpoints`.
+
+**Fingerprint** (`trace-hash.ts`). FNV-1a (64-bit, as two 32-bit halves) over the per-step trace
+columns (prototype id, ip, depth and the opcode at that ip) in step order, then the output texts and
+the outcome, written as
+`fnv1a64:<16 hex digits>`. The same pass records running hashes at every `stride`-th step (at most
+1,024 checkpoints), so a replay that differs is located: `firstDifference` names the first
+differing checkpoint window, narrowed to one step when the stride is 1.
+
+**Opening.** `replayTrace(deps, bundle)` (and `replayTraceAsync`, in slices, abortable) compiles
+the source, records it with the saved seed and step limit, re-applies the edits with `fork` (under
+`forkMaxSteps`) and verifies the final run: `{verified: true}`, or `{verified: false, message,
+firstDifference}` when another Hindsight version replays differently or an edit can no longer be
+applied. It takes `compile`/`record` as dependencies (as `repairSearch` does) so the studio passes
+its own engine; `openTraceBundle`, `openTraceFile(bytes, options)` and
+`openTraceFileSync(bytes, gunzip?)` in `index.ts` bind the core's. `traceBundle({recording, base,
+time, hindsightVersion, title})` describes a recording (the real run behind a what-if is `base`).
+
+**Untrusted input.** Files over 32 MB and payloads over 64 MB (after decompression, enforced while
+streaming) are refused; the header, UTF-8 (fatal decoding) and JSON are checked; `validateBundle`
+copies every field into a fresh object after checking its type and range (sources up to 200,000
+characters, step limits up to 10,000,000, at most 100 edits with literal values and plain names,
+integers in range, a well-formed fingerprint), so keys such as `__proto__` are never merged
+anywhere. Every failure is a `{ok: false, error}` result, never an exception.
+
 ## 8. Public API (`src/core/index.ts`)
 
 ```ts
@@ -921,6 +966,10 @@ repairSearch(recording, request, options), repairExamples, repairExample // §7.
 parseSweepValues, sweep, sweepAsync, heapEdges, diffHeaps // §7.13
 diffRuns(a, b, { maxNodes?, maxCompared?, limit? }): RunDiff // §7.14
 withInput(source, name, literal): InputResult             // §7.14
+encodeTraceFile, encodeTraceFileSync, decodeTraceFile,    // §7.15 trace files
+  decodeTraceFileSync, validateBundle, traceBundle, fingerprintRecording,
+  openTraceFile, openTraceFileSync, openTraceBundle, openTraceBundleAsync,
+  replayTrace, replayTraceAsync, verifyTrace, TRACE_FILE_EXTENSION, MAX_TRACE_*
 show, repr, LineIndex, and all types from api-types.ts / diagnostics.ts / span.ts / tokens.ts
 ```
 
@@ -932,6 +981,11 @@ show, repr, LineIndex, and all types from api-types.ts / diagnostics.ts / span.t
 ## 9. Command-line tool (`src/cli`)
 
 `hindsight <command>`; during development `npm run sight -- <command>`.
+
+The npm package `hindsight-lang` ships the bundle `dist/cli/hindsight.mjs` alone and has no runtime
+dependencies: `scripts/build-cli.mjs` fails if anything but a Node built-in is left unbundled, and the
+studio's libraries are devDependencies (Vite bundles them). `.github/workflows/release.yml` publishes
+it with provenance when a `v*` tag matching the package version is pushed.
 
 | command                               | behavior                                                                                                                                                                                                                                        |
 | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -957,6 +1011,8 @@ show, repr, LineIndex, and all types from api-types.ts / diagnostics.ts / span.t
 | `diff A B [--limit N] [--max-steps N] [--seed S]` | differential execution (§7.14): record both files and compare them call by call: both outcomes, the output diff, calls only in A or B, renames, changed calls and the origins (where the difference starts); `--limit` (default 50) caps each list; exit 0 when the runs behave the same, 1 when they differ, 2 for usage or compile trouble (like diff(1)) |
 | `diff FILE --set NAME=VALUE` | the same, B being FILE with the top-level `let`/`var` `NAME` initialized to the literal `VALUE` (§7.14) |
 | `mcp` | the MCP server (§9.1) |
+| `record FILE [-o OUT.sighttrace] [--max-steps N] [--seed S]` | record and write a trace file (§7.15; default name: FILE with the `.sighttrace` extension), then print the steps, outcome, output lines and file size; refuses to overwrite FILE |
+| `run`, `replay`, `why`, `whynot`, `slice`, `query` with a `.sighttrace` in place of FILE | the file's program is recorded again with its seed, step limit and what-if edits (the what-if run is shown) and verified; a replay that differs prints `warning: …` on stderr and the command carries on; `replay` without `--at` uses the saved pen; `--max-steps`/`--seed` do not apply |
 
 Diagnostics print Rust-style with a code frame and caret underline (`error[E020]: …`, `--> file:3:9`,
 the source line, `^^^`, `= hint: …`), colored only when stdout and stderr are both terminals and
@@ -1025,7 +1081,9 @@ Every module has co-located tests. Coverage target: 80 %+ lines for `src/core`, 
 `src/cli`, and the non-visual parts of `src/studio`; `vitest.config.ts` fails the coverage run below
 the current overall levels, so they cannot drift down unnoticed. Wall-clock budgets live in
 `*.perf.test.ts` files, which `npm test` and coverage skip: `npm run test:perf` runs them one file
-at a time. Every corpus program and gallery example that compiles must also pass `verifyProgram`.
+at a time. Every corpus program and gallery example that compiles must also pass `verifyProgram`. The
+VS Code extension's vscode-free modules (`editors/vscode/src/*.test.ts`) run in the same suite and
+count toward coverage (§12).
 
 ### 10.2 Conformance corpus
 
@@ -1225,6 +1283,16 @@ tabbed panels); the page may scroll vertically, never horizontally.
   so the link is used once and later edits survive a reload; a link pasted into an open studio
   loads on `hashchange` like an example (it runs only when auto-run is on). The current source and
   settings persist in `localStorage` (every access wrapped in try/catch).
+- **Trace files**: the Share group's second button opens a menu with "Download trace" (the run on
+  display as a `.sighttrace` file, §7.15, named after the program's `// title:` header, else
+  `program.sighttrace`, with its what-if edits and the pen) and "Open trace…" (a file input); a
+  `.sighttrace` dropped on the editor opens too (capture-phase handlers on the editor root, ahead of
+  CodeMirror's text drop). Opening keeps the user's program as for a link, records the file's
+  program with `replayTraceAsync` (it supersedes a run in flight, and a newer run wins), re-applies
+  the what-if edits so the what-if banner shows the fork against the real run, puts the pen on the
+  saved step and says so in a notice; a fingerprint mismatch or an edit that no longer applies is an
+  error-tone notice, and a damaged file leaves the program untouched (`state/trace.ts`,
+  `lib/trace-download.ts`, `chrome/TraceMenu.tsx`, `editor/trace-drop.ts`).
 - **Previous program**: only one program is stored, so before a share link or an example replaces
   a program the user wrote, that program is kept as `hindsight:previous-source`. Text that arrived
   with a link or an example and has not been edited is not the user's (`hindsight:source-delivered`
@@ -1284,3 +1352,36 @@ respect the page rules: a two-to-four-word `<title>` ("Hindsight Studio"), side 
 `max(16px, env(safe-area-inset-left/right, 0px))`, `height: 100%` instead of `100vh`, no horizontal
 page scroll at 400 px, no `alert`/`confirm`/`prompt`, clipboard writes inside click handlers with a
 select-the-text fallback, and storage access wrapped in try/catch.
+
+## 12. VS Code extension (`editors/vscode`)
+
+A separate package (`hindsight-vscode`, engines `vscode ^1.90.0`, activation `onLanguage:sight`)
+that bundles the core; it is never published from CI.
+
+- **Declarative parts.** `language-configuration.json` (`//` and nesting `/* */` comments, brackets;
+  `{` auto-closes inside strings too, for interpolation) and `syntaxes/sight.tmLanguage.json`:
+  keywords exactly SPEC §2.4, builtins exactly `BUILTIN_NAMES`, `requires`/`ensures` as keywords
+  only between a `fn`'s parameter list and its body, strings with escapes and nested `{expr}`
+  interpolation. The grammar contribution maps `meta.embedded.line.sight` to token type `other`, so
+  quotes and brackets inside an interpolation behave as code. `src/manifest.test.ts` keeps these
+  files in step with the core (keywords, builtins) and with the code (command ids, setting bounds).
+- **vscode-free modules** (`src/analysis.ts`, `view.ts`, `run-scheduler.ts`, `studio-link.ts`):
+  `analyze` compiles and records with `recordAsync` (slices, an abort flag) and turns diagnostics
+  and the runtime error into 1-based problems; call counts come from one pass over the depth series
+  (a call begins where the depth rises, the call tree's rule, §7.6); never-ran lenses group the
+  consecutive statement lines with no `lineHits`; `crashSlice` uses `errorSlice`; studio links reuse
+  the studio's `shareFragment` (60,000-character limit). `RunScheduler` debounces saves per
+  document (300 ms) and aborts the run in flight when a newer one starts; a superseded run's result
+  is dropped. The root `npm run typecheck`, `lint` and `test` cover these modules.
+- **Glue** (`src/glue/`, the only code importing `vscode`; checked by `editors/vscode/tsconfig.json`
+  against `@types/vscode` and `@types/node` installed in `editors/vscode/node_modules`): each result
+  remembers the document version it recorded, and lenses and commands use it only while the
+  document still has that version (editing hides the lenses until the next save; "fresh" commands
+  re-run first). Open in Studio passes the URL to `env.openExternal` as a string, because a `Uri`
+  would percent-encode the fragment's `=` and `&`.
+- **Build.** `scripts/build.mjs` bundles `src/glue/extension.ts` with esbuild into
+  `dist/extension.js` (CommonJS, Node 20; only `vscode` and Node built-ins may stay external, else
+  the build fails). `scripts/smoke.mjs` loads that bundle against `scripts/fake-vscode.mjs` and
+  drives it (open, save, edit, close, every command). `npm run package` (vsce) writes the `.vsix`,
+  which is git-ignored. The CI job `vscode` runs `npm ci`, `typecheck`, `build` and `smoke` in
+  `editors/vscode`, which needs nothing from the root's dependencies.

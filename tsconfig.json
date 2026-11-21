@@ -18,5 +18,7 @@
     "noEmit": true,
     "types": ["node", "vite/client"]
   },
-  "include": ["src", "tests", "e2e", "scripts", "*.ts"]
+  "include": ["src", "tests", "e2e", "scripts", "editors/vscode/src", "*.ts"],
+  "//": "editors/vscode/src/glue imports the vscode module, whose types live only in editors/vscode/node_modules: editors/vscode/tsconfig.json checks it.",
+  "exclude": ["editors/vscode/src/glue"]
 }

@@ -1,0 +1,169 @@
+{
+  "name": "hindsight-vscode",
+  "displayName": "Hindsight",
+  "description": "The Hindsight language (.sight) in VS Code: syntax highlighting, run on save, call counts, never-ran lines with why-not explanations, crash slices and links into Hindsight Studio.",
+  "version": "0.3.0",
+  "publisher": "hindsight-placeholder",
+  "license": "MIT",
+  "homepage": "https://hindsight-two.vercel.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ajaypranav25/Hindsight.git",
+    "directory": "editors/vscode"
+  },
+  "bugs": {
+    "url": "https://github.com/Ajaypranav25/Hindsight/issues"
+  },
+  "keywords": [
+    "hindsight",
+    "sight",
+    "time-travel-debugging",
+    "omniscient-debugging"
+  ],
+  "categories": [
+    "Programming Languages",
+    "Debuggers"
+  ],
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "activationEvents": [
+    "onLanguage:sight"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "sight",
+        "aliases": [
+          "Hindsight",
+          "sight"
+        ],
+        "extensions": [
+          ".sight"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "sight",
+        "scopeName": "source.sight",
+        "path": "./syntaxes/sight.tmLanguage.json",
+        "tokenTypes": {
+          "meta.embedded.line.sight": "other"
+        }
+      }
+    ],
+    "commands": [
+      {
+        "command": "hindsight.runFile",
+        "title": "Run File",
+        "category": "Hindsight"
+      },
+      {
+        "command": "hindsight.whyNot",
+        "title": "Why Didn't This Line Run?",
+        "category": "Hindsight"
+      },
+      {
+        "command": "hindsight.crashSlice",
+        "title": "Lines That Led to the Crash",
+        "category": "Hindsight"
+      },
+      {
+        "command": "hindsight.openInStudio",
+        "title": "Open in Studio",
+        "category": "Hindsight"
+      },
+      {
+        "command": "hindsight.clearHighlights",
+        "title": "Clear Highlights",
+        "category": "Hindsight"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "hindsight.runFile",
+          "when": "editorLangId == sight"
+        },
+        {
+          "command": "hindsight.whyNot",
+          "when": "editorLangId == sight"
+        },
+        {
+          "command": "hindsight.crashSlice",
+          "when": "editorLangId == sight"
+        },
+        {
+          "command": "hindsight.openInStudio",
+          "when": "editorLangId == sight"
+        },
+        {
+          "command": "hindsight.clearHighlights",
+          "when": "editorLangId == sight"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "hindsight.whyNot",
+          "when": "editorLangId == sight",
+          "group": "hindsight@1"
+        },
+        {
+          "command": "hindsight.openInStudio",
+          "when": "editorLangId == sight",
+          "group": "hindsight@2"
+        }
+      ],
+      "editor/title/run": [
+        {
+          "command": "hindsight.runFile",
+          "when": "editorLangId == sight"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Hindsight",
+      "properties": {
+        "hindsight.maxSteps": {
+          "type": "integer",
+          "default": 2000000,
+          "minimum": 1000,
+          "maximum": 10000000,
+          "description": "Step budget for each run (one step is one VM instruction)."
+        },
+        "hindsight.runOnSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Record the program again whenever a .sight file is saved (and when it is opened), updating the code lenses and problems."
+        },
+        "hindsight.codeLens": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show call counts above functions and \"never ran\" above code the last run did not reach."
+        },
+        "hindsight.studioUrl": {
+          "type": "string",
+          "default": "https://hindsight-two.vercel.app",
+          "description": "The Hindsight Studio that \"Open in Studio\" links to."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc -p .",
+    "smoke": "node scripts/smoke.mjs",
+    "vscode:prepublish": "node scripts/build.mjs --minify",
+    "package": "vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "@types/vscode": "1.90.0",
+    "@vscode/vsce": "^4.1.1",
+    "esbuild": "^0.28.2",
+    "typescript": "~6.0.3"
+  }
+}

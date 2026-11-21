@@ -109,8 +109,16 @@ Keyboard: **F11** / **Shift+F11** step into forward/back, **F10** / **Shift+F10*
 
 ## The command line
 
-Run it through npm as below, or build it once with `npm run build:cli && npm link` to get a
-`hindsight` command.
+Install the `hindsight` command from npm (Node 22.12 or later; the package has no dependencies), or
+run it without installing through `npx`:
+
+```sh
+npm i -g hindsight-lang
+hindsight run examples/03-fibonacci.sight
+npx hindsight-lang run examples/03-fibonacci.sight   # the same, without a global install
+```
+
+From a checkout, run it through npm as below, or build it once with `npm run build:cli && npm link`.
 
 ```sh
 npm run sight -- run examples/03-fibonacci.sight
@@ -226,6 +234,24 @@ the change starts in:
   ✓ average (lines 6–8): given the same inputs, it behaves differently while the calls it makes behave the same
 ```
 
+### Trace files
+
+A moment link stops working once a program passes 60,000 characters. A `.sighttrace` file holds the
+same moment for any size: the program, its seed and step limit, the what-if edits and the pen, plus
+a fingerprint of the run. It is small because it never stores the trace: the VM is deterministic,
+so opening the file records the run again and checks the fingerprint. If another Hindsight version
+replays it differently, you are told where the runs first differ.
+
+```sh
+hindsight record examples/02-bug-hunt.sight          # writes examples/02-bug-hunt.sighttrace
+hindsight replay examples/02-bug-hunt.sighttrace     # the state at the saved step
+hindsight slice examples/02-bug-hunt.sighttrace      # run, replay, why, whynot, slice, query accept one
+```
+
+In the studio, the button next to **Copy link** downloads the run on display as a trace (what-if
+edits included) and opens one; you can also drop a `.sighttrace` file on the editor. The pen lands
+on the saved step with the what-if edits applied again.
+
 ### MCP server
 
 `hindsight mcp` speaks the Model Context Protocol over stdio, so an AI agent can stop guessing
@@ -233,10 +259,11 @@ what a `.sight` program does and ask the recording instead: run it, look at any 
 value came from, fork a what-if, find the bug and check its fix:
 
 ```json
-{ "mcpServers": { "hindsight": { "command": "hindsight", "args": ["mcp"] } } }
+{ "mcpServers": { "hindsight": { "command": "npx", "args": ["-y", "hindsight-lang", "mcp"] } } }
 ```
 
-From a checkout without a linked build, use `"command": "npx", "args": ["tsx", "src/cli/main.ts",
+With a global install (`npm i -g hindsight-lang`), `"command": "hindsight", "args": ["mcp"]` does the
+same. From a checkout without a linked build, use `"command": "npx", "args": ["tsx", "src/cli/main.ts",
 "mcp"]` with the repository as the working directory.
 
 | tool                                      | for                                                                                                                                                          |
@@ -263,6 +290,27 @@ history of 'total' (declared on line 8, average):
   step 38        write    total = 171  line 10
   ...
 ```
+
+## In VS Code
+
+`editors/vscode` is a VS Code extension for `.sight` files. It highlights the language and records
+the program every time you save, then shows what the run did: compile and runtime problems,
+**ran N times** above each function, and **never ran — why not?** above code the run never reached
+(click it for the explanation, written after the line). **Hindsight: Lines That Led to the Crash**
+dims everything outside the crash's backward slice, **Hindsight: Run File** prints the output, and
+**Hindsight: Open in Studio** opens the program in the studio with the pen on the cursor's line.
+
+It is not on the Marketplace yet; build and install the `.vsix` from a checkout:
+
+```sh
+cd editors/vscode
+npm install
+npm run package                                   # hindsight-vscode-<version>.vsix
+code --install-extension hindsight-vscode-*.vsix
+```
+
+To work on it, open `editors/vscode` in VS Code and press F5 for an Extension Development Host.
+Details: [editors/vscode/README.md](editors/vscode/README.md).
 
 ## How it works
 
@@ -339,6 +387,7 @@ src/core/          the language: lexer, parser, compiler, VM, recorder, navigato
 src/studio/        the React + CodeMirror studio
 src/cli/           the hindsight command-line tool
 src/conformance/   the annotation checker shared by the test suite and `hindsight test`
+editors/vscode/    the VS Code extension (language support, run on save, lenses, why-not)
 tests/lang/        the conformance corpus
 examples/          the studio's gallery programs
 docs/              language specification and architecture

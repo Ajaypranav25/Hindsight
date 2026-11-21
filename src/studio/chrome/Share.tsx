@@ -4,6 +4,7 @@ import { MAX_SHARED_SOURCE_LENGTH, shareFragment } from '../lib/share'
 import { useStudio } from '../state/context'
 import { momentTime } from '../state/selectors'
 import { ShareIcon } from './icons'
+import { TraceMenu } from './TraceMenu'
 import { usePopover } from './usePopover'
 
 type ShareResult =
@@ -33,9 +34,19 @@ function linkTo(source: string, time: number | null): string | null {
 
 /**
  * "Copy link": writes a link carrying the program to the clipboard inside the click handler. When
- * the clipboard refuses, a popover shows the text selected for manual copying.
+ * the clipboard refuses, a popover shows the text selected for manual copying. Beside it, the
+ * trace files menu downloads and opens `.sighttrace` files.
  */
 export function Share() {
+  return (
+    <div className="ch-share-group">
+      <CopyLink />
+      <TraceMenu />
+    </div>
+  )
+}
+
+function CopyLink() {
   const source = useStudio((s) => s.source)
   const time = useStudio(momentTime)
   const { open, show, rootRef, triggerRef } = usePopover()

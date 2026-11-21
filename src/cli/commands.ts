@@ -9,7 +9,7 @@ import type {
 } from '../core/index'
 import { compile, disassemble, LineIndex, record, run } from '../core/index'
 import { checkSource } from '../conformance/check'
-import type { Command } from './args'
+import { type Command, isTraceFile } from './args'
 import {
   codeFrame,
   formatDiagnostic,
@@ -22,6 +22,7 @@ import {
 import { diffCommand } from './diff'
 import type { CliIO } from './io'
 import { query, repair, slice, solve, whyNotCommand } from './lab'
+import { loadTrace, recordingFor, recordTrace } from './trace'
 import { whatIf } from './whatif'
 
 export type ExitCode = 0 | 1 | 2
@@ -30,10 +31,15 @@ export interface Loaded {
   readonly file: string
   readonly source: string
   readonly program: Program
+  /** The run a trace file holds, recorded again (absent for a program file). */
+  readonly recording?: Recording
+  /** The pen saved in a trace file. */
+  readonly traceTime?: number
 }
 
-/** Reads and compiles a file, printing diagnostics on failure. */
+/** Reads and compiles a file (or opens a trace file), printing diagnostics on failure. */
 export function load(io: CliIO, style: Style, file: string): Loaded | null {
+  if (isTraceFile(file)) return loadTrace(io, style, file)
   let source: string
   try {
     source = io.readFile(file)
@@ -73,6 +79,10 @@ export function runCommand(command: Command, io: CliIO): ExitCode {
     }
     case 'replay':
       return replay(io, style, command.file, command.at, command.maxSteps, command.seed)
+    case 'record': {
+      const loaded = load(io, style, command.file)
+      return loaded ? recordTrace(io, style, loaded, command) : 1
+    }
     case 'why':
       return why(io, style, command)
     case 'test':
@@ -112,19 +122,30 @@ function runFile(io: CliIO, style: Style, file: string, maxSteps: number, seed: 
   const loaded = load(io, style, file)
   if (!loaded) return 1
   // Program output is the program's own: it is passed through raw, like any program's stdout.
-  const result = run(loaded.program, { maxSteps, seed, onOutput: (text) => io.stdout(`${text}\n`) })
+  const print = (text: string) => io.stdout(`${text}\n`)
+  const result = loaded.recording
+    ? replayOutput(loaded.recording, print)
+    : run(loaded.program, { maxSteps, seed, onOutput: print })
   switch (result.outcome.kind) {
     case 'finished':
       return 0
     case 'error':
       io.stderr(`\n${formatRuntimeError(file, loaded.source, result.outcome.error, style)}\n`)
       return 1
-    default:
+    default: {
+      const advice = loaded.recording ? 'saved in the trace' : '(use --max-steps)'
       io.stderr(
-        `\n${style.error('stopped')}: reached the step limit of ${maxSteps.toLocaleString('en-US')} steps (use --max-steps)\n`,
+        `\n${style.error('stopped')}: reached the step limit of ${result.steps.toLocaleString('en-US')} steps ${advice}\n`,
       )
       return 2
+    }
   }
+}
+
+/** A trace's run as `run` reports one: its output, printed line by line, and its outcome. */
+function replayOutput(recording: Recording, print: (text: string) => void) {
+  for (const event of recording.outputs) print(event.text)
+  return { outcome: recording.outcome, steps: recording.length }
 }
 
 // --- replay -------------------------------------------------------------------------------------
@@ -133,14 +154,14 @@ function replay(
   io: CliIO,
   style: Style,
   file: string,
-  at: number,
+  at: number | null,
   maxSteps: number,
   seed: number,
 ): ExitCode {
   const loaded = load(io, style, file)
   if (!loaded) return 1
-  const recording = record(loaded.program, { maxSteps, seed })
-  const time = Math.min(at, recording.length)
+  const recording = recordingFor(loaded, { maxSteps, seed })
+  const time = Math.min(at ?? loaded.traceTime ?? 0, recording.length)
   const view = recording.stateAt(time)
   const lines = [
     `${style.bold(`step ${time.toLocaleString('en-US')}`)} of ${recording.length.toLocaleString('en-US')} ${style.dim(`(${outcomeText(recording)})`)}`,
@@ -316,7 +337,7 @@ function historyLines(
 function why(io: CliIO, style: Style, command: Extract<Command, { kind: 'why' }>): ExitCode {
   const loaded = load(io, style, command.file)
   if (!loaded) return 1
-  const recording = record(loaded.program, { maxSteps: command.maxSteps, seed: command.seed })
+  const recording = recordingFor(loaded, command)
   const found = findBindings(recording, loaded.source, command.line, command.name)
   const name = sanitize(command.name)
   if (!found) {
