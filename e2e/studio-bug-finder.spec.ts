@@ -1,5 +1,5 @@
 /** Bug finder: answer questions about recorded calls until Hindsight names the buggy function. */
-import { expect, replaceProgram, test, waitForRun } from './fixtures'
+import { expect, loadExample, replaceProgram, test, waitForRun } from './fixtures'
 
 const PROGRAM = `fn average(xs) {
   var total = 0
@@ -37,4 +37,22 @@ test('the bug finder interviews its way to the buggy function', async ({ page })
   await expect(finder).toContainText('Found it')
   await expect(finder).toContainText('average')
   await expect(page.getByRole('status').filter({ hasText: 'Found it' })).toHaveCount(1)
+})
+
+test('contracts and assertions answer every question in the Contracts example', async ({
+  studio: page,
+}) => {
+  await loadExample(page, 'Contracts')
+  await waitForRun(page, /Runtime error/)
+
+  await page.getByRole('button', { name: 'Find the bug' }).first().click()
+  const finder = page.locator('.bf-card')
+  await expect(page.getByRole('heading', { name: 'Verdict' })).toBeVisible()
+  await expect(finder).toContainText('Found it: the bug is in total')
+  await expect(finder).toContainText('No questions for you')
+  await expect(finder).toContainText('its postcondition on line 29 failed')
+
+  // Taking back an automatic answer hands that question to the user.
+  await finder.getByRole('button', { name: 'Undo' }).click()
+  await expect(finder.getByRole('button', { name: 'Right' })).toBeVisible()
 })

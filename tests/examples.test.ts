@@ -1,7 +1,18 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, test } from 'vitest'
-import { compile, record, run, verifyProgram } from '../src/core/index'
+import {
+  autoAnswer,
+  callTree,
+  compile,
+  contractOracle,
+  record,
+  run,
+  startFinder,
+  type Strategy,
+  verdict,
+  verifyProgram,
+} from '../src/core/index'
 import { parseExample } from '../src/studio/examples'
 
 const dir = fileURLToPath(new URL('../examples/', import.meta.url))
@@ -78,5 +89,29 @@ describe('gallery examples', () => {
       'linus: 8',
       'grace: 41',
     ])
+    expect(output('19-contracts.sight')).toEqual(['subtotal: 55'])
   })
+
+  test.each<Strategy>(['divide', 'top-down'])(
+    'in 19-contracts the bug finder names total with no questions (%s)',
+    (strategy) => {
+      // Arrange
+      const compiled = compile(readFileSync(`${dir}19-contracts.sight`, 'utf8'))
+      if (!compiled.ok) throw new Error('compile failed')
+      const recording = record(compiled.program)
+      const tree = callTree(recording)
+
+      // Act
+      const start = startFinder(tree, tree.root, { justMyCode: true, strategy })
+      const state = autoAnswer(start, contractOracle(recording, tree))
+
+      // Assert
+      expect(verdict(state)).toMatchObject({
+        kind: 'found',
+        certainty: 'certain',
+        call: { name: 'total' },
+      })
+      expect(state.asked).toBe(0)
+    },
+  )
 })

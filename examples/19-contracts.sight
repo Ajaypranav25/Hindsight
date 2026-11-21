@@ -1,0 +1,43 @@
+// title: Contracts
+// summary: Functions promise things with requires and ensures, and asserts give worked examples. A promise breaks: press Find the bug and Hindsight names the function to blame without asking you a single question.
+// outcome: error
+
+fn subtotal(items)
+  ensures result >= 0
+{
+  var sum = 0
+  for item in items { sum += item.price * item.qty }
+  sum
+}
+
+fn discount(amount, percent)
+  requires 0 <= percent and percent <= 100
+  ensures result == amount * percent / 100
+{
+  amount / 100 * percent
+}
+
+fn shipping(amount)
+  requires amount >= 0
+  ensures result == 0 or result == 5
+{
+  if amount >= 50 { 0 } else { 5 }
+}
+
+fn total(items, percent)
+  requires len(items) > 0
+  ensures result <= subtotal(items) + 5
+{
+  let sub = subtotal(items)
+  sub + discount(sub, percent) + shipping(sub)
+}
+
+let cart = [{price: 20, qty: 2}, {price: 15, qty: 1}]
+
+// Worked examples: each one vouches for every call made with the same arguments.
+assert(subtotal(cart) == 55)
+assert(shipping(55) == 0)
+assert(shipping(20) == 5)
+
+print("subtotal: {subtotal(cart)}")
+print("with 10% off: {total(cart, 10)}")
