@@ -79,7 +79,8 @@ export function ContextMenu(props: {
   }, [anchor])
 
   useEffect(() => {
-    menuItems(menuRef.current)[0]?.focus()
+    // The menu is fixed in the viewport: focusing it must not scroll the page (which closes it).
+    menuItems(menuRef.current)[0]?.focus({ preventScroll: true })
   }, [])
 
   useEffect(() => {
@@ -171,5 +172,5 @@ function moveFocus(event: KeyboardEvent<HTMLElement>, menu: HTMLElement | null):
   const target = targets[event.key]
   if (target === undefined) return
   event.preventDefault()
-  items[target]?.focus()
+  items[target]?.focus({ preventScroll: true })
 }
