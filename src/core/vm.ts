@@ -8,6 +8,7 @@ import { InternalError } from './diagnostics'
 import type {
   CellObj,
   Frame,
+  HeapObject,
   Value,
   VM,
   VMHooks,
@@ -16,7 +17,7 @@ import type {
   VMStatus,
 } from './runtime-types'
 import { execute } from './vm-exec'
-import { MachineSnapshot, type MachineRecord, copyRecord } from './vm-snapshot'
+import { MachineSnapshot, restoreSnapshot, takeSnapshot } from './vm-snapshot'
 import { MachineState } from './vm-state'
 
 export function createVM(program: Program, options: VMOptions): VM {
@@ -90,44 +91,24 @@ class MachineVM implements VM {
     execute(this.machine, t)
   }
 
+  get work(): number {
+    // Read once per recorded step: summed here rather than through MachineState's getter.
+    const m = this.machine
+    return m.time + m.allocated + m.scanned
+  }
+
   snapshot(): VMSnapshot {
-    const { record, size } = copyRecord(this.currentRecord())
-    return new MachineSnapshot(record.time, size, this.program, record)
+    return takeSnapshot(this.machine)
   }
 
   restore(snapshot: VMSnapshot): void {
     if (!(snapshot instanceof MachineSnapshot) || snapshot.program !== this.program) {
       throw new InternalError('restore() needs a snapshot taken from a VM of the same program')
     }
-    const { record } = copyRecord(snapshot.record)
-    const m = this.machine
-    m.stack = record.stack
-    m.frames = record.frames
-    m.openCells = record.openCells
-    m.globals = record.globals
-    m.time = record.time
-    m.nextObjectId = record.nextObjectId
-    m.nextFrameUid = record.nextFrameUid
-    m.rngState = record.rngState
-    m.allocated = record.allocated
-    m.status = record.status
-    m.error = record.error
+    restoreSnapshot(this.machine, snapshot)
   }
 
-  private currentRecord(): MachineRecord {
-    const m = this.machine
-    return {
-      stack: m.stack,
-      frames: m.frames,
-      openCells: m.openCells,
-      globals: m.globals,
-      time: m.time,
-      nextObjectId: m.nextObjectId,
-      nextFrameUid: m.nextFrameUid,
-      rngState: m.rngState,
-      allocated: m.allocated,
-      status: m.status,
-      error: m.error,
-    }
+  noteEdit(object: HeapObject): void {
+    this.machine.noteObject(object)
   }
 }

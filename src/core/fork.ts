@@ -60,7 +60,7 @@ export function prepareFork(
     events: sink.events,
     allocs: sink.allocs,
     sink,
-    schedule: core.schedule.forkAt(time, vm.snapshot()),
+    schedule: core.schedule.forkAt(vm, time),
     vm,
     start: time,
     stopAt: maxSteps,

@@ -6,14 +6,24 @@
  *
  * The loop is one long function on purpose: the recorder executes millions of steps, and splitting
  * the hot opcodes into separate functions measurably slows every step.
+ *
+ * **Fused dispatch** (ARCHITECTURE §6.10): a few handlers also run the next instruction when it
+ * forms a hot pair (GetLocal + GetLocal/Const/GetField, Const + Add/Sub, a comparison +
+ * JumpIfFalse, SetLocal + Jump) and the budget covers both (`limit - m.time > 1`), saving one
+ * dispatch. Step semantics are unchanged: each instruction still counts one step, the pair never
+ * straddles the limit (so `step()` never fuses), and before a second instruction that can fail,
+ * `m.time` and `start` are advanced to it, so its error reports exactly as unfused. Fused
+ * instructions call no hooks (SetLocal's own event comes before its Jump), so recording is
+ * unaffected. Measured gains are in §6.10; candidates were picked with scripts/opcode-pairs.ts.
  */
 import { Op, type FunctionProto } from './bytecode'
-import { equals, isTruthy } from './values'
+import { isTruthy } from './values'
 import type { ClosureObj, Frame, Value } from './runtime-types'
 import {
   binaryOperandError,
   compareSlow,
   divideSlow,
+  equalsSlow,
   modulo,
   negateSlow,
   addSlow,
@@ -22,6 +32,7 @@ import { callNonClosure, checkClosureCall, declareParameters } from './vm-calls'
 import { VMFailure, buildErrorInfo, raise } from './vm-errors'
 import { executeOther } from './vm-exec-other'
 import { iterNext } from './vm-iter'
+import { getField } from './vm-ops-access'
 import type { MachineState } from './vm-state'
 
 /** Runs instructions while the machine is running and `m.time < limit`. */
@@ -40,9 +51,28 @@ export function execute(m: MachineState, limit: number): void {
       start = ip
       const op = code[ip++]!
       switch (op) {
-        case Op.Const:
-          stack.push(constants[code[ip++]!] as Value)
+        case Op.Const: {
+          const value = constants[code[ip++]!] as Value
+          const next = code[ip]!
+          // Fused: Add or Sub next, when the budget covers both. Add may fail, so it runs as its
+          // own step would: time and start point at it first.
+          if (next === Op.Add && limit - m.time > 1) {
+            m.time++
+            start = ip++
+            const a = stack[stack.length - 1] as Value
+            stack[stack.length - 1] =
+              typeof a === 'number' && typeof value === 'number' ? a + value : addSlow(m, a, value)
+          } else if (next === Op.Sub && limit - m.time > 1) {
+            m.time++
+            start = ip++
+            const a = stack[stack.length - 1] as Value
+            if (typeof a !== 'number' || typeof value !== 'number') {
+              binaryOperandError('-', a, value)
+            }
+            stack[stack.length - 1] = a - value
+          } else stack.push(value)
           break
+        }
         case Op.Nil:
           stack.push(null)
           break
@@ -57,12 +87,37 @@ export function execute(m: MachineState, limit: number): void {
           break
         case Op.GetLocal:
           stack.push(stack[base + code[ip++]!] as Value)
+          // Fused: GetLocal or Const next (neither can fail), when the budget covers both.
+          if (limit - m.time > 1) {
+            const next = code[ip]!
+            if (next === Op.GetLocal) {
+              m.time++
+              stack.push(stack[base + code[ip + 1]!] as Value)
+              ip += 2
+            } else if (next === Op.Const) {
+              m.time++
+              stack.push(constants[code[ip + 1]!] as Value)
+              ip += 2
+            } else if (next === Op.GetField) {
+              // May fail: time and start point at the GetField first.
+              m.time++
+              start = ip
+              const top = stack.length - 1
+              stack[top] = getField(stack[top] as Value, constants[code[ip + 1]!] as string)
+              ip += 2
+            }
+          }
           break
         case Op.SetLocal: {
           const slot = code[ip++]!
           const value = stack.pop() as Value
           stack[base + slot] = value
           if (m.hooks !== null) m.recordLocal('write', frame.uid, slot, value)
+          // Fused: the Jump that ends a loop body.
+          if (code[ip] === Op.Jump && limit - m.time > 1) {
+            m.time++
+            ip = code[ip + 1]!
+          }
           break
         }
         case Op.GetUpvalue: {
@@ -74,7 +129,10 @@ export function execute(m: MachineState, limit: number): void {
           const cell = frame.closure.upvalues[code[ip++]!]!
           const value = stack.pop() as Value
           if (cell.open) stack[cell.stackIndex] = value
-          else cell.value = value
+          else {
+            cell.value = value
+            if (cell.id < m.logBelow) m.logChange(cell, 0)
+          }
           if (m.hooks !== null) m.recordCell(cell, value)
           break
         }
@@ -131,40 +189,68 @@ export function execute(m: MachineState, limit: number): void {
           break
         case Op.Eq: {
           const b = stack.pop() as Value
-          stack[stack.length - 1] = equals(stack[stack.length - 1] as Value, b)
+          const a = stack[stack.length - 1] as Value
+          stack[stack.length - 1] =
+            typeof b === 'object' && b !== null ? equalsSlow(m, a, b) : a === b
           break
         }
         case Op.Ne: {
           const b = stack.pop() as Value
-          stack[stack.length - 1] = !equals(stack[stack.length - 1] as Value, b)
+          const a = stack[stack.length - 1] as Value
+          stack[stack.length - 1] =
+            typeof b === 'object' && b !== null ? !equalsSlow(m, a, b) : a !== b
           break
         }
         case Op.Lt: {
           const b = stack.pop() as Value
           const a = stack[stack.length - 1] as Value
-          stack[stack.length - 1] =
+          const result =
             typeof a === 'number' && typeof b === 'number' ? a < b : compareSlow('<', a, b)
+          // Fused: a JumpIfFalse next consumes the result right away.
+          if (code[ip] === Op.JumpIfFalse && limit - m.time > 1) {
+            m.time++
+            stack.pop()
+            ip = result ? ip + 2 : code[ip + 1]!
+          } else stack[stack.length - 1] = result
           break
         }
         case Op.Le: {
           const b = stack.pop() as Value
           const a = stack[stack.length - 1] as Value
-          stack[stack.length - 1] =
+          const result =
             typeof a === 'number' && typeof b === 'number' ? a <= b : compareSlow('<=', a, b)
+          // Fused: a JumpIfFalse next consumes the result right away.
+          if (code[ip] === Op.JumpIfFalse && limit - m.time > 1) {
+            m.time++
+            stack.pop()
+            ip = result ? ip + 2 : code[ip + 1]!
+          } else stack[stack.length - 1] = result
           break
         }
         case Op.Gt: {
           const b = stack.pop() as Value
           const a = stack[stack.length - 1] as Value
-          stack[stack.length - 1] =
+          const result =
             typeof a === 'number' && typeof b === 'number' ? a > b : compareSlow('>', a, b)
+          // Fused: a JumpIfFalse next consumes the result right away.
+          if (code[ip] === Op.JumpIfFalse && limit - m.time > 1) {
+            m.time++
+            stack.pop()
+            ip = result ? ip + 2 : code[ip + 1]!
+          } else stack[stack.length - 1] = result
           break
         }
         case Op.Ge: {
           const b = stack.pop() as Value
           const a = stack[stack.length - 1] as Value
-          stack[stack.length - 1] =
+          const result =
             typeof a === 'number' && typeof b === 'number' ? a >= b : compareSlow('>=', a, b)
+          // Fused: a JumpIfFalse next consumes the result right away.
+          if (code[ip] === Op.JumpIfFalse && limit - m.time > 1) {
+            m.time++
+            stack.pop()
+            ip = result ? ip + 2 : code[ip + 1]!
+          } else stack[stack.length - 1] = result
           break
         }
         case Op.Jump:

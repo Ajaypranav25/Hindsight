@@ -276,11 +276,16 @@ source ─▶ lexer ─▶ parser ─▶ compiler ─▶ bytecode + debug info
 
 - **Recording.** The VM's entire state is plain data, so the recorder stores a compact per-step trace
   (location and depth in typed arrays), an event log of every declaration, write, allocation and
-  list mutation, and periodic deep snapshots. Snapshot spacing grows with snapshot size, so memory
-  stays bounded even for heap-heavy programs.
+  list mutation, and periodic snapshots. A write barrier in the VM notes every in-place change, so
+  each snapshot copies only what changed since the previous one and shares the rest (a persistent,
+  copy-on-write object table). Snapshots are spaced by work, not steps (a native that sorts a huge
+  list counts for what it costs to replay), and by what they cost to copy and restore, so memory
+  stays bounded and stepping backwards stays fast even after heavy natives.
 - **Seeking.** To show step `t`, restore the nearest snapshot at or before `t` and replay forward;
   the run is deterministic (even `random()` is a seeded generator inside the VM state), so replay
   reproduces it exactly. A 1.26-million-step run records in about 0.2 s and seeks in about 0.35 ms.
+  Seeking backwards from a position rebuilds only the objects that differ from the snapshot it
+  restores, so scrubbing back through a big heap stays smooth.
 - **Navigation** works on the trace alone: stepping backwards is a scan over typed arrays, not
   re-execution.
 - **Provenance** queries the event log, translating list indexes back through every insert, remove

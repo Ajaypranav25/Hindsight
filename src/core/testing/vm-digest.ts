@@ -1,7 +1,8 @@
 /**
  * A complete, id-preserving text digest of a VM's state for tests that compare machines
  * (snapshot/restore, hooks on versus off). Built from a snapshot so it sees every field of the
- * machine record, including the object counter and the generator.
+ * machine record, including the object counter and the generator. Taking the snapshot makes it
+ * the machine's base for later snapshots (§6.8), which only exercises structural sharing more.
  */
 import type { HeapObject, Value, VM } from '../runtime-types'
 import { MachineSnapshot } from '../vm-snapshot'
@@ -9,17 +10,36 @@ import { MachineSnapshot } from '../vm-snapshot'
 export function digest(vm: VM): string {
   const snapshot = vm.snapshot()
   if (!(snapshot instanceof MachineSnapshot)) throw new Error('not a machine snapshot')
-  const record = snapshot.record
+  const record = snapshot.thaw()
   const seen = new Set<HeapObject>()
   const objects: string[] = []
   const describe = (value: Value): string => describeValue(value, seen, objects)
   const parts = [
     `time=${record.time} status=${record.status} next=${record.nextObjectId}/${record.nextFrameUid}`,
-    `rng=${record.rngState}`,
+    `rng=${record.rngState} allocated=${record.allocated} scanned=${record.scanned}`,
     `stack=${record.stack.map(describe).join(',')}`,
     `frames=${record.frames.map((f) => `${f.uid}:${f.closure.proto.id}@${f.ip}+${f.base}`).join(',')}`,
     `cells=${record.openCells.map((c) => `${c.id}@${c.stackIndex}`).join(',')}`,
     `globals=${Array.from(record.globals, ([k, v]) => `${k}=${describe(v)}`).join(',')}`,
+  ]
+  return [...parts, ...objects].join('\n')
+}
+
+/**
+ * A digest of the live state through the public `VM` interface only, without taking a snapshot (so
+ * it does not change the machine's base or its delta-restore state). It omits the object counter
+ * and the generator, which only a snapshot sees.
+ */
+export function liveDigest(vm: VM): string {
+  const seen = new Set<HeapObject>()
+  const objects: string[] = []
+  const describe = (value: Value): string => describeValue(value, seen, objects)
+  const parts = [
+    `time=${vm.time} status=${vm.status} work=${vm.work}`,
+    `stack=${vm.stack.map(describe).join(',')}`,
+    `frames=${vm.frames.map((f) => `${f.uid}:${describe(f.closure)}@${f.ip}+${f.base}`).join(',')}`,
+    `cells=${vm.openCells.map((c) => `${describe(c)}@${c.stackIndex}`).join(',')}`,
+    `globals=${Array.from(vm.globals, ([k, v]) => `${k}=${describe(v)}`).join(',')}`,
   ]
   return [...parts, ...objects].join('\n')
 }

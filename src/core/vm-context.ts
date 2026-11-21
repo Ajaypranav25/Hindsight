@@ -54,6 +54,10 @@ export class MachineContext implements NativeContext {
     this.machine.charge(units)
   }
 
+  scan(units: number): void {
+    this.machine.scanned += units
+  }
+
   random(): number {
     return this.machine.nextRandom()
   }
