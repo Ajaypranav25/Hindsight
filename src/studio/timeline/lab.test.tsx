@@ -5,7 +5,14 @@ import { compile, queryRecording, record, type Recording } from '../../core/inde
 import { buildEnvelope, fullViewport } from '../lib/timeline-math'
 import { renderWithRecording } from '../panels/test-fixtures'
 import { liveQuery, liveSweep } from '../state/lab'
-import { drawQueryMarks, drawSweepGhosts, labMaxDepth, type ChartLab } from './chart-lab'
+import { buildMarkPyramid } from '../lib/mark-pyramid'
+import {
+  drawQueryMarks,
+  drawSliceMarks,
+  drawSweepGhosts,
+  labMaxDepth,
+  type ChartLab,
+} from './chart-lab'
 import { neighbours, QueryBar, queryRows, querySummary } from './QueryBar'
 import { longestRun, SweepBanner, sweepHeadline } from './SweepBanner'
 
@@ -253,6 +260,31 @@ describe('chart layers', () => {
       'rect 100 10 1 50',
     ])
     expect(ctx.globalAlpha).toBe(1)
+  })
+
+  test('a slice shades the columns of its steps and draws a rug under the baseline', () => {
+    // Arrange: steps 10..14 and 60 of a 100-step view over 200 columns.
+    const marks = new Uint8Array(101)
+    for (const step of [10, 11, 12, 13, 14, 60]) marks[step] = 1
+    const { ctx, calls } = fakeContext()
+    // Act
+    drawSliceMarks(ctx, buildMarkPyramid(marks), layout, 'blue')
+    // Assert: two bands (one per run of columns), then the same two as a rug.
+    expect(calls).toEqual([
+      'rect 20 10 10 50',
+      'rect 120 10 2 50',
+      'rect 20 61 10 2',
+      'rect 120 61 2 2',
+    ])
+    expect(ctx.globalAlpha).toBe(1)
+  })
+
+  test('a slice outside the view draws nothing', () => {
+    const marks = new Uint8Array(101)
+    marks[90] = 1
+    const { ctx, calls } = fakeContext()
+    drawSliceMarks(ctx, buildMarkPyramid(marks), { ...layout, view: { start: 0, end: 50 } }, 'b')
+    expect(calls).toEqual([])
   })
 
   test('every sweep run is traced from the fork step on', () => {

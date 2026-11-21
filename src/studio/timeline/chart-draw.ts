@@ -12,7 +12,13 @@ import {
   type DepthScale,
   type Viewport,
 } from '../lib/timeline-math'
-import { drawQueryMarks, drawSweepGhosts, labMaxDepth, type ChartLab } from './chart-lab'
+import {
+  drawQueryMarks,
+  drawSliceMarks,
+  drawSweepGhosts,
+  labMaxDepth,
+  type ChartLab,
+} from './chart-lab'
 import { drawGhost, drawWhatIfMarks, type ChartWhatIf, type WhatIfLayout } from './chart-whatif'
 
 /** Chart layout in CSS pixels. */
@@ -80,7 +86,7 @@ export interface ChartScene {
   readonly colors: ChartColors
   /** Set while a what-if is shown: the real run's ghost and the fork and divergence marks. */
   readonly whatIf?: ChartWhatIf | null
-  /** A query's matches and a sweep's runs, when there are any. */
+  /** A query's matches, a slice's steps and a sweep's runs, when there are any. */
   readonly lab?: ChartLab | null
 }
 
@@ -118,6 +124,7 @@ export function drawChart(ctx: CanvasRenderingContext2D, scene: ChartScene): voi
   if (whatIf) drawGhost(ctx, whatIf, { ...layout, color: scene.colors.inkMuted })
   const lab = scene.lab ?? null
   if (lab) drawQueryMarks(ctx, lab, layout, scene.colors.marker)
+  if (lab?.slice) drawSliceMarks(ctx, lab.slice, layout, scene.colors.marker)
   if (lab && lab.ghosts.length > 0) drawSweepGhosts(ctx, lab, layout, scene.colors.whatIf)
   drawTrace(frame)
   drawMarkers(frame)

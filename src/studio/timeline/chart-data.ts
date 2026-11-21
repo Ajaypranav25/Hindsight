@@ -3,7 +3,8 @@ import { useCallback, useMemo, useState } from 'react'
 import type { Recording } from '../../core/api-types'
 import { queryTimes } from '../../core/index'
 import { useStudio } from '../state/context'
-import { liveQuery, liveSweep } from '../state/lab'
+import { buildMarkPyramid } from '../lib/mark-pyramid'
+import { activeSlice, liveQuery, liveSweep } from '../state/lab'
 import type { ChartLab } from './chart-lab'
 import type { ChartWhatIf } from './chart-whatif'
 import {
@@ -91,10 +92,15 @@ export function useViewport(
 
 const NO_INTERVALS: ChartLab['intervals'] = []
 
-/** The query and sweep layers' data, and the steps the chart must span to show the sweep. */
+/** The lab layers' data, and the steps the chart must span to show a sweep. */
 export function useChartLab(): { readonly lab: ChartLab | null; readonly extent: number } {
   const query = useStudio((s) => liveQuery(s.lab, s.recording))
   const sweep = useStudio((s) => liveSweep(s.lab, s.recording))
+  const sliceMarks = useStudio((s) => activeSlice(s)?.marks ?? null)
+  const slice = useMemo(
+    () => (sliceMarks === null ? null : buildMarkPyramid(sliceMarks)),
+    [sliceMarks],
+  )
   const runs = sweep?.runs ?? null
   const forkTime = sweep?.time ?? 0
   const ghosts = useMemo(
@@ -106,15 +112,16 @@ export function useChartLab(): { readonly lab: ChartLab | null; readonly extent:
     [runs],
   )
   const lab = useMemo((): ChartLab | null => {
-    if (query === null && ghosts.length === 0) return null
+    if (query === null && ghosts.length === 0 && slice === null) return null
     const when = query?.result.kind === 'when'
     return {
       intervals: when && query.result.kind === 'when' ? query.result.intervals : NO_INTERVALS,
       moments: query === null || when ? NO_TIMES : Float64Array.from(queryTimes(query.result)),
       ghosts,
       forkTime,
+      slice,
     }
-  }, [query, ghosts, forkTime])
+  }, [query, ghosts, forkTime, slice])
   return useMemo(() => ({ lab, extent }), [lab, extent])
 }
 
