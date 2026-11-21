@@ -60,6 +60,10 @@ The first token of the file has `newlineBefore = false`. The parser uses this fl
   special meaning in patterns (§6) and is an error as a value (**E027**).
 - Keywords (reserved, cannot be identifiers):
   `and break continue else false fn for if in let match nil not or return true var while`
+- Contextual keywords: `requires` and `ensures` lex as identifiers and are keywords only where a
+  contract clause may begin (between a function's `)` and its body, §3.1, §7.16). Everywhere else
+  they are ordinary names (`let requires = 1`, `{ensures: 2}`); so is `result`, which only
+  `ensures` clauses bind (§7.16).
 
 ### 2.5 Numbers
 
@@ -130,7 +134,8 @@ block          = "{" { stmt } "}"
 stmt           = ( letStmt | fnDecl | returnStmt | "break" | "continue"
                  | whileStmt | forStmt | block | exprOrAssign ) [ ";" ]
 letStmt        = ( "let" | "var" ) pattern "=" expr
-fnDecl         = "fn" IDENT "(" [ params ] ")" block
+fnDecl         = "fn" IDENT "(" [ params ] ")" { contract } block
+contract       = ( "requires" | "ensures" ) expr          (contextual keywords: §2.4, §7.16)
 params         = pattern { "," pattern } [ "," ]
 returnStmt     = "return" [ expr ]                       (value rule: §3.2)
 whileStmt      = "while" expr block
@@ -161,7 +166,7 @@ listItem       = "..." expr | expr
 record         = "{" [ recItem { "," recItem } [ "," ] ] "}"
 recItem        = "..." expr | ( IDENT | STRING ) ":" expr | IDENT
 lambda         = "|" [ params ] "|" body
-fnExpr         = "fn" "(" [ params ] ")" block
+fnExpr         = "fn" "(" [ params ] ")" { contract } block
 ifExpr         = "if" expr block [ "else" ( ifExpr | block ) ]
 matchExpr      = "match" expr "{" { arm [ "," ] } "}"
 arm            = pattern [ "if" expr ] "=>" body
@@ -185,6 +190,11 @@ Notes:
   To return a record from a lambda or match arm, parenthesize it: `|x| ({x})`.
 - **`fn` at the start of a statement**: followed by `(` it begins an expression statement (an
   anonymous function, e.g. `fn(x) { x }(5)`); followed by anything else it begins a declaration.
+- **Contracts.** After a `fn`'s `)` (declaration or `fn(...)` expression; lambdas have none), an
+  identifier `requires` or `ensures` begins a clause; any number of clauses may follow, in any
+  order, each on the same line or a line of its own. Like an `if` condition, a clause expression
+  ends at a `{` that follows a complete operand: that `{` begins the body (or the next clause's
+  keyword ends it). So `fn f(x) requires x > 0 ensures { x }` is E010 (the body is missing).
 - **Lambda parameters.** Inside a lambda's `|…|`, a `|` at the top level of a parameter pattern ends
   the parameter list, so `|a| a + 1` has the parameter `a`. A `|` nested inside a list or record
   pattern (`|[1 | 2]| 0`) is an alternative, which is **E015** outside match arms.
@@ -219,8 +229,11 @@ Newlines never end an expression on their own, but they stop the parser from _co
    newline-sensitive. Parentheses `( … )` (grouping or arguments), brackets `[ … ]` (lists and index
    expressions), the braces of a record literal, and string interpolations `{ … }` are
    newline-**insensitive**: rule 1 does not apply inside them. Every other construct (`if`, `while`,
-   `for` and `match` headers, arm guards, lambda expression bodies) inherits the context it appears
-   in. A block or `match` nested inside brackets is newline-sensitive again.
+   `for` and `match` headers, contract clauses, arm guards, lambda expression bodies) inherits the
+   context it appears in. A block or `match` nested inside brackets is newline-sensitive again.
+   A contract keyword (`requires`, `ensures`) may itself start a line, and so may the body's `{`;
+   inside a block, a clause stops before an operator that starts a new line (rule 1), which leaves
+   that operator where the body's `{` was expected (E010).
 4. `return` takes a value only when the next token is on the same line (`newlineBefore = false`) and
    is not `}`, `;` or end of file.
 5. `else` may appear on the line after the closing `}` of an `if` block.
@@ -631,6 +644,44 @@ A block's value is the value of its last statement when that statement is an exp
 otherwise `nil` (a nested block statement is not an expression statement, so `{ 1; { 2 } }` is
 `nil`). The empty block's value is `nil`.
 
+### 7.16 Contracts
+
+A function may state what it needs and what it promises (Eiffel/D style), checked at run time:
+
+```
+fn average(xs)
+  requires len(xs) > 0
+  ensures result == sum(xs) / len(xs)
+{
+  sum(xs) / len(xs)
+}
+```
+
+- **`requires E`** (a precondition) runs at function entry, after the parameters are bound (and
+  their patterns matched), before the body. Preconditions run in source order; the first falsy
+  value raises **R026** `precondition failed: TEXT`, where TEXT is the clause expression's exact
+  source text. The caller is to blame: the hint names the arguments,
+  `the caller passed xs = [], n = 3` (each parameter pattern's source text and its value, reprs cut
+  like R014's), or `the caller passed no arguments`.
+- **`ensures E`** (a postcondition) runs on every return path: each `return` statement and the end
+  of the body, with the returned value bound to the name **`result`**. Postconditions run in source
+  order; the first falsy value raises **R027** `postcondition failed: TEXT`. The function is to
+  blame: the hint gives the returned value, `'NAME' returned R` (`lambda returned R` for an unnamed
+  function).
+- **Scope.** A clause sees the function's parameters, its captures and the globals, but none of the
+  body's locals (a body local that shadows a parameter does not affect the clause). In `ensures`,
+  `result` is an immutable local (assigning it is **E021**) that shadows a parameter, capture or
+  global named `result`; in `requires`, and everywhere outside clauses, `result` is an ordinary
+  name. The debugger shows `result` as a local while the postconditions run.
+- A clause is an expression: `return` inside it is **E029**, and loops around the function do not
+  reach into it (`break` is E024). Calls in a clause are ordinary calls (they are recorded and
+  stepped like any other); the debugger treats every clause as a statement of its own, so stepping
+  visits it. Each step is still one instruction (§10.1).
+- **Purity.** Clauses should only check: side effects in them (printing, mutating) are allowed but
+  discouraged, since they run on every call and every return.
+- A function without clauses runs exactly as it would without this feature (the same instructions,
+  so the same step numbers).
+
 ---
 
 ## 8. Statements
@@ -825,6 +876,7 @@ An error's **line** is the line where its span starts. The span is that of the f
 | R013 in `for`                                              | the `for` header (`for p in e`)                                                           |
 | R013, R024 from a spread                                   | the `...e` element                                                                        |
 | R025 from an operator, an interpolation or a literal       | that expression                                                                           |
+| R026, R027                                                 | the failing clause's expression (after `requires` / `ensures`)                            |
 
 ### 10.5 Limits
 
@@ -891,6 +943,7 @@ empty span just after the last non-whitespace character of the source (comments 
 | E021 | `cannot assign to 'X' because it is a loop variable`                                            | the target identifier                        |                                                                                                                                                    |
 | E021 | `cannot assign to 'X' because it is a match binding`                                            | the target identifier                        |                                                                                                                                                    |
 | E021 | `cannot assign to builtin 'X'`                                                                  | the target identifier                        |                                                                                                                                                    |
+| E021 | `cannot assign to 'result' because it is the function's result` (in `ensures`, §7.16)           | the target identifier                        |                                                                                                                                                    |
 | E022 | `'X' is already declared on line N` (N: line of the first declaration's binding name)           | the binding name in the repeated declaration | `globals can be declared once; use 'var' and assign instead`                                                                                       |
 | E023 | `duplicate binding 'X'`                                                                         | the second occurrence                        |                                                                                                                                                    |
 | E024 | `'break' can only be used inside a loop` / `'continue' can only be used inside a loop`          | the keyword                                  |                                                                                                                                                    |
@@ -898,6 +951,7 @@ empty span just after the last non-whitespace character of the source (comments 
 | E026 | `'X' is used before it is declared`                                                             | the identifier                               | `this declaration hides the builtin 'X'` (when one exists)                                                                                         |
 | E027 | `'_' can only be used in patterns`                                                              | the `_`                                      |                                                                                                                                                    |
 | E028 | `expression is nested too deeply`                                                               | the token where the limit was exceeded       |                                                                                                                                                    |
+| E029 | `'return' cannot be used in a contract` (§7.16)                                                 | the keyword                                  |                                                                                                                                                    |
 
 ### 11.2 Which compile errors are reported
 
@@ -907,7 +961,7 @@ Compilation runs in stages and stops after the first stage that reports anything
 2. **Parser**: the first syntax error only — E010, E011, E015 `invalid pattern`, E018 or E028 (§3.5).
 3. **Checks after parsing**: every E012, E013, E014, E015 (alternatives), E016, E017, E019, E023,
    E027 (§3.6).
-4. **Names**: every E020, E021, E022, E024, E025, E026.
+4. **Names**: every E020, E021, E022, E024, E025, E026, E029.
 
 Within a stage, diagnostics are sorted by position, and exact duplicates are removed. Hindsight 0.2
 has no warnings.
@@ -939,6 +993,8 @@ has no warnings.
 | R022 | `cannot assign into a string: strings are immutable`                                                                                                                                                           |                                                                                                          |
 | R024 | `cannot spread AT into a record`                                                                                                                                                                               |                                                                                                          |
 | R025 | `result too large` / `memory limit exceeded` (§10.5)                                                                                                                                                           |                                                                                                          |
+| R026 | `precondition failed: TEXT` (TEXT: the clause's source, §7.16)                                                                                                                                                 | `the caller passed P = R, …` / `the caller passed no arguments`; R truncated                             |
+| R027 | `postcondition failed: TEXT` (TEXT: the clause's source, §7.16)                                                                                                                                                | `'NAME' returned R` / `lambda returned R`; R truncated                                                   |
 
 (There is no R003 or R023.)
 
