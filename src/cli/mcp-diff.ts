@@ -33,6 +33,7 @@ import {
   ToolError,
   type Trace,
 } from './mcp-shared'
+import { checkExpectations, type Expectation, EXPECTATIONS, parseExpectations } from './mcp-repair'
 
 export const DIFF_DEFAULT_LIMIT = 20
 export const DIFF_MAX_LIMIT = 200
@@ -48,7 +49,7 @@ export function diffTool(context: ToolContext): Tool {
   return {
     name: 'diff_runs',
     description:
-      'Differential execution: why does version B behave differently from version A? Records both runs and aligns them by call tree (matching calls by function name, so renamed, inserted and removed calls are found), then reports both outcomes, the output diff, the top-most calls only one run made, the matched calls whose result or side effects changed, and the ORIGINS: calls given the same inputs that behaved differently while every call they made behaved the same, i.e. where the difference starts in a function\'s own code. Give source_a and source_b (two versions), trace_a and trace_b (two trace ids), or source (or trace_id) plus set {"name": "scores", "value": "[70, 80]"} to change a top-level let/var initializer (an input). Use it to check a fix (old vs new) or to find which input change matters.',
+      'Differential execution: why does version B behave differently from version A? Records both runs and aligns them by call tree (matching calls by function name, so renamed, inserted and removed calls are found), then reports both outcomes, the output diff, the top-most calls only one run made, the matched calls whose result or side effects changed, and the ORIGINS: calls given the same inputs that behaved differently while every call they made behaved the same, i.e. where the difference starts in a function\'s own code. Give source_a and source_b (two versions), trace_a and trace_b (two trace ids), or source (or trace_id) plus set {"name": "scores", "value": "[70, 80]"} to change a top-level let/var initializer (an input). Use it to check a fix (old vs new; add expectations to see each one judged in both runs) or to find which input change matters.',
     inputSchema: schema(
       {
         source_a: { type: 'string', description: 'Program A (.sight text)' },
@@ -78,6 +79,11 @@ export function diffTool(context: ToolContext): Tool {
           maximum: DIFF_MAX_LIMIT,
           description: `Entries listed per category (default ${DIFF_DEFAULT_LIMIT}); totals are always given`,
         },
+        expectations: {
+          ...EXPECTATIONS,
+          description:
+            'What some calls should return (as for suggest_repairs): each is checked in both runs, to confirm a fix',
+        },
         max_steps: MAX_STEPS,
         seed: SEED,
       },
@@ -87,7 +93,9 @@ export function diffTool(context: ToolContext): Tool {
       const limit = clampedArg(args, 'limit', DIFF_DEFAULT_LIMIT, 1, DIFF_MAX_LIMIT)
       const sides = loadSides(context, args)
       const diff = diffRuns(sides.a.recording, sides.b.recording, { limit })
-      return diffJson(sides, diff)
+      const json = diffJson(sides, diff)
+      if (args.expectations === undefined) return json
+      return { ...json, ...expectationsJson(sides, parseExpectations(args.expectations)) }
     },
   }
 }
@@ -140,6 +148,29 @@ export function setting(given: unknown): { readonly name: string; readonly value
   const probe = withInput('let v = nil\n', 'v', value)
   const looksStructured = /^\s*[[{]/.test(value)
   return { name, value: probe.ok || looksStructured ? value : formatLiteral(value) }
+}
+
+/** Each expectation judged in both runs, and whether B meets them all. */
+function expectationsJson(sides: Sides, expectations: readonly Expectation[]): JsonObject {
+  const inA = checkExpectations(sides.a.recording, expectations)
+  const inB = checkExpectations(sides.b.recording, expectations)
+  const rows = inB.map((b, i) => {
+    const a = inA[i]!
+    return {
+      call: b.call,
+      expected: b.expected,
+      a: { recorded: a.recorded, verdict: a.verdict },
+      b: { recorded: b.recorded, verdict: b.verdict },
+    }
+  })
+  const met = inB.every((row) => row.verdict === 'right')
+  const fixed = rows.filter((row) => row.a.verdict === 'wrong' && row.b.verdict === 'right').length
+  const broken = rows.filter((row) => row.a.verdict === 'right' && row.b.verdict !== 'right').length
+  return {
+    expectations: rows,
+    expectations_met_in_b: met,
+    expectations_summary: `${fixed} fixed, ${broken} broken, ${inB.filter((row) => row.verdict === 'right').length} of ${rows.length} right in B`,
+  }
 }
 
 function linesJson(lines: LineSpan | null): Json {
@@ -211,7 +242,7 @@ function headline(diff: RunDiff, input: JsonObject | null): string {
   return `The difference starts in ${name}${where}: ${originReason(first)}${others}.`
 }
 
-function diffJson(sides: Sides, diff: RunDiff): Json {
+function diffJson(sides: Sides, diff: RunDiff): JsonObject {
   const changedOutput = diff.output.lines.filter((line) => line.kind !== 'same')
   const run = (trace: Trace, summary: RunDiff['a']): JsonObject => ({
     trace_id: trace.id,

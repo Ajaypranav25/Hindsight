@@ -148,6 +148,43 @@ describe('diff_runs', () => {
     })
   })
 
+  test('expectations are checked in both runs to confirm a fix', () => {
+    const server = new McpServer('0')
+    const { body } = call(server, 'diff_runs', {
+      source_a: AVERAGE,
+      source_b: FIXED,
+      expectations: [
+        { call: 'average([92, 88, 95])', expected: '91.66666666666667' },
+        { call: 'total([1, 2, 3])', expected: 6 },
+        { call: 'nope(1)', expected: 1 },
+      ],
+    })
+    expect(body.expectations).toEqual([
+      {
+        call: 'average([92, 88, 95])',
+        expected: '91.66666666666667',
+        a: { recorded: '68.75', verdict: 'wrong' },
+        b: { recorded: '91.66666666666667', verdict: 'right' },
+      },
+      {
+        call: 'total([1, 2, 3])',
+        expected: '6',
+        a: { recorded: '6', verdict: 'right' },
+        b: { recorded: '6', verdict: 'right' },
+      },
+      {
+        call: 'nope(1)',
+        expected: '1',
+        a: { recorded: null, verdict: 'unmatched' },
+        b: { recorded: null, verdict: 'unmatched' },
+      },
+    ])
+    expect(body).toMatchObject({
+      expectations_met_in_b: false,
+      expectations_summary: '1 fixed, 0 broken, 2 of 3 right in B',
+    })
+  })
+
   test('one program with an input changed, as an object or NAME=VALUE', () => {
     const server = new McpServer('0')
     const { body } = call(server, 'diff_runs', {

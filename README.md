@@ -205,9 +205,9 @@ From a checkout without a linked build, use `"command": "npx", "args": ["tsx", "
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `run_trace`                               | record a program: a trace id, the outcome, the output (in pages)                                                                                             |
 | `diagnose_failure`                        | a crash or a wrong output line in one call: error, stack, the values the failing statement reads, the slice, the causal chain and verified one-token repairs |
-| `find_bug`                                | a stateless interview about calls that ends at the function whose own code is wrong, with repair previews                                                    |
+| `find_bug`                                | a stateless interview about calls that ends at the function whose own code is wrong, with repair previews; expected results answer questions by themselves   |
 | `suggest_repairs`                         | one-token patches checked against a crash or against expectations like `{"call": "average([92, 88, 95])", "expected": "91.66666666666667"}`                  |
-| `diff_runs`                               | two versions (or two inputs) compared call by call: where the difference starts                                                                              |
+| `diff_runs`                               | two versions (or two inputs) compared call by call: where the difference starts, and which expectations a fix meets                                          |
 | `seek_state`, `query_provenance`, `query` | the state at a step (with depth, item and frame budgets), where a value came from, moments by condition (in pages, or summarized)                            |
 | `fork_whatif`, `get_divergence`, `solve`  | counterfactuals forwards and backwards                                                                                                                       |
 | `why_not`, `slice`                        | why a line never ran; which lines can have caused a moment                                                                                                   |

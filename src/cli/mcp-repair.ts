@@ -317,6 +317,24 @@ interface Match {
   readonly recorded: string
 }
 
+/** How a run fares against each expectation: the recorded result and right, wrong or unmatched. */
+export function checkExpectations(
+  recording: Recording,
+  expectations: readonly Expectation[],
+): JsonObject[] {
+  const tree = callTree(recording)
+  return expectations.map((expectation) => {
+    const verdict = judge(tree, expectation)
+    const first = verdict.matches[0]
+    return {
+      call: expectation.text,
+      expected: expectation.canonical ?? expectation.expected,
+      recorded: first?.recorded ?? null,
+      verdict: first === undefined ? 'unmatched' : verdict.right(first) ? 'right' : 'wrong',
+    }
+  })
+}
+
 interface Judged {
   readonly matches: readonly Match[]
   readonly right: (match: Match) => boolean
