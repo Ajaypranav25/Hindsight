@@ -115,8 +115,15 @@ export interface LabState {
   readonly whyNot: WhyNotMark | null
   /** The slice last computed for the editor. */
   readonly slice: SliceMark | null
-  /** "What led here?": the step the user asked to trace; it lasts until it is dismissed. */
-  readonly sliceAt: { readonly recording: Recording; readonly time: number } | null
+  /**
+   * "What led here?" / "What led to this?": the step the user asked to trace, and what to call it
+   * ("output line 3"); it lasts until it is dismissed.
+   */
+  readonly sliceAt: {
+    readonly recording: Recording
+    readonly time: number
+    readonly label: string | null
+  } | null
   /** Dim the lines that did not lead to a runtime error. */
   readonly dimming: boolean
 }
@@ -309,9 +316,9 @@ export function labActions(
       set({ lab: { ...get().lab, slice } })
     },
 
-    sliceFrom(time) {
+    sliceFrom(time, label = null) {
       const { recording, lab } = get()
-      const sliceAt = time === null || recording === null ? null : { recording, time }
+      const sliceAt = time === null || recording === null ? null : { recording, time, label }
       set({ lab: { ...lab, sliceAt } })
     },
 

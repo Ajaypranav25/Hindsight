@@ -228,6 +228,14 @@ describe('lines that led here', () => {
     expect(gutterMarks(container, editor)).toEqual([])
   })
 
+  test('a step traced from a console line is named after the line in the chip', async () => {
+    const source = 'let a = 1\nprint(a)\nprint(a + 1)\n'
+    const recording = recordSource(source)
+    const { store } = setup(source)
+    act(() => store.getState().sliceFrom(recording.outputs[1]!.time, 'output line 2'))
+    await screen.findByText('2 lines led to output line 2; the rest are dimmed')
+  })
+
   test('nothing is traced for a stale recording', () => {
     const { store, container } = setup(CRASH)
     act(() => store.getState().setSource(`${CRASH}\n`))

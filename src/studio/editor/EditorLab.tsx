@@ -77,7 +77,10 @@ function SliceChip() {
   const stale = useStudio((s) => s.recordedSource !== s.source)
   const slice = useStudio(activeSlice)
   const wanted = useStudio(wantedSliceStep)
-  const asked = useStudio((s) => s.lab.sliceAt !== null && s.lab.sliceAt.recording === s.recording)
+  const askedAt = useStudio((s) =>
+    s.lab.sliceAt !== null && s.lab.sliceAt.recording === s.recording ? s.lab.sliceAt : null,
+  )
+  const asked = askedAt !== null
   const dimming = useStudio((s) => s.lab.dimming)
   const { setDimming, sliceFrom } = useStudioActions()
   if (recording === null || stale) return null
@@ -94,7 +97,8 @@ function SliceChip() {
   )
   if (slice !== null && slice.lines !== null) {
     const lines = `${formatCount(slice.lines.size)} ${slice.lines.size === 1 ? 'line' : 'lines'}`
-    const about = asked ? `step ${formatCount(slice.at)}` : 'the error'
+    const about =
+      askedAt === null ? 'the error' : (askedAt.label ?? `step ${formatCount(slice.at)}`)
     return (
       <div className="ed-slice" role="group" aria-label="Lines that led here">
         <div className="ed-slice-head">
