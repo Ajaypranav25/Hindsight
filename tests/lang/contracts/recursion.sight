@@ -1,0 +1,11 @@
+// Recursive functions check their contracts on every call.
+fn fact(n)
+  requires n >= 0
+  ensures result >= 1
+{
+  if n == 0 { 1 } else { n * fact(n - 1) }
+}
+print(fact(5)) // expect: 120
+fn countdown(n) requires n >= 0 { if n == 0 { "done" } else { countdown(n - 2) } } // expect runtime error R026: precondition failed: n >= 0 // hint: the caller passed n = -1
+print(countdown(4)) // expect: done
+countdown(5)

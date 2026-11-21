@@ -70,6 +70,11 @@ describe('disassemble', () => {
     expect(text).toContain('0007  GetLocal 2  ; a')
   })
 
+  test('contract checks show their kind and clause text', () => {
+    const text = disassemble(compileOk('fn f(x) requires x > 0 { x }'))
+    expect(text).toContain('Check 0  ; requires x > 0')
+  })
+
   test('malformed code does not throw', () => {
     const base = compileOk('1').script
     const proto: FunctionProto = { ...base, code: [99, Op.Closure, 0, Op.Const, 7] }

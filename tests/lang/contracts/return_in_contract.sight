@@ -1,0 +1,8 @@
+// A clause is an expression: it cannot return from the function (E029), and loops around a
+// `return` do not reach into it (E024).
+fn f(x) requires if x > 0 { return true } else { false } { x } // expect compile error E029: 'return' cannot be used in a contract
+fn g(xs) {
+  for x in xs {
+    fn h(y) ensures if y { break } else { true } { y } // expect compile error E024: 'break' can only be used inside a loop
+  }
+}

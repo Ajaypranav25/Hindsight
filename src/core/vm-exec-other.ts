@@ -1,12 +1,13 @@
 /**
  * The opcodes the dispatch loop does not handle inline: scope management, globals, fields and
- * indexing, data literals, closures, iteration setup and patterns. None of them changes the
- * current frame.
+ * indexing, data literals, closures, iteration setup, patterns and contract checks. None of them
+ * changes the current frame.
  */
-import { type FunctionProto, Op, type PatternConst } from './bytecode'
+import { type ContractConst, type FunctionProto, Op, type PatternConst } from './bytecode'
 import { InternalError } from './diagnostics'
 import type { Frame, Value } from './runtime-types'
 import { createClosure, declareTop } from './vm-calls'
+import { checkContract } from './vm-contracts'
 import { raise } from './vm-errors'
 import { iterInit } from './vm-iter'
 import { getField, getIndex, setField, setIndex } from './vm-ops-access'
@@ -51,6 +52,9 @@ export function executeOther(m: MachineState, frame: Frame, op: number, ip: numb
       return ip
     case Op.Range:
       range(m, code[ip]! === 1)
+      return ip + 1
+    case Op.Check:
+      checkContract(m, frame, contractAt(frame.closure.proto, code[ip]!))
       return ip + 1
     default:
       return executeNamed(m, frame, op, ip)
@@ -194,6 +198,14 @@ function protoAt(proto: FunctionProto, k: number): FunctionProto {
   const constant = proto.constants[k]
   if (typeof constant !== 'object' || constant.tag !== 'proto') {
     throw new InternalError(`constant ${k} is not a function proto`)
+  }
+  return constant
+}
+
+function contractAt(proto: FunctionProto, k: number): ContractConst {
+  const constant = proto.constants[k]
+  if (typeof constant !== 'object' || constant.tag !== 'contract') {
+    throw new InternalError(`constant ${k} is not a contract`)
   }
   return constant
 }

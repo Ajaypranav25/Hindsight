@@ -1,0 +1,4 @@
+// An unnamed function's postcondition hint calls it lambda (R027).
+let apply = |f, x| f(x)
+print(apply(fn(n) ensures result > n { n + 1 }, 1)) // expect: 2
+apply(fn(n) ensures result > n { n - 1 }, 1) // expect runtime error R027: postcondition failed: result > n // hint: lambda returned 0

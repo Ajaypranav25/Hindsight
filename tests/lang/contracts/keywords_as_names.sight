@@ -1,0 +1,7 @@
+// requires and ensures are contextual keywords: names everywhere else (SPEC §2.4, §3.1).
+let requires = 2
+var ensures = requires * 3
+fn requires_more(ensures) requires ensures > requires ensures result > ensures { ensures + 1 }
+print(requires, ensures, requires_more(5)) // expect: 2 6 6
+let rec = {requires: 1, ensures: 2}
+print(rec.requires + rec.ensures) // expect: 3

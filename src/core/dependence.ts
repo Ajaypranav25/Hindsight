@@ -347,6 +347,7 @@ function build(recording: Recording): Dependence | null {
       case Op.Neg:
       case Op.Not:
       case Op.IterInit:
+      case Op.Check:
         return operands(1)
       case Op.JumpIfFalse:
         activations[activations.length - 1]!.branches.set(ip, t)

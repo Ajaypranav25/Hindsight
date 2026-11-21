@@ -10,6 +10,7 @@ import { span } from '../span'
 import type { Span } from '../span'
 import type { LocalKind } from '../bytecode'
 import { compileAssign } from './assign'
+import { emitReturn, reportReturnInContract } from './contracts'
 import { compileExpr } from './expressions'
 import type { BlockMode, FunctionState } from './function-state'
 import { compileFunction } from './functions'
@@ -160,5 +161,10 @@ function compileReturn(fs: FunctionState, stmt: ReturnStmt): void {
   }
   if (stmt.value === null) fs.emit(Op.Nil, [], keyword)
   else compileExpr(fs, stmt.value)
-  fs.emit(Op.Return, [], stmt.span)
+  if (fs.inContract) {
+    reportReturnInContract(fs, keyword)
+    fs.emit(Op.Return, [], stmt.span)
+    return
+  }
+  emitReturn(fs, stmt.span, stmt.span)
 }

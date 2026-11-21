@@ -1,0 +1,9 @@
+// Preconditions run in order after the parameter prologue; the first falsy one fails.
+fn pick([a, b], i)
+  requires type(i) == "number"
+  requires i == 0 or i == 1 // expect runtime error R026: precondition failed: i == 0 or i == 1 // hint: the caller passed [a, b] = [10, 20], i = 2
+{
+  if i == 0 { a } else { b }
+}
+print(pick([10, 20], 1)) // expect: 20
+pick([10, 20], 2)

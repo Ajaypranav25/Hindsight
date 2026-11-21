@@ -27,6 +27,7 @@ export type CompileErrorCode =
   | 'E026'
   | 'E027'
   | 'E028'
+  | 'E029'
 
 /** Runtime error codes. Messages are cataloged in docs/SPEC.md §11.3. */
 export type RuntimeErrorCode =
@@ -53,6 +54,8 @@ export type RuntimeErrorCode =
   | 'R022'
   | 'R024'
   | 'R025'
+  | 'R026'
+  | 'R027'
 
 export type Severity = 'error' | 'warning'
 

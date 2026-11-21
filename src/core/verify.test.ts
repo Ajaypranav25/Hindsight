@@ -160,6 +160,32 @@ describe('verifyProto', () => {
   })
 })
 
+describe('verifyProto: contract checks', () => {
+  const contract: Constant = { tag: 'contract', kind: 'requires', text: 'x', fn: 'f', params: [] }
+
+  test('Check pops one value and needs a contract constant', () => {
+    // Arrange
+    const code = [Op.True, Op.Check, 0, Op.Nil, Op.Return]
+
+    // Act / Assert
+    expect(problems(code, { constants: [contract] })).toBe('')
+    expect(problems(code, { constants: [PATTERN] })).toContain('Check constant 0 is not a contract')
+    const twice = [Op.Check, 0, Op.Check, 0, Op.Nil, Op.Return]
+    expect(problems(twice, { constants: [contract] })).toContain(
+      'stack underflow: Check needs 1, depth 0',
+    )
+  })
+
+  test('accepts compiled programs with contracts', () => {
+    // Arrange
+    const source =
+      'fn f(x) requires x > 0 ensures result > x {\n  if x > 5 { return x }\n  x + 1\n}'
+
+    // Act / Assert
+    expect(verifyProgram(compileOk(source))).toEqual([])
+  })
+})
+
 describe('verifyProgram', () => {
   test('accepts compiled programs', () => {
     expect(verifyProgram(compileOk('fn f(x) { || x }\nprint(f(1)())'))).toEqual([])

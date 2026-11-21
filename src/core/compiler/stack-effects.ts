@@ -29,6 +29,7 @@ const PUSH_ONE = new Set<number>([
 
 const POP_ONE = new Set<number>([
   Op.Pop,
+  Op.Check,
   Op.SetLocal,
   Op.SetUpvalue,
   Op.SetGlobal,

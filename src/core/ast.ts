@@ -261,8 +261,25 @@ export interface FunctionExpr {
   readonly kind: 'Function'
   readonly name: string | null
   readonly params: readonly Pattern[]
+  /** `requires` / `ensures` clauses in source order (SPEC §7.16); always empty for lambdas. */
+  readonly contracts: readonly ContractClause[]
   readonly body: Block | Expr
   readonly form: 'fn' | 'lambda'
+  readonly span: Span
+}
+
+export type ContractKind = 'requires' | 'ensures'
+
+/**
+ * One contract clause of a `fn` (SPEC §3.1 `contract`, §7.16): `requires EXPR` is checked at entry,
+ * `ensures EXPR` on every return with `result` bound to the returned value.
+ */
+export interface ContractClause {
+  readonly kind: 'Contract'
+  readonly clause: ContractKind
+  readonly expr: Expr
+  /** The contextual keyword `requires` or `ensures`. */
+  readonly keywordSpan: Span
   readonly span: Span
 }
 

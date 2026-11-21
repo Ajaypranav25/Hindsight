@@ -1,0 +1,9 @@
+// A failed precondition blames the caller: the hint lists the arguments (SPEC §7.16, R026).
+fn average(xs)
+  requires len(xs) > 0 // expect runtime error R026: precondition failed: len(xs) > 0 // hint: the caller passed xs = []
+{
+  sum(xs) / len(xs)
+}
+print(average([4])) // expect: 4
+print(average([]))
+print("not reached")

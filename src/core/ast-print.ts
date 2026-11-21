@@ -9,6 +9,7 @@
  */
 import type {
   Block,
+  ContractClause,
   Expr,
   FunctionExpr,
   MatchArm,
@@ -22,7 +23,16 @@ import type {
 import { isKeyword } from './tokens'
 
 export type AstNode =
-  Program | Stmt | Block | Expr | Spread | RecordField | MatchArm | Pattern | RestPattern
+  | Program
+  | Stmt
+  | Block
+  | Expr
+  | Spread
+  | RecordField
+  | MatchArm
+  | ContractClause
+  | Pattern
+  | RestPattern
 
 type Part = string | AstNode
 
@@ -70,7 +80,8 @@ function formatKey(key: string): string {
 
 function functionParts(fn: FunctionExpr): Part[] {
   const head = fn.form === 'lambda' ? '(lambda ' : fn.name === null ? '(fn ' : `(fn ${fn.name} `
-  return [...sequence(head + '(', fn.params, ') '), fn.body, ')']
+  const contracts = fn.contracts.flatMap((clause): Part[] => [clause, ' '])
+  return [...sequence(head + '(', fn.params, ') '), ...contracts, fn.body, ')']
 }
 
 function templateParts(quasis: readonly string[], exprs: readonly Expr[]): Part[] {
@@ -174,6 +185,8 @@ function expandExpression(node: Exclude<AstNode, Program | Stmt | Block>): Part[
       return group('match', [node.subject, ...node.arms])
     case 'Arm':
       return armParts(node)
+    case 'Contract':
+      return group(node.clause, [node.expr])
     default:
       return expandPattern(node)
   }

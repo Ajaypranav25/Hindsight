@@ -1,0 +1,5 @@
+// Inside a block, a clause stops before an operator that starts a new line (SPEC §3.2).
+fn f(x)
+  requires x
+    > 0 // expect compile error E010: expected '{' but found '>'
+{ x }

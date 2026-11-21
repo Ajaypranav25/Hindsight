@@ -4,6 +4,7 @@
  */
 import type { Block, Expr, FunctionExpr, Pattern } from '../ast'
 import { Op } from '../bytecode'
+import { compileRequires, emitReturn, prepareContracts } from './contracts'
 import { compileExpr } from './expressions'
 import { FunctionState } from './function-state'
 import { bindLocalPattern, closingBrace, compileBlock } from './statements'
@@ -58,7 +59,7 @@ function recordHiddenParameters(fs: FunctionState, params: readonly Pattern[]): 
 function compileBody(fs: FunctionState, body: Block | Expr): void {
   if (body.kind === 'Block') {
     compileBlock(fs, body, 'value')
-    fs.emit(Op.Return, [], closingBrace(body))
+    emitReturn(fs, closingBrace(body), closingBrace(body))
     return
   }
   fs.markStmtStart()
@@ -79,6 +80,9 @@ export function compileFunction(fs: FunctionState, fn: FunctionExpr, name: strin
   child.pushScope()
   declareParameters(child, fn.params)
   compilePrologue(child, fn.params)
+  const contracts = prepareContracts(child, fn, name)
+  child.ensures = contracts.ensures
+  compileRequires(child, contracts.requires)
   compileBody(child, body)
   recordHiddenParameters(child, fn.params)
   const proto = child.finish()

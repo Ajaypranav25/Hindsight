@@ -1,0 +1,8 @@
+// A postcondition checked at the end of the body names the returned value (R027).
+fn double(n)
+  ensures result == 2 * n // expect runtime error R027: postcondition failed: result == 2 * n // hint: 'double' returned 7
+{
+  if n > 2 { n + 4 } else { n * 2 }
+}
+print(double(1), double(2)) // expect: 2 4
+print(double(3))

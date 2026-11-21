@@ -86,6 +86,7 @@ const KIND_REASONS: Readonly<Record<string, string>> = {
   param: 'it is a parameter',
   loop: 'it is a loop variable',
   match: 'it is a match binding',
+  result: "it is the function's result",
 }
 
 function reportImmutable(fs: FunctionState, name: string, kind: string, span: Span): void {
