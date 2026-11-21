@@ -14,6 +14,7 @@ import { compile, LineIndex, record, type Recording } from '../core/index'
 import { diagnoseTool } from './mcp-diagnose'
 import { diffTool } from './mcp-diff'
 import { findBugTool } from './mcp-find-bug'
+import { traceFileTools } from './mcp-trace-file'
 import { guardResponse } from './mcp-guard'
 import { queryTool } from './mcp-query'
 import { suggestRepairsTool } from './mcp-repair'
@@ -51,7 +52,7 @@ export class McpServer implements ToolContext {
   private nextTrace = 1
   private readonly tools: readonly Tool[]
 
-  constructor(private readonly version: string) {
+  constructor(readonly version: string) {
     const core = coreTools(this)
     this.tools = [
       ...core.slice(0, 5),
@@ -61,6 +62,7 @@ export class McpServer implements ToolContext {
       diagnoseTool(this),
       suggestRepairsTool(this),
       findBugTool(this),
+      ...traceFileTools(this),
     ]
   }
 

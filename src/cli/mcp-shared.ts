@@ -45,6 +45,8 @@ export type RecordedSource =
 
 /** What tools need from the server: the trace store and the shared argument checks. */
 export interface ToolContext {
+  /** The server's version, stored in exported trace files. */
+  readonly version: string
   /** The trace named by `args[key]` (default `trace_id`). */
   trace(args: Args, key?: string): Trace
   /** A step of `trace` from `args[key]` (default `step`): an integer in 0..steps. */

@@ -276,6 +276,7 @@ same. From a checkout without a linked build, use `"command": "npx", "args": ["t
 | `seek_state`, `query_provenance`, `query` | the state at a step (with depth, item and frame budgets), where a value came from, moments by condition (in pages, or summarized)                            |
 | `fork_whatif`, `get_divergence`, `solve`  | counterfactuals forwards and backwards                                                                                                                       |
 | `why_not`, `slice`                        | why a line never ran; which lines can have caused a moment                                                                                                   |
+| `export_trace`, `open_trace`              | a recorded run as a small `.sighttrace` file (base64) to attach to an issue, and back                                                                        |
 
 Results are sized for a context window: long lists come in pages that say how to fetch the next,
 `query` can summarize a loop into one row (`total: line 3 ×1,000, steps 21–9,013, values 1–500500`),
