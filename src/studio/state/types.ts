@@ -194,7 +194,7 @@ export interface StudioActions {
     text: string,
   ): Promise<void>
   /** Opens run `index` of the sweep as a what-if. */
-  openSweepRun(index: number): void
+  openSweepRun(index: number): Promise<void>
   /** Drops the sweep (stopping it if it is still running). */
   closeSweep(): void
   /** Explains in the editor why `line` did not run (ARCHITECTURE §7.10). */

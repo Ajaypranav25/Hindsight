@@ -4,6 +4,7 @@ import { afterEach, describe, expect, test } from 'vitest'
 import { compile, queryRecording, record, type Recording } from '../../core/index'
 import { buildEnvelope, fullViewport } from '../lib/timeline-math'
 import { renderWithRecording } from '../panels/test-fixtures'
+import { setAnalysisService } from '../analysis/service'
 import { liveQuery, liveSweep } from '../state/lab'
 import { buildMarkPyramid } from '../lib/mark-pyramid'
 import {
@@ -16,7 +17,10 @@ import {
 import { neighbours, QueryBar, queryRows, querySummary } from './QueryBar'
 import { longestRun, SweepBanner, sweepHeadline } from './SweepBanner'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  setAnalysisService(null)
+})
 
 function recordSource(source: string): Recording {
   const result = compile(source)
@@ -179,6 +183,7 @@ describe('sweeps', () => {
   test('a row opens that run as a what-if, and the sweep is back after leaving it', async () => {
     const { store, recording, at } = await swept()
     fireEvent.click(screen.getByRole('button', { name: '27' }))
+    await waitFor(() => expect(store.getState().whatIf).not.toBeNull())
     const state = store.getState()
     expect(state.whatIf).toMatchObject({ parent: recording, label: `start = 27 at step ${at}` })
     expect(state.recording?.outputs[0]?.text).toBe('111')
@@ -201,6 +206,46 @@ describe('sweeps', () => {
     await act(() => store.getState().sweepWhatIf(target, [1], 'start', '1'))
     expect(liveSweep(store.getState().lab, recording)?.failed).toHaveLength(1)
     expect(screen.getByRole('table').textContent).toContain('1')
+  })
+
+  test('the banner counts the values forked so far, and a sweep that fails says so', async () => {
+    const recording = recordSource(COLLATZ)
+    const at = recording.lineHits(11)[0]!
+    const start = recording.stateAt(at).globals.find((global) => global.name === 'start')!
+    let finish: (error: Error) => void = () => undefined
+    setAnalysisService({
+      analyze: (_recording, _request, _signal, onProgress) =>
+        new Promise((_resolve, reject) => {
+          onProgress?.(1)
+          finish = reject
+        }),
+    })
+    const { store } = renderWithRecording(<SweepBanner />, recording, at)
+    let running: Promise<void> = Promise.resolve()
+    act(() => {
+      running = store.getState().sweepWhatIf(start.target, [6, 7], 'start', '6, 7')
+    })
+    expect(liveSweep(store.getState().lab, recording)?.done).toBe(1)
+    expect(screen.getByText(/1 of 2/)).toBeTruthy()
+    finish(new Error('out of memory'))
+    await act(() => running)
+    expect(store.getState().lab.sweep).toBeNull()
+    expect(store.getState().notice).toEqual({ text: 'No sweep: out of memory', tone: 'error' })
+  })
+
+  test('closing a sweep that is still running stops it and keeps nothing', async () => {
+    const recording = recordSource(COLLATZ)
+    const at = recording.lineHits(11)[0]!
+    const start = recording.stateAt(at).globals.find((global) => global.name === 'start')!
+    const { store } = renderWithRecording(<SweepBanner />, recording, at)
+    let running: Promise<void> = Promise.resolve()
+    act(() => {
+      running = store.getState().sweepWhatIf(start.target, [6, 7, 27], 'start', '6, 7, 27')
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Stop' }))
+    await act(() => running)
+    expect(store.getState().lab.sweep).toBeNull()
+    expect(store.getState().notice).toBeNull()
   })
 
   test('a sweep stops when another run is shown', async () => {

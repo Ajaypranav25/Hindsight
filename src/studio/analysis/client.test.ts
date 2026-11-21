@@ -87,6 +87,26 @@ describe('jobs go to the worker', () => {
     await second
     expect(analyses(workers[0]!)).toEqual([1, 2])
   })
+
+  test("a sweep's progress reaches the caller, and the main thread's fallback reports it too", async () => {
+    // Arrange: a worker clock that makes the sweep pause after every fork.
+    const recording = recordSource(PRICE)
+    let clock = 0
+    const worker = new FakeWorker({ now: () => (clock += 1000) })
+    const client = new AnalysisClient({ createWorker: () => worker, fallback: localAnalysis })
+    const target = { kind: 'global', name: 'qty' } as const
+    const time = recording.lineHits(3)[0]!
+    const request: AnalysisRequest = { kind: 'sweep', time, target, values: [1, 2, 3] }
+    const seen: number[] = []
+    // Act
+    const swept = await client.analyze(recording, request, undefined, (done) => seen.push(done))
+    const local: number[] = []
+    await localAnalysis.analyze(recording, request, undefined, (done) => local.push(done))
+    // Assert
+    expect(seen).toEqual([1, 2, 3])
+    expect(local).toEqual([1, 2, 3])
+    expect(swept.kind === 'sweep' && swept.sweep.runs).toHaveLength(3)
+  })
 })
 
 describe('cancelling', () => {

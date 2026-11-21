@@ -19,11 +19,15 @@ export class AnalysisCancelled extends Error {
   }
 }
 
+/** Called with the number of units done (a sweep's values forked so far). */
+export type OnProgress = (done: number) => void
+
 export interface AnalysisBackend {
   analyze(
     recording: Recording,
     request: AnalysisRequest,
     signal?: AbortSignal,
+    onProgress?: OnProgress,
   ): Promise<AnalysisResult>
 }
 
@@ -46,7 +50,7 @@ async function drive<T>(job: Job<T>, signal: AbortSignal | undefined): Promise<T
 }
 
 export const localAnalysis: AnalysisBackend = {
-  async analyze(recording, request, signal) {
+  async analyze(recording, request, signal, onProgress) {
     check(signal)
     switch (request.kind) {
       case 'slice':
@@ -69,7 +73,10 @@ export const localAnalysis: AnalysisBackend = {
         }
       case 'sweep': {
         const { time, target, values } = request
-        const sweep = await sweepAsync(recording, time, target, values, { signal })
+        const sweep = await sweepAsync(recording, time, target, values, {
+          signal,
+          onRun: (done) => onProgress?.(done),
+        })
         check(signal)
         return {
           kind: 'sweep',

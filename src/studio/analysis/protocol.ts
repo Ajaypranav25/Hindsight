@@ -116,6 +116,8 @@ export type FromWorker =
   | { readonly type: 'done'; readonly id: number; readonly result: AnalysisResult }
   /** The job stopped because it was cancelled. */
   | { readonly type: 'cancelled'; readonly id: number }
+  /** A sweep's progress: how many of its values have been forked so far. */
+  | { readonly type: 'progress'; readonly id: number; readonly done: number }
   /** The worker could not do the job (the main thread then does it itself). */
   | { readonly type: 'failed'; readonly id: number; readonly error: string }
 
@@ -125,6 +127,11 @@ export const MAX_CHAIN = 40
 /** Requests that run many forks or mutants; the others are single passes over the run. */
 export function isSearch(request: AnalysisRequest): boolean {
   return request.kind === 'solve' || request.kind === 'repair' || request.kind === 'sweep'
+}
+
+/** Requests whose job reports progress as it goes (a sweep, one fork per value). */
+export function reportsProgress(request: AnalysisRequest): boolean {
+  return request.kind === 'sweep'
 }
 
 /** The typed arrays in a result, which travel as transferables instead of being copied. */

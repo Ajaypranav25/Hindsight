@@ -103,12 +103,9 @@ export function useChartLab(): { readonly lab: ChartLab | null; readonly extent:
   )
   const runs = sweep?.runs ?? null
   const forkTime = sweep?.time ?? 0
-  const ghosts = useMemo(
-    () => (runs ?? []).map((run) => buildEnvelope(run.recording.depthSeries())),
-    [runs],
-  )
+  const ghosts = useMemo(() => (runs ?? []).map((run) => buildEnvelope(run.depths)), [runs])
   const extent = useMemo(
-    () => (runs ?? []).reduce((longest, run) => Math.max(longest, run.recording.length), 0),
+    () => (runs ?? []).reduce((longest, run) => Math.max(longest, run.length), 0),
     [runs],
   )
   const lab = useMemo((): ChartLab | null => {

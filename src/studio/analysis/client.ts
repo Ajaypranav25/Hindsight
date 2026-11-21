@@ -13,7 +13,7 @@
  * recorded again), the job runs on the main thread through the fallback backend.
  */
 import type { Recording } from '../../core/index'
-import { AnalysisCancelled, type AnalysisBackend } from './local'
+import { AnalysisCancelled, type AnalysisBackend, type OnProgress } from './local'
 import { type AnalysisRequest, type AnalysisResult, type FromWorker, isSearch } from './protocol'
 import type { ToWorker } from './protocol'
 import { describeRun, runKey } from './run-description'
@@ -45,6 +45,7 @@ interface Job {
   resolve: (result: AnalysisResult) => void
   reject: (error: unknown) => void
   signal: AbortSignal | undefined
+  onProgress: OnProgress | undefined
   /** The caller gave up; the job may still be adopted by an identical request. */
   orphaned: boolean
   /** A cancel message went to the worker. */
@@ -78,11 +79,12 @@ export class AnalysisClient implements AnalysisBackend {
     recording: Recording,
     request: AnalysisRequest,
     signal?: AbortSignal,
+    onProgress?: OnProgress,
   ): Promise<AnalysisResult> {
     if (signal?.aborted === true) return Promise.reject(new AnalysisCancelled())
     const run = describeRun(recording)
     if (this.unavailable || run === null) {
-      return this.options.fallback.analyze(recording, request, signal)
+      return this.options.fallback.analyze(recording, request, signal, onProgress)
     }
     const id = this.nextId++
     const message: ToWorker = { type: 'analyze', id, run, request }
@@ -97,6 +99,7 @@ export class AnalysisClient implements AnalysisBackend {
         resolve,
         reject,
         signal,
+        onProgress,
         orphaned: false,
         cancelSent: false,
       }
@@ -122,7 +125,7 @@ export class AnalysisClient implements AnalysisBackend {
 
   private runLocally(job: Job): void {
     this.options.fallback
-      .analyze(job.recording, job.request, job.signal)
+      .analyze(job.recording, job.request, job.signal, job.onProgress)
       .then(job.resolve, job.reject)
   }
 }
@@ -172,6 +175,7 @@ class Lane {
     current.resolve = job.resolve
     current.reject = job.reject
     current.signal = job.signal
+    current.onProgress = job.onProgress
     this.watch(current)
   }
 
@@ -239,6 +243,10 @@ class Lane {
     }
     const job = this.current
     if (job === null || job.id !== message.id) return
+    if (message.type === 'progress') {
+      if (!job.orphaned) job.onProgress?.(message.done)
+      return
+    }
     this.current = null
     if (!job.orphaned) {
       if (message.type === 'done') job.resolve(message.result)

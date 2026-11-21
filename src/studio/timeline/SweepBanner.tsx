@@ -4,29 +4,29 @@
  * that run as an ordinary what-if; "Back to the real run" returns here.
  */
 import { useEffect, useRef } from 'react'
-import { formatLiteral, type Recording, type SweepRun } from '../../core/index'
+import { formatLiteral, type Outcome } from '../../core/index'
+import type { SweepRunSummary } from '../analysis/protocol'
 import { formatCount } from '../lib/format'
 import { useStudio, useStudioActions } from '../state/context'
 import { liveSweep, type SweepState } from '../state/lab'
 import './lab.css'
 
-function outcomeText(recording: Recording): string {
-  const { outcome } = recording
+function outcomeText(outcome: Outcome): string {
   if (outcome.kind === 'error') return `error ${outcome.error.code}`
   if (outcome.kind === 'finished') return 'finished'
   return outcome.kind === 'step-limit' ? 'step limit' : 'stopped'
 }
 
-function outputText(run: SweepRun): string {
+function outputText(run: SweepRunSummary): string {
   const changed = Math.max(run.comparison.removed, run.comparison.added)
   return changed === 0 ? 'same output' : `${formatCount(changed)} changed`
 }
 
 /** The index of the run with the most steps (the first of equals); -1 without runs. */
-export function longestRun(runs: readonly SweepRun[]): number {
+export function longestRun(runs: readonly SweepRunSummary[]): number {
   let longest = -1
   runs.forEach((run, i) => {
-    if (longest < 0 || run.recording.length > runs[longest]!.recording.length) longest = i
+    if (longest < 0 || run.length > runs[longest]!.length) longest = i
   })
   return longest
 }
@@ -97,17 +97,17 @@ export function SweepBanner(props: { readonly onClosed?: () => void }) {
                         type="button"
                         className="tl-sweep__open"
                         title="Open this run as a what-if"
-                        onClick={() => openSweepRun(i)}
+                        onClick={() => void openSweepRun(i)}
                       >
                         {formatLiteral(run.value)}
                       </button>
                     </th>
                     <td>
-                      {formatCount(run.recording.length)}
+                      {formatCount(run.length)}
                       {i === longest && sweep.runs.length > 1 ? ' · longest' : ''}
                     </td>
                     <td>{formatCount(run.maxDepth)}</td>
-                    <td>{outcomeText(run.recording)}</td>
+                    <td>{outcomeText(run.outcome)}</td>
                     <td>{outputText(run)}</td>
                   </tr>
                 ))}

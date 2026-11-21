@@ -115,6 +115,26 @@ describe('the worker side of the protocol', () => {
     expect(posts[1]!.message).toEqual({ type: 'cancelled', id: 1 })
   })
 
+  test('a sweep says how many values it has forked after every pause', () => {
+    const recording = recordSource(PRICE)
+    const run = describeRun(recording)!
+    const { handle, posts, flush } = harness()
+    const target = { kind: 'global', name: 'qty' } as const
+    handle(analyze(4, run, { kind: 'sweep', time: 2, target, values: [1, 2, 3] }))
+    flush()
+    expect(posts.map((post) => post.message.type)).toEqual([
+      'progress',
+      'progress',
+      'progress',
+      'done',
+    ])
+    expect(posts.slice(0, 3).map((post) => post.message)).toEqual([
+      { type: 'progress', id: 4, done: 1 },
+      { type: 'progress', id: 4, done: 2 },
+      { type: 'progress', id: 4, done: 3 },
+    ])
+  })
+
   test('an uncancelled search runs to its end; cancels of finished jobs are ignored', () => {
     const recording = recordSource(PRICE)
     const run = describeRun(recording)!

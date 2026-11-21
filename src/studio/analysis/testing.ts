@@ -11,6 +11,8 @@ export interface FakeWorkerOptions {
   /** Never says it is ready, and fails on its first message (a worker that cannot start). */
   readonly broken?: boolean
   readonly recreate?: HandlerHost['recreate']
+  /** The handler's clock (a fast one makes every search pause after each unit of work). */
+  readonly now?: HandlerHost['now']
 }
 
 export class FakeWorker implements WorkerLike {
@@ -26,6 +28,7 @@ export class FakeWorker implements WorkerLike {
       post: (message, transfer) => this.send(message, transfer),
       schedule: (callback) => void setTimeout(callback, 0),
       recreate: options.recreate,
+      now: options.now,
     })
     if (options.broken !== true) this.send({ type: 'ready' }, [])
   }

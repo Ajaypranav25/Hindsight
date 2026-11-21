@@ -5,7 +5,7 @@
 import type { Recording } from '../../core/index'
 import { createAnalysisWorker } from './analysis-worker-factory'
 import { AnalysisClient } from './client'
-import { type AnalysisBackend, localAnalysis } from './local'
+import { type AnalysisBackend, localAnalysis, type OnProgress } from './local'
 import type { AnalysisRequest, ResultOf } from './protocol'
 
 let service: AnalysisBackend | null = null
@@ -34,8 +34,9 @@ export async function analyze<K extends AnalysisRequest['kind']>(
   recording: Recording,
   request: Extract<AnalysisRequest, { kind: K }>,
   signal?: AbortSignal,
+  onProgress?: OnProgress,
 ): Promise<ResultOf<K>> {
-  const result = await analysisService().analyze(recording, request, signal)
+  const result = await analysisService().analyze(recording, request, signal, onProgress)
   if (result.kind !== request.kind) {
     throw new Error(`The analysis answered a ${result.kind} request instead of ${request.kind}.`)
   }

@@ -9,6 +9,7 @@ import { analysisJob, type Job } from './compute'
 import {
   type AnalysisResult,
   type FromWorker,
+  reportsProgress,
   type RunDescription,
   type ToWorker,
   transferablesOf,
@@ -32,6 +33,9 @@ type Analyze = Extract<ToWorker, { type: 'analyze' }>
 interface Running {
   readonly id: number
   readonly job: Job<AnalysisResult>
+  /** Units of work done (pauses), counted for jobs that report progress. */
+  units: number
+  readonly progress: boolean
 }
 
 /** Returns the function that handles each message the main thread sends. */
@@ -65,15 +69,23 @@ export function createAnalysisHandler(host: HandlerHost): (message: ToWorker) =>
     if (current === null) return
     if (cancelled.delete(current.id)) return finish({ type: 'cancelled', id: current.id })
     const until = now() + WORKER_SLICE_MS
+    const before = current.units
     try {
       let next = current.job.next()
-      while (next.done !== true && now() < until) next = current.job.next()
+      while (next.done !== true && now() < until) {
+        current.units++
+        next = current.job.next()
+      }
       if (next.done === true) {
         const result = next.value
         return finish({ type: 'done', id: current.id, result }, transferablesOf(result))
       }
+      current.units++
     } catch (error) {
       return finish({ type: 'failed', id: current.id, error: describeError(error) })
+    }
+    if (current.progress && current.units !== before) {
+      host.post({ type: 'progress', id: current.id, done: current.units }, [])
     }
     schedule(advance)
   }
@@ -95,7 +107,12 @@ export function createAnalysisHandler(host: HandlerHost): (message: ToWorker) =>
       host.post({ type: 'failed', id: message.id, error: recording }, [])
       return startNext()
     }
-    running = { id: message.id, job: analysisJob(recording, message.request) }
+    running = {
+      id: message.id,
+      job: analysisJob(recording, message.request),
+      units: 0,
+      progress: reportsProgress(message.request),
+    }
     advance()
   }
 
