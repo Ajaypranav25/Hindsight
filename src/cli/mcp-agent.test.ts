@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 import { callTree, compile, record, type Recording } from '../core/index'
 import { McpServer } from './mcp'
@@ -421,6 +422,20 @@ describe('find_bug', () => {
     expect(
       call(server, 'find_bug', { trace_id: 't1', expectations: [{ call: 'x(' }] }).isError,
     ).toBe(true)
+  })
+
+  test('contracts and assertions in the program answer questions by themselves', () => {
+    const server = new McpServer('0')
+    const source = readFileSync('examples/19-contracts.sight', 'utf8')
+    const { body } = call(server, 'find_bug', { source, max_mutants: 40 })
+    expect(body).toMatchObject({ status: 'verdict', verdict: { function: 'total' } })
+    const contracts = body.answered_from_contracts as { reason: string }[]
+    expect(contracts.length).toBeGreaterThan(0)
+    expect(contracts.every((auto) => auto.reason.length > 0)).toBe(true)
+    const manual = call(server, 'find_bug', { trace_id: 't1', use_contracts: false }).body
+    expect(manual).toMatchObject({ status: 'question' })
+    expect(manual.answered_from_contracts).toBeUndefined()
+    expect(call(server, 'find_bug', { trace_id: 't1', use_contracts: 'no' }).isError).toBe(true)
   })
 
   test('an oracle answers questions without the agent', () => {

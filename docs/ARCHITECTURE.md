@@ -925,9 +925,11 @@ tool is for and when to use it, and the `initialize` instructions suggest an ord
 
 A question id is the function name and an FNV-1a digest of the call's memo key (`average#3f2a91c0`;
 `name@entry` for calls without a key), so ids are stable across calls and identical calls share
-one. `replayInterview(tree, answers, { strategy, oracle })` takes an optional oracle
-(`(details) => answer | null`) that answers questions before the agent is asked; contracts and
-assertions can supply one.
+one. `replayInterview(tree, answers, { strategy, oracle, contracts })` answers a question
+before the agent is asked when the agent's expectations decide it (`oracle`,
+`(details) => answer | null`) or, failing that, the program's contracts and assertions do
+(`contracts`, the §7.6 `contractOracle`; `use_contracts: false` turns it off). Contract answers
+are listed in `answered_from_contracts` with their reasons.
 
 **Budgets.** Searches are bounded by counts, never by the clock, so results are deterministic:
 `diagnose_failure` checks at most `max_mutants` (default 120) mutants, fewer on long runs so that

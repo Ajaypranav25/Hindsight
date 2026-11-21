@@ -3,16 +3,19 @@
  * agent passes every answer given so far; each call rebuilds the finder from the start, replays
  * the answers, and returns the next open question or the verdict with repair previews. A question
  * id is derived from the call's memoization key (`average#3f2a91c0`), so it is stable across calls
- * and identical calls share it. An oracle (`(details) => answer | null`) can answer questions
- * automatically, for example from contracts or assertions; the tool itself plugs none in.
+ * and identical calls share it. Questions answer themselves, in this order, from the agent's
+ * expectations (an oracle `(details) => answer | null`) and from the program's own contracts and
+ * assertions (`contractOracle`, unless `use_contracts` is false).
  */
 import {
   answer,
   type Answer,
   type CallDetails,
   type CallNode,
+  type CallOracle,
   type CallTree,
   callTree,
+  contractOracle,
   culpritText,
   type FinderState,
   question,
@@ -59,12 +62,18 @@ export type Oracle = (details: CallDetails) => Answer | null
 
 export interface InterviewOptions {
   readonly strategy?: Strategy
+  /** Consulted first: answers given ahead of time (the agent's expectations). */
   readonly oracle?: Oracle
+  /** Consulted second: the program's contracts and assertions (ARCHITECTURE §7.6). */
+  readonly contracts?: CallOracle
 }
 
 export interface AutoAnswer {
   readonly question: string
   readonly answer: Answer
+  /** Where the answer came from; contract answers also say why. */
+  readonly source: 'expectation' | 'contract'
+  readonly reason?: string
 }
 
 export interface Interview {
@@ -120,10 +129,21 @@ export function replayInterview(
       state = answer(state, given)
       continue
     }
-    const automatic = options.oracle?.(tree.details(call)) ?? null
-    if (automatic === null) return { state, open: call, used, auto }
-    auto.push({ question: id, answer: automatic })
-    state = answer(state, automatic)
+    const expected = options.oracle?.(tree.details(call)) ?? null
+    if (expected !== null) {
+      auto.push({ question: id, answer: expected, source: 'expectation' })
+      state = answer(state, expected)
+      continue
+    }
+    const contract = options.contracts?.(call) ?? null
+    if (contract === null) return { state, open: call, used, auto }
+    auto.push({
+      question: id,
+      answer: contract.answer,
+      source: 'contract',
+      reason: contract.reason,
+    })
+    state = answer(state, contract.answer)
   }
 }
 
@@ -131,7 +151,7 @@ export function findBugTool(context: ToolContext): Tool {
   return {
     name: 'find_bug',
     description:
-      'Localize a wrong result without reading every function: an interview (algorithmic debugging) about recorded calls. Each call returns either the next question (a call with its arguments, result and side effects: is that what the function should do?) or the verdict (the function whose own code is wrong, its lines, certainty) with verified one-token repair previews that agree with your answers. STATELESS: pass trace_id (or source) and every answer so far as answers: [{"question": "<id from the question>", "answer": "right" | "wrong" | "unsure"}]. strategy "divide" (default) halves the suspects with each answer (about log2(calls) questions); "top-down" asks in execution order. Know what some calls should return? Pass expectations (as for suggest_repairs) and questions about those calls answer themselves.',
+      'Localize a wrong result without reading every function: an interview (algorithmic debugging) about recorded calls. Each call returns either the next question (a call with its arguments, result and side effects: is that what the function should do?) or the verdict (the function whose own code is wrong, its lines, certainty) with verified one-token repair previews that agree with your answers. STATELESS: pass trace_id (or source) and every answer so far as answers: [{"question": "<id from the question>", "answer": "right" | "wrong" | "unsure"}]. strategy "divide" (default) halves the suspects with each answer (about log2(calls) questions); "top-down" asks in execution order. Know what some calls should return? Pass expectations (as for suggest_repairs) and questions about those calls answer themselves. Contracts (requires/ensures) in the program and assertions of the form assert(f(args) == expected) also answer questions unless use_contracts is false; such answers are listed with their reasons.',
     inputSchema: schema(
       {
         trace_id: TRACE_ID,
@@ -155,6 +175,11 @@ export function findBugTool(context: ToolContext): Tool {
           ...EXPECTATIONS,
           description:
             'What some calls should return (as for suggest_repairs); questions about matching calls are answered automatically',
+        },
+        use_contracts: {
+          type: 'boolean',
+          description:
+            'Let contracts and assertions in the program answer questions (default true)',
         },
         max_mutants: MUTANTS,
         max_repairs: REPAIRS,
@@ -195,14 +220,34 @@ function findBug(context: ToolContext, args: Args): Json {
     args.expectations === undefined
       ? undefined
       : expectationOracle(trace.recording, parseExpectations(args.expectations))
-  const interview = replayInterview(tree, answers, { strategy, oracle })
+  if (args.use_contracts !== undefined && typeof args.use_contracts !== 'boolean') {
+    throw new ToolError('use_contracts must be true or false')
+  }
+  const contracts = args.use_contracts === false ? undefined : contractOracle(trace.recording, tree)
+  const interview = replayInterview(tree, answers, { strategy, oracle, contracts })
+  const fromExpectations = interview.auto.filter((auto) => auto.source === 'expectation')
+  const fromContracts = interview.auto.filter((auto) => auto.source === 'contract')
   const unused = [...answers.keys()].filter((id) => !interview.used.has(id))
   const base: JsonObject = {
     trace_id: trace.id,
     strategy,
     questions_answered: interview.used.size + interview.auto.length,
-    ...(interview.auto.length > 0
-      ? { answered_from_expectations: interview.auto.map((auto) => ({ ...auto })) }
+    ...(fromExpectations.length > 0
+      ? {
+          answered_from_expectations: fromExpectations.map(({ question, answer }) => ({
+            question,
+            answer,
+          })),
+        }
+      : {}),
+    ...(fromContracts.length > 0
+      ? {
+          answered_from_contracts: fromContracts.map(({ question, answer, reason }) => ({
+            question,
+            answer,
+            reason: reason ?? null,
+          })),
+        }
       : {}),
     ...(unused.length > 0
       ? {
