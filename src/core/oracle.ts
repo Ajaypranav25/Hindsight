@@ -60,6 +60,7 @@ class ContractFacts {
   private syntaxCache: OracleSyntax | null = null
   private failures: ReadonlyMap<number, AutoAnswer> | null = null
   private examples: ReadonlyMap<string, AutoAnswer> | null = null
+  private sites: ReadonlyMap<string, AssertionExample> | null = null
 
   constructor(
     private readonly recording: Recording,
@@ -156,26 +157,25 @@ class ContractFacts {
     const children = this.tree.children(frame)
     for (let i = children.length - 1; i >= 0; i--) {
       const child = children[i]!
-      if (child.outcome === 'returned' && this.siteOf(child, example)) return child
+      if (child.outcome === 'returned' && this.exampleAt(child) === example) return child
     }
     return null
   }
 
   // --- assertions -------------------------------------------------------------------------------
 
-  private siteOf(call: CallNode, example: AssertionExample): boolean {
+  /** The assertion example whose judged call site made `call`, if any (one lookup per call). */
+  private exampleAt(call: CallNode): AssertionExample | undefined {
+    if (this.syntax.assertions.length === 0) return undefined
+    this.sites ??= new Map(this.syntax.assertions.map((a) => [spanKey(a.siteSpan), a]))
     const site = this.recording.locationAt(call.entry - 1)
-    return (
-      site !== null &&
-      site.source === 'main' &&
-      site.opName === 'Call' &&
-      sameSpan(site.span, example.siteSpan)
-    )
+    if (site === null || site.source !== 'main' || site.opName !== 'Call') return undefined
+    return this.sites.get(spanKey(site.span))
   }
 
   private fromAssertion(call: CallNode): AutoAnswer | null {
     if (call.library || call.outcome !== 'returned') return null
-    const example = this.syntax.assertions.find((candidate) => this.siteOf(call, candidate))
+    const example = this.exampleAt(call)
     if (example === undefined) return null
     const line = this.lineOf(example.assertSpan)
     const verdict = this.assertionOutcome(call, example)
