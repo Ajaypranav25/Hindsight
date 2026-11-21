@@ -410,7 +410,7 @@ mutable heap objects reachable from them (lists, records, closures with their ce
 with their position and key snapshot), preserving object identity and ids. Strings, numbers, ranges,
 natives, library closures and `FunctionProto`s are shared, never copied. Tool-side bookkeeping is
 keyed only on numeric ids and uids, never on JS object identity, because `restore` creates fresh
-objects.
+objects or refills reused ones (a delta restore, below).
 
 **Structural sharing** (`vm-snapshot*.ts`, `pvec.ts`). Inside a snapshot every mutable object is a
 frozen copy (`vm-snapshot-frozen.ts`) that refers to other mutable objects by id (`Ref`), never by
@@ -435,9 +435,19 @@ O(changes), not O(heap):
   globals) are copied in full; a machine with several stacks would add them to `FrozenRoots` and the
   two walks over roots. The result becomes the new base.
 - **Every snapshot is complete on its own**: dropping any of them (thinning) never invalidates
-  another. `restore(s)` rebuilds fresh live objects from the roots through the table
+  another. `restore(s)` rebuilds live objects from the roots through the table
   (`vm-snapshot-thaw.ts`, a work list, any nesting), can be repeated any number of times, and makes
   `s` the base. `restore()` accepts only snapshots taken from the same `Program` object.
+- **Delta restores** (`vm-snapshot-delta.ts`): a machine positioned by a restore keeps its live
+  objects by id; each matches its copy in the base unless the change log names it. Restoring another
+  snapshot of the same line then refills in place only the objects that may differ: those in the
+  change log and those whose copies differ between the two tables (`PVec.diff` descends only into
+  nodes the two trees do not share). A big list is patched at the indices that may differ (logged
+  element writes, changed tails, differing slots) while they are few. Every other live object is
+  reused, so references between live objects stay valid; the roots are rebuilt. Taking a snapshot
+  or dropping the change log ends this (the next restore is a full one). The seeker's replay VM
+  (§7.1.5) is the beneficiary: stepping backwards usually restores the snapshot it already stands
+  on, so only what the replay changed is rebuilt. Its VM was already valid only until the next seek.
 - **Garbage**: objects that became unreachable stay in the table until a compacting snapshot keeps
   only the reachable ones (reusing their copies), when the table holds more than twice its values
   after the last compaction plus 65,536. A change log longer than twice the table's values (at least
@@ -492,8 +502,10 @@ Decisions made while building the runtime, recorded here so tools can rely on th
   in 750,000, with about 2 ms seeks; recording it costs 5-15 % more (the write barrier's log). A
   50,000-field record used as a dictionary: 85 snapshots in 720,000 values (was 35 in 680,000), 6 ms
   seeks. Heavy natives (sorts, slices and scans of a 100,000-item list): the slowest single step back
-  went from 900 ms to 24-40 ms, because the cadence counts their work. Heap-heavy programs (60,000
-  records) seek in about 11-14 ms.
+  went from 900 ms to 21-40 ms, because the cadence counts their work. Heap-heavy programs (60,000
+  records) seek in about 7 ms at random (was 14 ms), and scrubbing backwards through them costs about
+  2 ms per position instead of 13.5 ms (delta restores); for the mutated 50,000-item list 0.4 ms
+  instead of 0.9 ms. The 50,000-field record gains nothing yet: records are refilled whole.
 
 ## 7. Time travel
 
@@ -526,7 +538,7 @@ Decisions made while building the runtime, recorded here so tools can rely on th
    snapshot at `N` (for `extend`).
 5. **Seek** `stateAt(t)`: restore the latest snapshot `<= t` and replay with `vm.runUntil(t)`
    (hooks off). Keep the VM positioned at the last seek so a forward seek within reach runs on
-   without restoring. The state at `N` for an error is rebuilt this way (never read from the failed
+   without restoring, and a backward one restores by delta (§6.8). The state at `N` for an error is rebuilt this way (never read from the failed
    VM). Cache recently built `StateView`s (small LRU).
 6. **Storage** is columnar (typed arrays that grow by doubling) for the per-step trace and for
    events; object-per-step storage is not acceptable. Budget: recording 1,000,000 steps of a typical

@@ -207,6 +207,8 @@ source ─▶ lexer ─▶ parser ─▶ compiler ─▶ bytecode + debug info
 - **Seeking.** To show step `t`, restore the nearest snapshot at or before `t` and replay forward;
   the run is deterministic (even `random()` is a seeded generator inside the VM state), so replay
   reproduces it exactly. A 1.26-million-step run records in about 0.2 s and seeks in about 0.35 ms.
+  Seeking backwards from a position rebuilds only the objects that differ from the snapshot it
+  restores, so scrubbing back through a big heap stays smooth.
 - **Navigation** works on the trace alone: stepping backwards is a scan over typed arrays, not
   re-execution.
 - **Provenance** queries the event log, translating list indexes back through every insert, remove
