@@ -10,7 +10,7 @@ import { ManualScheduler } from '../state/scheduler'
 import { createStudioStore } from '../state/store'
 import { scriptedEngine } from '../state/testing'
 import { BugFinder } from './BugFinder'
-import { culpritLines } from './bug-finder-model'
+import { automaticSummary, culpritLines } from './bug-finder-model'
 import { renderWithRecording } from './test-fixtures'
 
 beforeAll(() => {
@@ -267,5 +267,76 @@ describe('opening the bug finder', () => {
     fireEvent.click(tab)
     expect(screen.getByRole('heading', { name: 'Question 1' })).toBeTruthy()
     expect(document.activeElement).toBe(tab)
+  })
+})
+
+const CONTRACTS = `fn total(xs) {
+  var sum = 0
+  for x in xs { sum += x }
+  sum
+}
+fn average(xs) ensures result * len(xs) == total(xs) {
+  total(xs) / (len(xs) - 1)
+}
+assert(total([88, 83, 79]) == 250)
+print(average([88, 83, 79]))
+`
+
+describe('BugFinder with contracts and assertions', () => {
+  test('reaches the verdict with no questions and lists the automatic answers with reasons', () => {
+    // Arrange
+    const recording = recordSource(CONTRACTS)
+    renderWithRecording(<BugFinder />, recording)
+    expect(screen.getByText(/failed a contract or an assertion on line 6/)).toBeTruthy()
+
+    // Act
+    fireEvent.click(screen.getByRole('button', { name: 'Find the bug' }))
+
+    // Assert
+    expect(screen.getByRole('heading', { name: 'Verdict' })).toBeTruthy()
+    expect(screen.getByText('Found it: the bug is in average (lines 6–8).')).toBeTruthy()
+    const list = screen.getByRole('region', { name: 'Answered by your contracts and assertions' })
+    expect(list.textContent).toContain('(its postcondition on line 6 failed)')
+    expect(list.textContent).toContain('(an identical call passed the assertion on line 9)')
+    expect(
+      screen.getByText(/No questions for you: your contracts and assertions answered 2 questions/),
+    ).toBeTruthy()
+  })
+
+  test('undo takes an automatic answer back, and the toggle turns them off', () => {
+    // Arrange
+    const recording = recordSource(CONTRACTS)
+    const { store } = renderWithRecording(<BugFinder />, recording)
+    fireEvent.click(screen.getByRole('button', { name: 'Find the bug' }))
+
+    // Act
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
+
+    // Assert
+    expect(screen.getByRole('heading', { name: 'Question 2' })).toBeTruthy()
+    expect(screen.getByText('Is that right?')).toBeTruthy()
+    const toggle = screen.getByRole('button', { name: 'Use contracts and assertions' })
+    expect(toggle.getAttribute('aria-pressed')).toBe('true')
+    fireEvent.click(toggle)
+    expect(store.getState().bugFinder.auto).toBe(false)
+    expect(screen.getByRole('heading', { name: 'Question 1' })).toBeTruthy()
+    expect(
+      screen.queryByRole('region', { name: 'Answered by your contracts and assertions' }),
+    ).toBeNull()
+  })
+})
+
+describe('automaticSummary', () => {
+  test('counts the questions contracts answered and the ones the user did', () => {
+    expect(automaticSummary(3, 0)).toBeNull()
+    expect(automaticSummary(0, 1)).toBe(
+      'No questions for you: your contracts and assertions answered 1 question.',
+    )
+    expect(automaticSummary(1, 2)).toBe(
+      'Your contracts and assertions answered 2 questions; you answered 1 question.',
+    )
+    expect(automaticSummary(4, 1)).toBe(
+      'Your contracts and assertions answered 1 question; you answered 4 questions.',
+    )
   })
 })

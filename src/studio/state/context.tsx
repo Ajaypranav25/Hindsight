@@ -80,6 +80,7 @@ export function pickActions(s: StudioStore): StudioActions {
     undoBugFinder: s.undoBugFinder,
     closeBugFinder: s.closeBugFinder,
     setBugFinderStrategy: s.setBugFinderStrategy,
+    setBugFinderAuto: s.setBugFinderAuto,
     setQueryMarks: s.setQueryMarks,
     sweepWhatIf: s.sweepWhatIf,
     openSweepRun: s.openSweepRun,

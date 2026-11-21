@@ -181,6 +181,8 @@ export interface StudioActions {
   closeBugFinder(): void
   /** Chooses how interviews pick questions; an open interview starts over that way. */
   setBugFinderStrategy(strategy: Strategy): void
+  /** Lets contracts and assertions answer questions (or not); an open interview starts over. */
+  setBugFinderAuto(auto: boolean): void
   /** Marks a query's matches on the strip chart (null clears them). */
   setQueryMarks(query: QueryMarks | null): void
   /**
