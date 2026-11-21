@@ -433,7 +433,7 @@ O(changes), not O(heap):
   objects created since the base, copies every new object that is still reachable (an unchanged old
   object still holds exactly the references it held then). Roots (stack, frames, open cells,
   globals) are copied in full; a machine with several stacks would add them to `FrozenRoots` and the
-  two walks over roots. The result becomes the new base.
+  three walks over roots (freezing, thawing, compaction marking). The result becomes the new base.
 - **Every snapshot is complete on its own**: dropping any of them (thinning) never invalidates
   another. `restore(s)` rebuilds live objects from the roots through the table
   (`vm-snapshot-thaw.ts`, a work list, any nesting), can be repeated any number of times, and makes

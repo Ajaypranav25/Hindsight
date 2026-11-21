@@ -103,8 +103,9 @@ export interface FrozenFrame {
 
 /**
  * The roots of the machine: everything outside the heap that refers into it. Roots are copied in
- * full by every snapshot. A machine with several stacks would add them here and to the helpers in
- * vm-snapshot-freeze.ts and vm-snapshot-thaw.ts that walk roots.
+ * full by every snapshot. A machine with several stacks would add them here and to the three walks
+ * over roots: `Freezer.roots` (vm-snapshot-freeze.ts), `thawRoots` (vm-snapshot-thaw.ts) and the
+ * root marking of `compactTable` (vm-snapshot.ts).
  */
 export interface FrozenRoots {
   readonly stack: readonly Frozen[]
