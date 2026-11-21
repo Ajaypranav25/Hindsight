@@ -714,6 +714,48 @@ comma list of literals, at most 64 values; `sweep`/`sweepAsync` fork the run onc
 step and report each run with its comparison and deepest call depth. `diffHeaps(a, b)` lists the
 references (from variables into the heap and between objects) that only one of two states has.
 
+### 7.14 Differential execution (`run-diff*.ts`, `run-input.ts`)
+
+`diffRuns(a, b, options)` compares two recordings, of one program or of two versions of it, by what
+they did. **Alignment** (`run-diff-align.ts`) starts with the two roots as a matched pair and lines
+up each matched pair's user-code children (just-my-code) with a longest common subsequence keyed on
+the function name; when a name repeats (recursion, a loop of calls), the pairing is chosen by the
+calls' argument texts and then their call-site lines, read from the event log and the trace without
+state seeks. Children left over between two matches are paired as a **rename** when one function
+exists only in the first program and the other only in the second, consistently across the diff.
+Long child lists are trimmed at their common ends and aligned greedily (with a bounded lookahead)
+beyond 250,000 cells per pair or 20,000,000 per diff. The pairs are visited breadth first with an
+explicit queue, so the top of the tree is aligned first and depth never reaches the JavaScript
+stack.
+
+**Comparison** (`run-diff-compare.ts`) uses signatures built from the same value texts as the bug
+finder's memo keys (`call-values.ts`) with function ids left out, since proto ids differ between two
+versions: a call's _inputs_ are its arguments and the captured variables and globals it reads; its
+_behavior_ is its outcome, result, error, what it did to its arguments, its side effects
+(`call-effects.ts`) and the output printed while it ran. Matched pairs are compared children of
+changed pairs first, so origins are found early in large runs.
+
+The report: both runs' steps, outcome, output count and calls; whether the outcomes agree; the
+output diff (`compare.ts`'s LCS differ); the top-most calls only one run made (`onlyA`, `onlyB`,
+each with its subtree size); the renames; the matched calls that behaved differently or made
+different calls (`changed`, with the aspects and whether their inputs changed too); and the
+**origins**: matched calls given the same inputs that behaved differently while every call they
+made either behaved the same or was given different inputs by them. An origin is where a change
+starts in a function's own code, found the way the bug finder would find it (§7.6) with the second
+run as the oracle instead of questions; identical origins (common in recursion) are grouped with a
+count, and `passesChanges` marks an origin some of whose calls changed only because it gave them
+other inputs (the top level after an input change). Work is bounded: at most `maxNodes` calls aligned (default 200,000) and `maxCompared` pairs
+compared (default 5,000), each list cut to `limit` entries (default 50) with its total, and
+`truncated` says which budget ran out. `same` holds when nothing differs.
+
+**Inputs.** A program reads no input, so an input is a top-level `let`/`var` binding:
+`withInput(source, name, literal)` replaces the binding's initializer text with a literal (a number,
+string, `true`, `false`, `nil`, or a list or record of literals) and reports the declaration's line
+and the old text. The result is an ordinary program, recorded and compared like any other version.
+Replacing the text instead of forking the run after the declaration (§7.5) lets an input be a list
+or a record, not just a primitive, and keeps step numbers meaningful within each run; the whole
+initializer is replaced, so calls it made are not made with the new input.
+
 ## 8. Public API (`src/core/index.ts`)
 
 ```ts
@@ -735,8 +777,10 @@ dependenceOf, backwardSlice, errorSlice, upstreamWrites  // §7.8
 parseQuery, queryRecording, runQuery, queryTimes         // §7.9
 whyNot(recording, line): WhyNot                          // §7.10
 solveInverse, solveInverseAsync, inverseSearch           // §7.11
-repairSearch(recording, request), repairExamples         // §7.12
+repairSearch(recording, request, options), repairExamples, repairExample // §7.12
 parseSweepValues, sweep, sweepAsync, heapEdges, diffHeaps // §7.13
+diffRuns(a, b, { maxNodes?, maxCompared?, limit? }): RunDiff // §7.14
+withInput(source, name, literal): InputResult             // §7.14
 show, repr, LineIndex, and all types from api-types.ts / diagnostics.ts / span.ts / tokens.ts
 ```
 
@@ -769,6 +813,8 @@ show, repr, LineIndex, and all types from api-types.ts / diagnostics.ts / span.t
 | `whynot FILE --line L` | negative provenance (§7.10): the sentence, the guard's line and a `replay` hint |
 | `slice FILE [--at T]` | the source with the lines of the backward slice (§7.8) of step `T` marked; default: the runtime error, else the last output line |
 | `repair FILE` | repair previews (§7.12) for a run that crashed |
+| `diff A B [--limit N] [--max-steps N] [--seed S]` | differential execution (§7.14): record both files and compare them call by call: both outcomes, the output diff, calls only in A or B, renames, changed calls and the origins (where the difference starts); `--limit` (default 50) caps each list; exit 0 when the runs behave the same, 1 when they differ, 2 for usage or compile trouble (like diff(1)) |
+| `diff FILE --set NAME=VALUE` | the same, B being FILE with the top-level `let`/`var` `NAME` initialized to the literal `VALUE` (§7.14) |
 | `mcp` | the MCP server (§9.1) |
 
 Diagnostics print Rust-style with a code frame and caret underline (`error[E020]: …`, `--> file:3:9`,
@@ -784,16 +830,49 @@ whole text is compiled and run from scratch with the same seed, and only output 
 previous run's are printed. An entry that fails to compile or raises a runtime error is reported and
 discarded (so E022 applies across entries).
 
-### 9.1 MCP server (`src/cli/mcp.ts`)
+### 9.1 MCP server (`src/cli/mcp*.ts`)
 
 `hindsight mcp` serves the debugger over the Model Context Protocol's stdio transport (JSON-RPC
-2.0, one message per line; `initialize`, `ping`, `tools/list`, `tools/call`). Tools: `run_trace`
-(compile and record a program; returns a trace id, the outcome and the output), `seek_state`,
-`query_provenance`, `fork_whatif` (returns a new trace id for the fork), `get_divergence` (a fork
-against its parent, with the output diff and the heap references that differ just after the
-divergence), `query`, `why_not`, `slice` and `solve`. Results are JSON text. A problem with a call
-is a tool result with `isError`, never a protocol error; sources are limited to 200,000 characters
-and `max_steps` to 10,000,000; the server keeps the 16 most recent traces in memory.
+2.0, one message per line; `initialize`, `ping`, `tools/list`, `tools/call`). `mcp.ts` is the
+protocol core and the trace store (traces `t1`, `t2`, …; the 16 most recent are kept); the tools
+live beside it: `mcp-tools.ts` (one run), `mcp-query.ts`, `mcp-state.ts` (states within budgets),
+`mcp-diff.ts`, `mcp-diagnose.ts`, `mcp-repair.ts`, `mcp-find-bug.ts`, with argument readers and
+JSON forms in `mcp-shared.ts` and the size guard in `mcp-guard.ts`. Results are JSON text. A
+problem with a call is a tool result with `isError`, never a protocol error; sources are limited
+to 200,000 characters and `max_steps` to 10,000,000. Tools that analyze a run take `trace_id` or
+`source` (recorded as a new trace, with `max_steps` and `seed`). Tool descriptions say what each
+tool is for and when to use it, and the `initialize` instructions suggest an order.
+
+| tool               | what it returns                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `run_trace`        | records `source` (or pages through `trace_id`'s output): trace id, steps, outcome, output lines with their steps; `output_offset`/`output_limit` (default the first 100 lines, at most 1,000), `output_total`, and `more_output` naming the next call                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `seek_state`       | the state at a step: location, frames innermost first with locals and captures, globals, output so far; `max_depth` (list/record nesting expanded, default 1, at most 8), `max_items` (per list or record, default 20, at most 200; `more` counts the rest), `frames` (`"all"`, `"top"` or N innermost), `include_globals`; `notes` say what was left out                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `query_provenance` | the write that produced a variable's value and the first 50 writes of its history                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `query`            | §7.9 in pages (`offset`, `limit`: default 50, at most 500; `next_offset` and `more` when cut); `summary: true` groups all matches (up to 100,000) by line and function (count, first and last step, min and max of numeric values) and collapses runs of consecutive matches on one line into rows such as `total: line 3 ×1,000, steps 21–9,013, values 1–500500`                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `fork_whatif`      | forks at a step with a variable set (§7.5): a new trace id, the divergence and the output diff                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `get_divergence`   | a fork against its parent (or two traces of one program): divergence, output diff, the heap references that differ just after it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `why_not`          | §7.10 for a line                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `slice`            | §7.8: the slice's lines, the lines that ran, the lines ruled out                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `solve`            | §7.11 for an output line or `no_crash`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `diff_runs`        | §7.14 for `source_a`/`source_b`, `trace_a`/`trace_b`, or `source` (or `trace_id`) with `set` (`{"name", "value"}` or `"NAME=VALUE"`; a value is literal text, a string that is not a literal is taken as text, and JSON values are written as literals); both runs are kept as traces; a one-sentence `summary` names the first origin (or the changed input), then come the origins, calls only in A or B, renames and changed calls, each list cut to `limit` (default 20) with its total                                                                                                                                                                                                                                                                                                                          |
+| `diagnose_failure` | one round trip. A crash: code, message, hint, line, column, the failing expression; the stack with spans and source lines; the statement running at the failing step and the values of the variables it reads (identifiers that are not field names or record keys; functions left out); the error slice as numbered source lines and the lines ruled out; the causal chain (`upstreamWrites` with names, values with their text, steps and lines; function declarations left out; the last 40); verified crash repairs (§7.12) with `mutants_checked`. A wrong output (`output_index` 0-based or `output_line` 1-based, and `expected`): the same view from the print, with inverse what-if candidates (§7.11). A step-limit run: the stack and the hottest lines. Every result ends with `next_steps` naming tools |
+| `suggest_repairs`  | §7.12. `mode: "crash"`, or `"examples"` with `expectations` (`{"call": "average([92, 88, 95])", "expected": "91.66…"}` or `{"function", "args", "returns"}`): each is matched against the recorded user calls by argument texts (both sides in canonical form, by running `repr` on the literal), judged right or wrong (`judged`; `unmatched` lists some recorded calls) and turned into repair examples for the one function judged wrong (or `function`); patches show the line before and after and what the wrong calls return now                                                                                                                                                                                                                                                                              |
+| `find_bug`         | §7.6 as a stateless interview: each call rebuilds the finder, replays `answers` (`[{"question": id, "answer": "right"/"wrong"/"unsure"}]`) and returns the next question (id, call, arguments, result, side effects, lines, suspects remaining) or the verdict (function, lines, certainty, reason, code) with repair previews from the answers; `strategy` `divide` (default) or `top-down`; answers that were never asked are listed in `unused_answers`                                                                                                                                                                                                                                                                                                                                                           |
+
+A question id is the function name and an FNV-1a digest of the call's memo key (`average#3f2a91c0`;
+`name@entry` for calls without a key), so ids are stable across calls and identical calls share
+one. `replayInterview(tree, answers, { strategy, oracle })` takes an optional oracle
+(`(details) => answer | null`) that answers questions before the agent is asked; contracts and
+assertions can supply one.
+
+**Budgets.** Searches are bounded by counts, never by the clock, so results are deterministic:
+`diagnose_failure` checks at most `max_mutants` (default 120) mutants, fewer on long runs so that
+all mutants together run at most 40,000,000 steps. Every list that can be long says when it was
+cut and how to fetch more. Finally, the **size guard** shortens any result whose JSON exceeds
+50,000 characters instead of failing: long lists keep their first items, long texts their
+beginning, and maps with more than 32 keys their first keys, halving the allowance until the result
+fits; a `truncated_by_size_guard` note lists what was cut and the options that ask for less. The
+copy is built with an explicit work stack.
 
 ## 10. Testing
 
