@@ -108,3 +108,31 @@ print(total)`
   expect(slowestStepBackMs(recording, 30)).toBeLessThan(STEP_BACK_BUDGET_MS)
   expect(averageSeekMs(recording, 30)).toBeLessThan(4 * SEEK_BUDGET_MS)
 })
+
+test('scrubbing backwards through a big heap rebuilds only what changed (delta restores)', () => {
+  const recording = recordProgram(`var rs = []
+for i in 0..60000 {
+  push(rs, {id: i, name: "n" + str(i)})
+}
+print(len(rs))`)
+  const access = replayAccess(recording)!
+  const median = (values: number[]): number => values.sort((a, b) => a - b)[values.length >> 1]!
+  const scrubber = access.newSeeker()
+  let time = Math.floor(recording.length * 0.7)
+  scrubber.positionAt(time)
+  const delta: number[] = []
+  const full: number[] = []
+  for (let i = 0; i < 40; i++) {
+    time -= 1
+    let started = performance.now()
+    scrubber.positionAt(time)
+    delta.push(performance.now() - started)
+    // The same seek in a fresh seeker restores in full.
+    const fresh = access.newSeeker()
+    started = performance.now()
+    fresh.positionAt(time)
+    full.push(performance.now() - started)
+  }
+  // The replay to the target is the same; the delta restore skips rebuilding 60,000 records.
+  expect(median(delta)).toBeLessThan(0.8 * median(full))
+})
