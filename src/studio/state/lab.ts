@@ -19,6 +19,7 @@ import {
   whyNot,
   type WriteTarget,
 } from '../../core/index'
+import type { CausalLink, SliceSummary } from '../analysis/protocol'
 import type { StudioActions, StudioState, StudioStore } from './types'
 import { PEN_AT_END_NOTICE, whatIfLabel } from './what-if'
 
@@ -54,11 +55,58 @@ export interface WhyNotMark {
   readonly why: WhyNot
 }
 
-/** The lines with a causal path to step `at` (null: the run is too long to analyze). */
+/**
+ * The backward slice of step `at` (ARCHITECTURE §7.8) as the editor and the strip chart show it.
+ * `lines` is null when the run is too long to analyze; the other parts are then empty.
+ */
 export interface SliceMark {
   readonly recording: Recording
   readonly at: number
+  /** The lines with a causal path to step `at`. */
   readonly lines: ReadonlySet<number> | null
+  /** Per step `0..N`: 1 when the step is in the slice (null without a slice). */
+  readonly marks: Uint8Array | null
+  /** The named writes the step was computed from, newest first. */
+  readonly chain: readonly CausalLink[]
+  readonly chainTotal: number
+  /** The line the sliced step ran on (the effect), when it is user code. */
+  readonly effectLine: number | null
+  /** Why there is no slice, when there is none. */
+  readonly problem: string | null
+}
+
+export const SLICE_TOO_LONG = 'This run is too long to trace'
+export const SLICE_FAILED = 'The causes could not be traced'
+
+/** The mark for a slice summary from the analysis service (null: no slice, for `problem`). */
+export function sliceMark(
+  recording: Recording,
+  at: number,
+  summary: SliceSummary | null,
+  problem = SLICE_TOO_LONG,
+): SliceMark {
+  if (summary === null) {
+    return {
+      recording,
+      at,
+      lines: null,
+      marks: null,
+      chain: [],
+      chainTotal: 0,
+      effectLine: null,
+      problem,
+    }
+  }
+  return {
+    recording,
+    at,
+    problem: null,
+    lines: new Set(summary.lines),
+    marks: summary.marks,
+    chain: summary.chain,
+    chainTotal: summary.chainTotal,
+    effectLine: summary.effectLine,
+  }
 }
 
 export interface LabState {
@@ -67,7 +115,7 @@ export interface LabState {
   readonly whyNot: WhyNotMark | null
   /** The slice last computed for the editor. */
   readonly slice: SliceMark | null
-  /** "What led here?": the step the user asked to trace; it lasts while the pen stays there. */
+  /** "What led here?": the step the user asked to trace; it lasts until it is dismissed. */
   readonly sliceAt: { readonly recording: Recording; readonly time: number } | null
   /** Dim the lines that did not lead to a runtime error. */
   readonly dimming: boolean
@@ -91,14 +139,15 @@ export function liveWhyNot(lab: LabState, recording: Recording | null): WhyNotMa
 }
 
 /**
- * The step the editor wants traced: the pen's when the user asked there, else the failure of a
- * run that ended in an error (while dimming is on and the run is short enough); null for none.
+ * The step the editor wants traced: the one the user asked about ("What led here?", "What led to
+ * this?"), which stays traced while the pen explores its causes, else the failure of a run that
+ * ended in an error (while dimming is on and the run is short enough); null for none.
  */
 export function wantedSliceStep(state: StudioState): number | null {
-  const { recording, time, lab } = state
+  const { recording, lab } = state
   if (recording === null || state.recordedSource !== state.source) return null
   const asked = lab.sliceAt
-  if (asked !== null && asked.recording === recording && asked.time === time) return time
+  if (asked !== null && asked.recording === recording) return asked.time
   const failed = recording.outcome.kind === 'error'
   return failed && lab.dimming && recording.length <= MAX_AUTO_SLICE_STEPS ? recording.length : null
 }

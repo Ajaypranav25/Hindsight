@@ -16,6 +16,7 @@ import { diagnosticsTransaction } from './lint'
 import { computeOverlay, EMPTY_OVERLAY, originSpanAt, type EditorOverlay } from './overlay'
 import { editorExtensions, fromStore } from './setup'
 import { studioEffects, type EditorStudio } from './studio-field'
+import { whyNotEffects, type WhyNotSpec } from './why-not-widget'
 import './editor.css'
 
 /** After a user edit, the editor does not scroll to follow the pen for this long. */
@@ -36,7 +37,9 @@ export function Editor() {
   const originMark = useStudio((s) => s.originMark)
   const bugFinder = useStudio((s) => s.bugFinder)
   const culprit = useMemo(() => culpritLines(bugFinder, recording), [bugFinder, recording])
-  const keepLines = useStudio((s) => activeSlice(s)?.lines ?? null)
+  const slice = useStudio(activeSlice)
+  const keepLines = slice?.lines ?? null
+  const effectLine = keepLines === null ? null : (slice?.effectLine ?? null)
   const whyMark = useStudio((s) => liveWhyNot(s.lab, s.recording))
   const guardLine = whyMark === null ? null : whyNotGuardLine(whyMark.why)
   const view = useStateView()
@@ -88,7 +91,7 @@ export function Editor() {
     const marked = originSpan ? { ...base, originSpan } : base
     const found = culprit ? { ...marked, culprit } : marked
     if (stale || (keepLines === null && guardLine === null)) return found
-    return { ...found, keepLines, guardLine }
+    return { ...found, keepLines, guardLine, effectLine }
   }, [
     view,
     stale,
@@ -100,7 +103,15 @@ export function Editor() {
     culprit,
     keepLines,
     guardLine,
+    effectLine,
   ])
+  const whySpec = useMemo(
+    (): WhyNotSpec | null =>
+      whyMark === null || stale
+        ? null
+        : { line: whyMark.line, why: whyMark.why, length: whyMark.recording.length },
+    [whyMark, stale],
+  )
 
   useEffect(() => {
     const editor = editorRef.current
@@ -121,7 +132,7 @@ export function Editor() {
       overlay,
     }
     editor.dispatch(diagnosticsTransaction(editor.state, diagnostics, source), {
-      effects: studioEffects(editor.state, studio),
+      effects: [...studioEffects(editor.state, studio), ...whyNotEffects(editor.state, whySpec)],
     })
   }, [
     source,
@@ -136,6 +147,7 @@ export function Editor() {
     idleLines,
     overlay,
     diagnostics,
+    whySpec,
   ])
 
   useEffect(() => {
