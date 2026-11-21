@@ -668,6 +668,15 @@ code is wrong. It is built only on the public `Recording` API.
   Syntax is matched by spans: the oracle parses the program's source once and finds call sites
   through `Recording.locationAt(call.entry - 1)`.
 
+- **Answers as assertions** (`answer-assertions.ts`): `answerAssertions(tree, state)` writes every
+  call a person judged right (not automatic, not remembered) as `assert(f(args) == result)` in
+  Hindsight source, when it can be replayed anywhere: `f` is declared at the top level, its code
+  reads no global but functions (checked against the globals when the call began), the call
+  changed nothing outside itself, and the arguments and result are plain data (numbers, strings,
+  booleans, `nil`, lists and records of those; at most 8 levels, 50 elements and 200 characters).
+  `insertAssertions(source, texts)` adds them after the last top-level function declaration. On
+  the next run each is an example for the oracle (source 2), so the interview learns from itself.
+
 ### 7.7 Events by time (`events.ts`)
 
 `eventsBetween(recording, from, to, limit?)` returns the events with `from <= time < to` in time
@@ -783,6 +792,7 @@ callTree(recording): CallTree                            // bug finder: the reco
 startFinder(tree, call, options), question, answer, undo, verdict, remaining
 contractOracle(recording, tree): CallOracle, autoAnswer(state, oracle) // §7.6 automatic answers
 contractKeywordStarts(tokens): ReadonlySet<number>       // editors: requires/ensures in position
+answerAssertions(tree, state), insertAssertions(source, texts) // §7.6 answers as assertions
 eventsBetween, callEffects                               // §7.6, §7.7
 dependenceOf, backwardSlice, errorSlice, upstreamWrites  // §7.8
 parseQuery, queryRecording, runQuery, queryTimes         // §7.9
@@ -816,7 +826,7 @@ show, repr, LineIndex, and all types from api-types.ts / diagnostics.ts / span.t
 
 | `whatif FILE --at T --set NAME=1..20` | a sweep (§7.13): one row per value with its steps, deepest depth, outcome and output change, then the longest run |
 | `debug FILE --strategy divide\|top-down` | how questions are chosen (default `divide`, §7.6); questions list side effects and the calls still under suspicion; the verdict is followed by repair previews (§7.12) when a one-token change agrees with the answers |
-| `debug FILE [--no-auto] [--no-ask]` | contracts and assertions answer what they can (§7.6), each printed with its evidence (`Question 2: total(...) returned 250 — right (the assertion on line 13)`); `--no-auto`: a person answers every question; `--no-ask`: nobody is asked, the interview stops at the first question without an automatic answer, prints it and exits 3. Exit codes: 0 verdict, 1 stopped without one (quit, input ended, load error), 3 open question under `--no-ask` |
+| `debug FILE [--no-auto] [--no-ask]` | contracts and assertions answer what they can (§7.6), each printed with its evidence (`Question 2: total(...) returned 250 — right (the assertion on line 13)`); `--no-auto`: a person answers every question; `--no-ask`: nobody is asked, the interview stops at the first question without an automatic answer, prints it and exits 3. Exit codes: 0 verdict, 1 stopped without one (quit, input ended, load error), 3 open question under `--no-ask`. After the verdict, the calls you judged right are printed as assertions to add (§7.6) |
 | `solve FILE --want TEXT [--output K]` | the inverse what-if (§7.11): earlier values that make output line `K` (default: the last) read `TEXT`; exit 1 when none is found |
 | `solve FILE --no-crash` | earlier values that avoid the run's runtime error |
 | `query FILE QUERY [--limit N]` | the query language (§7.9); prints up to `N` (default 50) stretches, changes or calls |
@@ -1019,7 +1029,9 @@ tabbed panels); the page may scroll vertically, never horizontally.
   assertions": the question number, the call, right or wrong and the reason) and counts them in the
   question numbers; Undo takes the last answer back, automatic or not, and an automatic one taken
   back becomes the user's question. After a failed contract or assertion (R018, R026, R027) "Find
-  the bug" starts the interview at once, and the verdict says when no question was needed.
+  the bug" starts the interview at once, and the verdict says when no question was needed. Under
+  the verdict, "Your answers as assertions" lists the calls the user judged right as `assert`
+  lines with "Add to the program" (`insertAssertions`), so the next interview answers them itself.
 - **Make it so** (§7.11): every console line has "Make this print…", an inline field holding the
   line's text; Enter searches for an earlier value that makes the line read the edited text. A
   runtime error offers "Make this not happen" and "Try one-token fixes". Answers are sentences with

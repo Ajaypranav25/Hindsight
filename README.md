@@ -183,6 +183,10 @@ vouches for every call that returned; `assert(f(args) == expected)` judges every
 those arguments. `--no-auto` asks you everything; `--no-ask` never asks: it stops at the first
 question nothing can answer and exits with code 3, so scripts and agents can tell.
 
+The interview also learns from you: after the verdict, every call you judged right is printed as an
+assertion (`assert(total([92, 88, 95]) == 275)`). Add them to the program (the studio has a button
+for it) and the next interview answers those questions itself.
+
 `solve` runs a what-if backwards, and `query` finds moments by condition (`when x > 3 and depth > 1`,
 `changed(order.paid)`, `calls(f) where ret < 0`):
 
