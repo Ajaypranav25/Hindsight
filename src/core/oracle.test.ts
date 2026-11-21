@@ -214,6 +214,57 @@ print(noted(1) + clean(2))
     expect(oracle(clean!)).toMatchObject({ answer: 'right' })
   })
 
+  test('an assertion judges calls with the same inputs and result made elsewhere', () => {
+    // Arrange
+    const source = `fn total(xs) {
+  var sum = 0
+  for x in xs { sum += x }
+  sum
+}
+fn average(xs) ensures result * len(xs) == total(xs) {
+  total(xs) / (len(xs) - 1)
+}
+let scores = [88, 83, 79]
+assert(total([88, 83, 79]) == 250)
+print(average(scores))
+`
+
+    // Act
+    const { state, tree, oracle } = interview(source)
+    const average = tree.children(tree.root)[1]!
+    const inner = tree.children(average)[0]!
+
+    // Assert
+    expect(oracle(inner)).toEqual({
+      answer: 'right',
+      reason: 'an identical call passed the assertion on line 10',
+      line: 10,
+    })
+    expect(verdict(state)).toMatchObject({ kind: 'found', call: { name: 'average' } })
+    expect(state.asked).toBe(0)
+  })
+
+  test('a failed assertion makes every call with the same inputs and result wrong', () => {
+    // Arrange
+    const source = `fn half(n) { n / 3 }
+fn run() { half(10) }
+print(run())
+assert(half(10) == 5)
+`
+
+    // Act
+    const { tree, oracle } = interview(source)
+    const run = tree.children(tree.root)[0]!
+    const inner = tree.children(run)[0]!
+
+    // Assert
+    expect(oracle(inner)).toEqual({
+      answer: 'wrong',
+      reason: 'an identical call failed the assertion on line 4',
+      line: 4,
+    })
+  })
+
   test('identical calls share an automatic answer through the memo', () => {
     // Arrange / Act
     const { state } = interview(CHECKOUT)

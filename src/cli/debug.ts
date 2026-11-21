@@ -3,15 +3,24 @@
  * stdout. Each question shows a recorded call and what it returned; answers arrive one per line
  * (r, w, n or ?, u, q), from a terminal or from a pipe, so an interview can be scripted. It ends
  * with the verdict and the buggy function's code.
+ *
+ * Contracts and assertions answer what they can (`contractOracle`, unless --no-auto); each such
+ * answer is printed with its evidence. With --no-ask nobody else is asked: the interview stops at
+ * the first question they cannot answer, with exit code 3.
  */
 import {
   answer,
   type Answer,
+  autoAnswer,
+  type AutoAnswer,
+  type CallNode,
+  type CallOracle,
   callSignature,
   type CallDetails,
   type CallTree,
   callTree,
   changeTexts,
+  contractOracle,
   culpritText,
   type FinderState,
   LineIndex,
@@ -37,6 +46,16 @@ import { repairLines, searchRepairs } from './lab'
 
 export type DebugInput = Answer | 'undo' | 'quit'
 export type DebugCommand = Extract<Command, { kind: 'debug' }>
+/** 3: stopped at a question nobody could answer (--no-ask). */
+export type DebugExitCode = ExitCode | 3
+
+export interface DebugOptions {
+  readonly strategy: Strategy
+  /** Answers questions without a person (contracts and assertions); null: a person answers all. */
+  readonly oracle: CallOracle | null
+  /** Whether a person may be asked; false stops at the first open question (exit 3). */
+  readonly ask: boolean
+}
 
 const INPUTS: ReadonlyMap<string, DebugInput> = new Map([
   ['r', 'right'],
@@ -55,6 +74,8 @@ const INPUTS: ReadonlyMap<string, DebugInput> = new Map([
 
 const HELP = 'Please answer r (right), w (wrong), n or ? (not sure), u (undo) or q (quit).'
 const PROMPT = 'Is that right? [r/w/n/u/q] '
+/** Runtime errors that are a broken promise (assertion, precondition, postcondition). */
+const CHECK_FAILURES: ReadonlySet<string> = new Set(['R018', 'R026', 'R027'])
 /** The most lines of the buggy function the verdict shows. */
 const CODE_FRAME_LINES = 14
 
@@ -72,21 +93,32 @@ export function openDebugSession(io: CliIO, command: DebugCommand): DebugSession
   const loaded = load(io, style, command.file)
   if (!loaded) return 1
   const recording = record(loaded.program, { maxSteps: command.maxSteps, seed: command.seed })
-  return new DebugSession(io, style, loaded, callTree(recording), command.strategy)
+  const tree = callTree(recording)
+  return new DebugSession(io, style, loaded, tree, {
+    strategy: command.strategy,
+    oracle: command.auto ? contractOracle(recording, tree) : null,
+    ask: command.ask,
+  })
 }
 
 export class DebugSession {
   private state: FinderState
-  private outcome: 'open' | 'found' | 'quit' = 'open'
+  private outcome: 'open' | 'found' | 'quit' | 'unanswered' = 'open'
+  private readonly options: DebugOptions
 
   constructor(
     private readonly io: CliIO,
     private readonly style: Style,
     private readonly loaded: Loaded,
     private readonly tree: CallTree,
-    strategy: Strategy = 'top-down',
+    options: Partial<DebugOptions> = {},
   ) {
-    this.state = startFinder(tree, tree.root, { justMyCode: true, strategy })
+    this.options = {
+      strategy: options.strategy ?? 'top-down',
+      oracle: options.oracle ?? null,
+      ask: options.ask ?? true,
+    }
+    this.state = startFinder(tree, tree.root, { justMyCode: true, strategy: this.options.strategy })
     this.introduce(tree.recording)
     this.next()
   }
@@ -95,9 +127,13 @@ export class DebugSession {
     return this.outcome !== 'open'
   }
 
-  /** 0 once a verdict was given, 1 when the interview stopped without one. */
-  get exitCode(): ExitCode {
-    return this.outcome === 'found' ? 0 : 1
+  /**
+   * 0 once a verdict was given, 3 when it stopped at a question nobody could answer (--no-ask),
+   * 1 when the interview stopped without a verdict otherwise.
+   */
+  get exitCode(): DebugExitCode {
+    if (this.outcome === 'found') return 0
+    return this.outcome === 'unanswered' ? 3 : 1
   }
 
   /** Handles one line of input; returns false once the interview is over. */
@@ -135,9 +171,12 @@ export class DebugSession {
     if (outcome.kind === 'error') {
       io.stderr(`${formatRuntimeError(loaded.file, loaded.source, outcome.error, style)}\n`)
       io.stdout(
-        'The run ended with a runtime error (above). The bug finder is for wrong results, so the ' +
-          'error is the place to start; the questions below can still lead to the code that ' +
-          'produced a bad value.\n',
+        CHECK_FAILURES.has(outcome.error.code)
+          ? 'The run failed a contract or an assertion (above); the questions below find the ' +
+              'function to blame.\n'
+          : 'The run ended with a runtime error (above). The bug finder is for wrong results, so ' +
+              'the error is the place to start; the questions below can still lead to the code ' +
+              'that produced a bad value.\n',
       )
     } else if (outcome.kind !== 'finished') {
       io.stdout(
@@ -148,18 +187,53 @@ export class DebugSession {
   }
 
   private takeBack(): void {
+    const taken = this.state.judgments[this.state.previous?.judgments.length ?? 0]
     const previous = undo(this.state)
     if (previous === this.state) {
       this.io.stdout('(nothing to take back)\n')
       return
     }
     const call = question(previous)
-    this.io.stdout(`(took back the answer about ${sanitize(call?.name ?? 'that call')})\n`)
+    const name = sanitize(call?.name ?? 'that call')
+    this.io.stdout(
+      taken?.auto === undefined
+        ? `(took back the answer about ${name})\n`
+        : `(took back the automatic answer about ${name}; it is yours to answer)\n`,
+    )
     this.state = previous
+  }
+
+  /** The number the next question gets: every question so far, answered by anyone, counts. */
+  private get questionNumber(): number {
+    return this.state.asked + this.state.answeredAutomatically + 1
+  }
+
+  /** Lets the oracle answer what it can, printing each automatic answer with its evidence. */
+  private answerAutomatically(): void {
+    const { oracle } = this.options
+    if (oracle === null) return
+    const before = this.state
+    const after = autoAnswer(before, oracle)
+    let number = this.questionNumber
+    for (const judgment of after.judgments.slice(before.judgments.length)) {
+      if (judgment.auto === undefined) continue
+      this.printAutomatic(number, judgment.call, judgment.auto)
+      number += 1
+    }
+    this.state = after
+  }
+
+  private printAutomatic(number: number, call: CallNode, auto: AutoAnswer): void {
+    const { io, style } = this
+    const given = auto.answer === 'right' ? style.ok('right') : style.error('wrong')
+    const text = sanitize(callText(this.tree.details(call)))
+    const reason = style.dim(`(${sanitize(auto.reason)})`)
+    io.stdout(`\n${style.bold(`Question ${number}:`)} ${text} — ${given} ${reason}\n`)
   }
 
   /** Prints the next question, or the verdict when the search is over. */
   private next(): void {
+    this.answerAutomatically()
     const call = question(this.state)
     if (call === null) {
       this.printVerdict()
@@ -167,7 +241,7 @@ export class DebugSession {
     }
     const details = this.tree.details(call)
     const { io, style } = this
-    const number = this.state.asked + 1
+    const number = this.questionNumber
     io.stdout(`\n${style.bold(`Question ${number}:`)} ${sanitize(callText(details))}\n`)
     for (const change of changeTexts(details)) io.stdout(`  ${sanitize(change)}\n`)
     if (details.lines)
@@ -177,6 +251,13 @@ export class DebugSession {
       io.stdout(
         `  ${style.dim(`${left.toLocaleString('en-US')} ${left === 1 ? 'call' : 'calls'} still under suspicion`)}\n`,
       )
+    }
+    if (!this.options.ask) {
+      this.outcome = 'unanswered'
+      io.stdout(
+        `${style.error('stopped')}: no contract or assertion answers this question, and --no-ask means nobody else is asked.\n`,
+      )
+      return
     }
     io.stdout(PROMPT)
   }

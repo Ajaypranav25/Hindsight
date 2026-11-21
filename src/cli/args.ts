@@ -46,6 +46,10 @@ export type Command =
       readonly kind: 'debug'
       readonly file: string
       readonly strategy: Strategy
+      /** Let contracts and assertions answer what they can (off with --no-auto). */
+      readonly auto: boolean
+      /** Ask a person the rest (off with --no-ask: stop at the first such question, exit 3). */
+      readonly ask: boolean
       readonly maxSteps: number
       readonly seed: number
     }
@@ -107,6 +111,9 @@ Usage:
                                                    (NAME=1..20 or NAME=1,5,9 sweeps several values)
   hindsight debug FILE [--max-steps N] [--seed S]  find a bug by answering questions about calls
                  [--strategy divide|top-down]      (divide: halve the suspects with each answer)
+                 [--no-auto] [--no-ask]            contracts and assertions answer what they can;
+                                                   --no-auto: you answer all; --no-ask: never ask
+                                                   (stop at the first open question, exit 3)
   hindsight solve FILE --want TEXT [--output K]    find an earlier value that makes output line K
                                                    (default: the last) print TEXT
   hindsight solve FILE --no-crash                  find an earlier value that avoids the runtime error
@@ -132,7 +139,7 @@ const VALUE_FLAGS = new Set([
   '--limit',
 ])
 /** Options that take no value. */
-const SWITCHES = new Set(['--no-crash'])
+const SWITCHES = new Set(['--no-crash', '--no-auto', '--no-ask'])
 
 /** What each command accepts: its options, and how many arguments may follow its name. */
 const COMMANDS: ReadonlyMap<string, { readonly flags: readonly string[]; readonly arity: number }> =
@@ -145,7 +152,10 @@ const COMMANDS: ReadonlyMap<string, { readonly flags: readonly string[]; readonl
     ['test', { flags: [], arity: 1 }],
     ['repl', { flags: ['--seed'], arity: 0 }],
     ['whatif', { flags: ['--at', '--set', '--max-steps', '--seed'], arity: 1 }],
-    ['debug', { flags: ['--strategy', '--max-steps', '--seed'], arity: 1 }],
+    [
+      'debug',
+      { flags: ['--strategy', '--no-auto', '--no-ask', '--max-steps', '--seed'], arity: 1 },
+    ],
     ['solve', { flags: ['--want', '--output', '--no-crash', '--max-steps', '--seed'], arity: 1 }],
     ['query', { flags: ['--limit', '--max-steps', '--seed'], arity: 2 }],
     ['whynot', { flags: ['--line', '--max-steps', '--seed'], arity: 1 }],
@@ -271,7 +281,9 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
       const strategy = flags.get('--strategy') ?? 'divide'
       if (strategy !== 'divide' && strategy !== 'top-down')
         return { ok: false, error: "--strategy must be 'divide' or 'top-down'" }
-      return { ok: true, command: { kind: 'debug', file, strategy, maxSteps, seed } }
+      const auto = !flags.has('--no-auto')
+      const ask = !flags.has('--no-ask')
+      return { ok: true, command: { kind: 'debug', file, strategy, auto, ask, maxSteps, seed } }
     }
     case 'solve':
       return solveCommand(positional, flags, maxSteps, seed)

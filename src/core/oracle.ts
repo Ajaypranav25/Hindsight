@@ -12,12 +12,15 @@
  *   assertion passed and wrong when it failed (R018 there).
  *
  * A "right" answer only vouches for a result, so it is not given for a call that changed anything
- * outside itself (a person has to judge those effects). Answers spread to identical calls through
- * the finder's memo keys. Built only on the public `Recording` API.
+ * outside itself (a person has to judge those effects). An assertion's answer also applies to every
+ * call with the same inputs and result (`resultKey`: function, context, arguments, outcome) wherever
+ * it was made, and every answer spreads to identical calls through the finder's memo keys. Built
+ * only on the public `Recording` API.
  */
 import type { Recording } from './api-types'
 import type { AutoAnswer, CallOracle } from './bug-finder'
 import { changeTexts } from './bug-finder-text'
+import { resultKey } from './call-details'
 import type { CallNode, CallTree } from './calls'
 import type { ContractClause } from './ast'
 import {
@@ -56,6 +59,7 @@ class ContractFacts {
   private readonly lines: LineIndex
   private syntaxCache: OracleSyntax | null = null
   private failures: ReadonlyMap<number, AutoAnswer> | null = null
+  private examples: ReadonlyMap<string, AutoAnswer> | null = null
 
   constructor(
     private readonly recording: Recording,
@@ -67,7 +71,10 @@ class ContractFacts {
   answer(call: CallNode): AutoAnswer | null {
     if (call.depth === 0) return null
     return (
-      this.failureChain().get(call.id) ?? this.fromAssertion(call) ?? this.fromPostcondition(call)
+      this.failureChain().get(call.id) ??
+      this.fromAssertion(call) ??
+      this.fromPostcondition(call) ??
+      this.fromIdenticalExample(call)
     )
   }
 
@@ -209,6 +216,45 @@ class ContractFacts {
       outcome.error.code === 'R018' &&
       sameSpan(outcome.error.span, example.assertSpan)
     )
+  }
+
+  /**
+   * An assertion judged a call with the same inputs and result as `call` somewhere else in the run.
+   * A wrong result is wrong whatever else the call did; "right" still needs a call that changed
+   * nothing outside itself.
+   */
+  private fromIdenticalExample(call: CallNode): AutoAnswer | null {
+    if (call.library || call.outcome !== 'returned' || this.syntax.assertions.length === 0) {
+      return null
+    }
+    const key = resultKey(this.recording, call)
+    const example = key === null ? undefined : this.exampleAnswers().get(key)
+    if (example === undefined) return null
+    if (example.answer === 'right' && this.changesSomething(call)) return null
+    const verb = example.answer === 'right' ? 'passed' : 'failed'
+    const line = example.line === null ? '' : ` on line ${example.line}`
+    return { ...example, reason: `an identical call ${verb} the assertion${line}` }
+  }
+
+  /**
+   * The answers assertions gave, by `resultKey`; a failed example outweighs a passed one. One walk
+   * of the call tree, with an explicit work stack (trees can be far deeper than the JS stack).
+   */
+  private exampleAnswers(): ReadonlyMap<string, AutoAnswer> {
+    if (this.examples !== null) return this.examples
+    const answers = new Map<string, AutoAnswer>()
+    this.examples = answers
+    const work: CallNode[] = [this.tree.root]
+    while (work.length > 0) {
+      const node = work.pop()!
+      const judged = node.depth > 0 ? this.fromAssertion(node) : null
+      const key = judged === null ? null : resultKey(this.recording, node)
+      if (judged !== null && key !== null && answers.get(key)?.answer !== 'wrong') {
+        answers.set(key, judged)
+      }
+      for (const child of this.tree.children(node)) work.push(child)
+    }
+    return answers
   }
 
   // --- pinning postconditions -----------------------------------------------------------------

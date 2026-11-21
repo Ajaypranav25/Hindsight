@@ -47,8 +47,11 @@ afterAll(() => {
   if (dir) rmSync(dir, { recursive: true, force: true })
 })
 
-function debug(input: string) {
-  return spawnSync(process.execPath, [bundle, 'debug', program], { input, encoding: 'utf8' })
+function debug(input: string, ...flags: string[]) {
+  return spawnSync(process.execPath, [bundle, 'debug', program, ...flags], {
+    input,
+    encoding: 'utf8',
+  })
 }
 
 describe('hindsight debug with piped answers', () => {
@@ -64,6 +67,13 @@ describe('hindsight debug with piped answers', () => {
     const result = debug('w\n')
     expect(result.stderr).toContain('stopped before a verdict')
     expect(result.status).toBe(1)
+  })
+
+  test('--no-ask stops at the first question without an automatic answer, with exit code 3', () => {
+    const result = debug('', '--no-ask')
+    expect(result.stdout).toContain('Question 1: average(xs = [88, 83, 79]) returned 125')
+    expect(result.stdout).toContain('--no-ask means nobody else is asked')
+    expect(result.status).toBe(3)
   })
 
   test('ignores answers after the verdict', () => {

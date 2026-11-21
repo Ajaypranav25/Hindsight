@@ -83,6 +83,20 @@ export function callDetails(recording: Recording, call: CallNode): CallDetails {
   }
 }
 
+/**
+ * Equal for calls of one function with the same context (captures, globals read), argument values
+ * at entry and outcome, whatever they changed; null when that cannot be told. Unlike
+ * `CallDetails.key` it ignores effects, so a call on a temporary list matches one on a list that
+ * lives on: the contract oracle shares an assertion's verdict about a result through it.
+ */
+export function resultKey(recording: Recording, call: CallNode): string | null {
+  if (call.depth === 0) return null
+  const error = call.outcome === 'raised' ? runError(recording) : null
+  const after = call.outcome === 'returned' ? call.exit + 1 : recording.length
+  const result = call.outcome === 'returned' ? returnedValue(recording, call) : null
+  return callKey(recording, call, parameters(recording, call), after, result, error, false)
+}
+
 function runError(recording: Recording): RuntimeErrorInfo {
   if (recording.outcome.kind !== 'error') throw new InternalError('a call raised without an error')
   return recording.outcome.error
@@ -184,6 +198,7 @@ function callKey(
   after: number,
   result: ValueView | null,
   error: RuntimeErrorInfo | null,
+  withChanges = true,
 ): string | null {
   const ending = outcomeKey(recording, after, result, error)
   if (ending === null) return null
@@ -194,7 +209,7 @@ function callKey(
     const before = keyText(recording, call.entry, param.value)
     if (before === null) return null
     parts.push(before)
-    if (param.value.kind === 'ref') {
+    if (withChanges && param.value.kind === 'ref') {
       const later = laterKey(recording, after, param.value)
       if (later === null) return null
       parts.push(later)
