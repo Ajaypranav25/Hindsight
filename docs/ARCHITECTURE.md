@@ -326,7 +326,11 @@ Stack effects are written `( before -- after )`, top of stack on the right.
 `stack`, `frames` (`{closure, ip, base, uid}`), `openCells` (sorted by stack index), `globals`
 (insertion order = definition order), `time` (steps executed), `nextObjectId`, `nextFrameUid` (the
 script frame is uid 1), the generator state (SPEC §10.3), `allocated` (units charged against the
-allocation budget, SPEC §10.5; it only grows), `status`, `error`.
+allocation budget, SPEC §10.5; it only grows), `scanned` (elements visited within single steps
+without allocating, reported by natives through `NativeContext.scan` and by `==` on containers; it
+only grows), `status`, `error`. `VM.work` is `time + allocated + scanned`: the cost of replaying the
+run so far, which the recorder's snapshot cadence measures distances in (§7.1.4). Besides the
+record, the machine keeps the write-barrier state of §6.8 (base snapshot, change log).
 
 `createVM(program, { builtins, libraryProtos, seed })` (exported from `vm.ts`) returns a `VM`
 (`runtime-types.ts`). The VM receives the builtins and library protos from `library.ts` via
@@ -358,7 +362,9 @@ allocation budget, SPEC §10.5; it only grows), `status`, `error`.
 numbers), implementing SPEC §9.1–9.2 exactly. A native receives `(ctx: NativeContext, args)`; the
 context (`runtime-types.ts`) offers output, allocation helpers that assign ids and record `alloc`
 events, mutation helpers that perform list/record changes and record their events (§6.7), the
-generator, the current time, and `fail(code, message, hint?)`. Natives never call back into user
+generator, the current time, `scan(units)` (elements visited without allocating: a sort reports
+`n·⌈log2 n⌉` comparisons, `index_of`, `contains` and `min`/`max` the items they visited, string
+searches one unit per 16 code units), and `fail(code, message, hint?)`. Natives never call back into user
 code and check SPEC §10.5 size limits before building results.
 
 ### 6.5 Pattern matching
@@ -398,14 +404,50 @@ the index of the executing step.
 
 ### 6.8 Snapshots
 
-`snapshot()` copies the **whole** VM record: stack, frames, open cells, globals, `time`,
-`nextObjectId`, `nextFrameUid`, generator state, `allocated`, status, plus all mutable heap objects reachable from
-them (lists, records, closures with their cells, cells, iterators with their position and key
-snapshot), preserving object identity and ids. Strings, numbers, ranges, natives, library closures
-and `FunctionProto`s are shared, never copied. `restore(s)` copies again, so a snapshot can be
-restored any number of times. `VMSnapshot.size` is the number of values copied (used by the recorder's
-cadence). Both are iterative. Tool-side bookkeeping is keyed only on numeric ids and uids, never on
-JS object identity, because `restore` creates fresh objects.
+A snapshot captures the **whole** VM record: stack, frames, open cells, globals, `time`,
+`nextObjectId`, `nextFrameUid`, generator state, `allocated`, `scanned`, status, error, plus all
+mutable heap objects reachable from them (lists, records, closures with their cells, cells, iterators
+with their position and key snapshot), preserving object identity and ids. Strings, numbers, ranges,
+natives, library closures and `FunctionProto`s are shared, never copied. Tool-side bookkeeping is
+keyed only on numeric ids and uids, never on JS object identity, because `restore` creates fresh
+objects.
+
+**Structural sharing** (`vm-snapshot*.ts`, `pvec.ts`). Inside a snapshot every mutable object is a
+frozen copy (`vm-snapshot-frozen.ts`) that refers to other mutable objects by id (`Ref`), never by
+pointer, held in a persistent object table indexed by id: a 32-way radix tree with path copying
+(`PVec`), whose nodes record the serial of the snapshot that created them. Lists of more than 32
+items and records of more than 16 entries keep their contents in persistent vectors too. Consecutive
+snapshots share every copy and every node that did not change, so taking one costs and retains
+O(changes), not O(heap):
+
+- **Write barrier.** The machine keeps a _base_ (the snapshot it last took or restored) and logs every
+  in-place change of an object that existed then (`id < base.nextObjectId`) as `(object, detail)`:
+  `SetField`, `SetIndex`, `RecordSet`, `RecordMerge`, `ListAppend`, `ListExtend`, `SetUpvalue` on a
+  closed cell, closing a cell, `IterNext`, and the context's mutation helpers that natives use
+  (append, insert, remove, pop, delete). A tool that edits the state directly (a what-if edit, §7.5)
+  calls `VM.noteEdit(object)`. Without a base the threshold is 0, so the barrier is one comparison
+  that never passes: `run()` and VMs that never snapshot pay nothing else.
+- **Taking** (`vm-snapshot-freeze.ts`): changed objects get new copies (large lists and records copy
+  only the changed leaves and the path to them; a deleted key or a list that crossed the 32-item line
+  is copied whole); then a walk from the roots and from the changed parts, descending only into
+  objects created since the base, copies every new object that is still reachable (an unchanged old
+  object still holds exactly the references it held then). Roots (stack, frames, open cells,
+  globals) are copied in full; a machine with several stacks would add them to `FrozenRoots` and the
+  two walks over roots. The result becomes the new base.
+- **Every snapshot is complete on its own**: dropping any of them (thinning) never invalidates
+  another. `restore(s)` rebuilds fresh live objects from the roots through the table
+  (`vm-snapshot-thaw.ts`, a work list, any nesting), can be repeated any number of times, and makes
+  `s` the base. `restore()` accepts only snapshots taken from the same `Program` object.
+- **Garbage**: objects that became unreachable stay in the table until a compacting snapshot keeps
+  only the reachable ones (reusing their copies), when the table holds more than twice its values
+  after the last compaction plus 65,536. A change log longer than twice the table's values (at least
+  131,072 pairs) is dropped and the next snapshot is a full one that starts a new _line_.
+- **Sizes**: `VMSnapshot.size` is the values this snapshot copied (roots, object copies or their
+  changed nodes, table slots); `restoreSize` is what a restore rebuilds at most (roots plus every
+  value in the table); `retainedSince(earlier)` is the values it holds that `earlier`, an ancestor
+  in the same line, does not share. The recorder uses all three (§7.1.4).
+
+All walks are iterative; the radix tree is at most 7 levels deep.
 
 ### 6.9 Library (`prelude.ts`, `library.ts`)
 
@@ -433,9 +475,25 @@ Decisions made while building the runtime, recorded here so tools can rely on th
 - `Recording.continue` already requires user code, so `NavOptions.justMyCode` does not change it.
 - `allocationTime` is null for the script closure (id 1) and for objects allocated in a failing
   step. `recordAsync` reports `onProgress` one last time with the final `N`.
-- Measured on the reference machine: 5,000,000 VM instructions in about 430 ms; a 1.26 M-step
-  recording in about 230 ms with 0.35 ms average seeks. Heap-heavy programs (60,000 records) seek in
-  about 27 ms, because snapshots are spaced in proportion to their size.
+- **Fused dispatch** (`vm-exec.ts`): when the budget of `runUntil` covers two instructions, a few
+  handlers run the next one too if it forms a hot pair: `GetLocal` + `GetLocal`/`Const`/`GetField`,
+  `Const` + `Add`/`Sub`, a comparison + `JumpIfFalse`, `SetLocal` + `Jump`. Bytecode and step counts
+  are unchanged: each instruction still counts one step, a pair never straddles the limit (`step()`
+  never fuses), and before a second instruction that can fail, `time` and the error position move to
+  it, so its error reports exactly as unfused. Pairs were picked with `scripts/opcode-pairs.ts`
+  (dynamic pair frequencies over `tests/lang` and `examples/`). Inline caches for `GetField` do not
+  apply: records are `Map`s without shapes, and `Map.get` on an interned key is already one hashed
+  lookup; fusing the `GetLocal` before it gave the gain instead.
+- Measured on the reference machine (`node --expose-gc --import tsx scripts/bench-vm.ts`, before ->
+  after the 0.4 work on snapshots and dispatch): a 5,000,000-instruction counting loop runs in
+  24 -> 17 ms; `run()` of local-variable loops is 5-13 % faster, of a field-heavy loop 8 %. A
+  1.05 M-step loop records in about 60 ms with 0.1 ms seeks (unchanged). A 50,000-item list mutated
+  in place (2.85 M steps) retains 46 snapshots in 670,000 values where full copies kept 32 snapshots
+  in 750,000, with about 2 ms seeks; recording it costs 5-15 % more (the write barrier's log). A
+  50,000-field record used as a dictionary: 85 snapshots in 720,000 values (was 35 in 680,000), 6 ms
+  seeks. Heavy natives (sorts, slices and scans of a 100,000-item list): the slowest single step back
+  went from 900 ms to 24-40 ms, because the cadence counts their work. Heap-heavy programs (60,000
+  records) seek in about 11-14 ms.
 
 ## 7. Time travel
 
@@ -453,12 +511,19 @@ Decisions made while building the runtime, recorded here so tools can rely on th
    failing step are discarded, so every event has `time < N`.
 3. **Location at N** is stored for `error`, `step-limit` and `aborted` (the failing or paused
    instruction); for `finished` it is null.
-4. **Snapshot cadence** (cost-aware): snapshot at time 0; after a snapshot at time `s` that copied
-   `c` values, the next is taken at the first multiple of `interval` at or after
-   `s + max(interval, 4c)`. Start with `interval = 256`. When the number of snapshots exceeds
-   `snapshotBudget` (default 512) or the retained copied values exceed 8,000,000, drop every other
-   snapshot (keeping time 0) and double `interval`. For `step-limit` and `aborted`, also snapshot at
-   `N` (for `extend`).
+4. **Snapshot cadence** (cost-aware, measured in work): snapshot at time 0; after a snapshot taken
+   when the VM had done `w` work (`VM.work`, §6.2: steps plus the elements single steps allocated or
+   visited) that copied `c` values and costs `r` to restore (`size`, `restoreSize`, §6.8), the next
+   is taken before the first step at which the work reaches the first multiple of `interval` at or
+   after `w + max(interval, 4c, 2r)`. So copying costs at most a quarter of the run, the replay
+   between two snapshots costs at most about twice a restore plus one step, and a step that sorts or
+   scans a huge list brings the next snapshot forward (step-based spacing let a single step back
+   replay seconds of such natives). Start with `interval = 256`. When the number of snapshots
+   exceeds `snapshotBudget` (default 512) or the retained values exceed 8,000,000, drop every other
+   snapshot (keeping time 0 and pinned fork snapshots) and double `interval`. Retained values count a
+   value shared by several snapshots once: the sum over retained snapshots of `retainedSince` the
+   previous retained one (`SnapshotSchedule.retainedValues`). For `step-limit` and `aborted`, also
+   snapshot at `N` (for `extend`).
 5. **Seek** `stateAt(t)`: restore the latest snapshot `<= t` and replay with `vm.runUntil(t)`
    (hooks off). Keep the VM positioned at the last seek so a forward seek within reach runs on
    without restoring. The state at `N` for an error is rebuilt this way (never read from the failed
