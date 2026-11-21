@@ -295,7 +295,7 @@ describe('BugFinder with contracts and assertions', () => {
     // Assert
     expect(screen.getByRole('heading', { name: 'Verdict' })).toBeTruthy()
     expect(screen.getByText('Found it: the bug is in average (lines 6–8).')).toBeTruthy()
-    const list = screen.getByRole('region', { name: 'Answered by your contracts and assertions' })
+    const list = screen.getByRole('group', { name: 'Answered by your contracts and assertions' })
     expect(list.textContent).toContain('(its postcondition on line 6 failed)')
     expect(list.textContent).toContain('(an identical call passed the assertion on line 9)')
     expect(
@@ -321,7 +321,7 @@ describe('BugFinder with contracts and assertions', () => {
     expect(store.getState().bugFinder.auto).toBe(false)
     expect(screen.getByRole('heading', { name: 'Question 1' })).toBeTruthy()
     expect(
-      screen.queryByRole('region', { name: 'Answered by your contracts and assertions' }),
+      screen.queryByRole('group', { name: 'Answered by your contracts and assertions' }),
     ).toBeNull()
   })
 })
@@ -338,5 +338,34 @@ describe('automaticSummary', () => {
     expect(automaticSummary(4, 1)).toBe(
       'Your contracts and assertions answered 1 question; you answered 4 questions.',
     )
+  })
+})
+
+describe('BugFinder answers as assertions', () => {
+  test('offers the calls judged right as assertions and adds them to the program', () => {
+    // Arrange
+    const source = `fn total(xs) {
+  var sum = 0
+  for x in xs { sum += x }
+  sum
+}
+fn average(xs) { total(xs) / (len(xs) - 1) }
+print(average([88, 83, 79]))
+`
+    const { store } = renderWithRecording(<BugFinder />, recordSource(source))
+    act(() => store.getState().setBugFinderStrategy('top-down'))
+    fireEvent.click(screen.getByRole('button', { name: 'Find the bug' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Wrong' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Right' }))
+
+    // Act
+    const section = screen.getByRole('region', { name: 'Your answers as assertions' })
+    fireEvent.click(screen.getByRole('button', { name: 'Add to the program' }))
+
+    // Assert
+    expect(section.textContent).toContain('assert(total([88, 83, 79]) == 250)')
+    expect(store.getState().source).toContain('assert(total([88, 83, 79]) == 250)')
+    const added = screen.getByRole('button', { name: 'Added to the program' })
+    expect(added.hasAttribute('disabled')).toBe(true)
   })
 })

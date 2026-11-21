@@ -18,7 +18,7 @@ import {
 import { failedCheck, liveSession } from '../state/bug-finder'
 import { useStudio, useStudioActions } from '../state/context'
 import { isStale } from '../state/selectors'
-import { AutomaticAnswers, AutoToggle } from './AutomaticAnswers'
+import { AnswerAssertions, AutomaticAnswers, AutoToggle } from './AutomaticAnswers'
 import {
   afterCallTime,
   announcement,
@@ -265,12 +265,12 @@ function Interview(props: { view: FinderView }) {
           ×
         </button>
       </header>
-      <AutomaticAnswers answers={view.automatic} />
       {view.kind === 'question' ? (
         <Question view={view} onAnswer={answerBugFinder} />
       ) : (
         <VerdictBody view={view} />
       )}
+      <AutomaticAnswers answers={view.automatic} />
       <div className="bf-row bf-tools">
         {view.kind === 'question' ? (
           <button
@@ -391,6 +391,7 @@ function VerdictBody(props: { view: FinderView & { kind: 'verdict' } }) {
       {summary && <p className="pn-note bf-auto-summary">{summary}</p>}
       {view.details.call.depth > 0 && <CallLine details={view.details} />}
       <InterviewRepairs />
+      <AnswerAssertions />
     </>
   )
 }
