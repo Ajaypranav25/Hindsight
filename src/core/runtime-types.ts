@@ -143,8 +143,13 @@ export interface VMHooks {
 /** Opaque copy of the whole VM state (ARCHITECTURE §6.8). */
 export interface VMSnapshot {
   readonly time: number
-  /** Number of values copied; drives the recorder's snapshot cadence. */
+  /** Number of values this snapshot copied; drives the recorder's snapshot cadence. */
   readonly size: number
+  /**
+   * The values this snapshot holds that `earlier` (a snapshot taken before it by the same line of
+   * VMs) does not share with it; all of them for null. Absent: `size` (nothing is shared).
+   */
+  retainedSince?(earlier: VMSnapshot | null): number
 }
 
 export type VMStatus = 'running' | 'finished' | 'error'
@@ -180,8 +185,18 @@ export interface VM {
   step(): void
   /** Steps while status is 'running' and `time < t`. */
   runUntil(t: number): void
+  /**
+   * Work done so far: steps plus the elements natives and operations allocated or visited within
+   * single steps. It never decreases and only depends on the state (ARCHITECTURE §7.1.4).
+   */
+  readonly work: number
   snapshot(): VMSnapshot
   restore(snapshot: VMSnapshot): void
+  /**
+   * Tells the VM that a tool changed `object` in place (a what-if edit, §7.5), so the next snapshot
+   * copies it rather than sharing an older copy.
+   */
+  noteEdit(object: HeapObject): void
 }
 
 /** Exported by vm.ts as `createVM`. The script closure gets id 1 and no alloc event. */

@@ -74,7 +74,10 @@ export function execute(m: MachineState, limit: number): void {
           const cell = frame.closure.upvalues[code[ip++]!]!
           const value = stack.pop() as Value
           if (cell.open) stack[cell.stackIndex] = value
-          else cell.value = value
+          else {
+            cell.value = value
+            if (cell.id < m.logBelow) m.logChange(cell, 0)
+          }
           if (m.hooks !== null) m.recordCell(cell, value)
           break
         }

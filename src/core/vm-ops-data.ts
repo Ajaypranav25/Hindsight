@@ -57,7 +57,10 @@ export function listExtend(m: MachineState): void {
   const first = list.items.length
   const items = list.items
   for (const element of collectElements(iterable)) items.push(element)
-  if (count > 0) m.recordListOp(list.id, 'extend', first, count, iterable)
+  if (count > 0) {
+    m.noteTail(list, first)
+    m.recordListOp(list.id, 'extend', first, count, iterable)
+  }
 }
 
 /** `Record n`: `( k1 v1 … kn vn -- rec )`; a repeated key keeps its first position. */
@@ -81,6 +84,7 @@ export function recordSet(m: MachineState): void {
     m.charge(1)
   }
   record.fields.set(key, value)
+  m.noteField(record, key)
   m.recordField(record.id, key, value)
 }
 
@@ -93,8 +97,11 @@ export function recordMerge(m: MachineState): void {
   for (const key of other.fields.keys()) if (!record.fields.has(key)) added++
   if (record.fields.size + added > SIZE_LIMIT) raiseTooLarge()
   m.charge(added)
+  // Merging over existing keys allocates nothing but still visits every entry.
+  m.scanned += other.fields.size
   for (const [key, value] of Array.from(other.fields)) {
     record.fields.set(key, value)
+    m.noteField(record, key)
     m.recordField(record.id, key, value)
   }
 }

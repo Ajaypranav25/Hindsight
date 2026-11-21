@@ -106,11 +106,14 @@ export function writeEdit(vm: VM, slot: EditSlot, value: EditValue): void {
       break
     case 'item':
       slot.list.items[slot.index] = value
+      vm.noteEdit(slot.list)
       break
     case 'field':
       slot.record.fields.set(slot.key, value)
+      vm.noteEdit(slot.record)
       break
     case 'cell':
       slot.cell.value = value
+      vm.noteEdit(slot.cell)
   }
 }
