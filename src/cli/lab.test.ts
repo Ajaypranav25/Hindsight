@@ -222,6 +222,7 @@ describe('hindsight mcp', () => {
       'suggest_repairs',
       'find_bug',
       'profile',
+      'infer_contracts',
     ])
     for (const tool of list.result.tools) {
       expect(tool.description.length).toBeGreaterThan(20)

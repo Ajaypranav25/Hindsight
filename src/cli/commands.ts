@@ -20,6 +20,7 @@ import {
   type Style,
 } from './format'
 import { diffCommand } from './diff'
+import { inferCommand } from './infer'
 import type { CliIO } from './io'
 import { query, repair, slice, solve, whyNotCommand } from './lab'
 import { profileCommand } from './profile'
@@ -107,6 +108,10 @@ export function runCommand(command: Command, io: CliIO): ExitCode {
     case 'profile': {
       const loaded = load(io, style, command.file)
       return loaded ? profileCommand(io, style, loaded, command) : 1
+    }
+    case 'infer': {
+      const loaded = load(io, style, command.file)
+      return loaded ? inferCommand(io, style, loaded, command) : 1
     }
     default:
       return 0

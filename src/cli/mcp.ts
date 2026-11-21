@@ -16,6 +16,7 @@ import { diagnoseTool } from './mcp-diagnose'
 import { diffTool } from './mcp-diff'
 import { findBugTool } from './mcp-find-bug'
 import { guardResponse } from './mcp-guard'
+import { inferContractsTool } from './mcp-infer'
 import { profileTool } from './mcp-profile'
 import { queryTool } from './mcp-query'
 import { suggestRepairsTool } from './mcp-repair'
@@ -45,7 +46,8 @@ const INSTRUCTIONS =
   'expected results; diff_runs compares two versions of a program (or two inputs) call by call ' +
   'and names where the difference starts. seek_state, query_provenance, query, why_not, slice, ' +
   'fork_whatif, get_divergence and solve answer narrower questions; profile shows where the ' +
-  'steps went. Steps are instruction ' +
+  'steps went; infer_contracts suggests requires/ensures clauses from a trusted run, which ' +
+  'find_bug then reads on a broken one. Steps are instruction ' +
   'counts; the state at step T is the state before instruction T runs. Long results come in ' +
   'pages: each result says when it was cut and how to fetch more.'
 
@@ -65,6 +67,7 @@ export class McpServer implements ToolContext {
       suggestRepairsTool(this),
       findBugTool(this),
       profileTool(this),
+      inferContractsTool(this),
     ]
   }
 
