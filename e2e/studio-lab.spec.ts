@@ -136,7 +136,7 @@ test('the query examples are written with the program and light up the timeline'
 }) => {
   void consoleErrors
   await open(page)
-  await page.getByRole('button', { name: 'Examples', exact: true }).click()
+  await page.getByRole('button', { name: 'Query examples' }).click()
   const menu = page.getByRole('menu', { name: 'Example queries' })
   await expect(menu.getByRole('menuitem')).toHaveText([/^when total > 10/, /^changed\(total\)/])
   await shoot(page, 'query-examples', false)

@@ -99,7 +99,7 @@ export function OutputLine(props: {
           type="button"
           className="pn-line-btn"
           aria-current={atPen ? 'step' : undefined}
-          title={`Printed at step ${formatCount(event.time)}${future ? ' (after the pen)' : ''} · right-click or Shift+F10 for more`}
+          title={`Printed at step ${formatCount(event.time)}${future ? ' (after the pen)' : ''} · right-click for more`}
           onClick={() => actions.seek(event.time)}
         >
           <span className="pn-stamp">{formatCount(event.time)}</span>

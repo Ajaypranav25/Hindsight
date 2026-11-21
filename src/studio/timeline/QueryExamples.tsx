@@ -38,6 +38,8 @@ export function QueryExamples(props: {
         className="ch-button ch-button-small"
         aria-haspopup="menu"
         aria-expanded={anchor !== null}
+        // Not just "Examples": the header's program picker has that name.
+        aria-label="Query examples"
         title="Example queries written with this program's names"
         onClick={toggle}
       >

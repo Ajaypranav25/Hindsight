@@ -61,7 +61,7 @@ describe('the query bar examples menu', () => {
     expect(input.placeholder).toBe(
       'when depth > 2 · changed(order.paid) · calls(fib) where ret > 20',
     )
-    const button = screen.getByRole('button', { name: 'Examples' })
+    const button = screen.getByRole('button', { name: 'Query examples' })
     fireEvent.click(button)
     expect(button.getAttribute('aria-expanded')).toBe('true')
     const items = within(screen.getByRole('menu', { name: 'Example queries' })).getAllByRole(
@@ -78,7 +78,7 @@ describe('the query bar examples menu', () => {
 
   test('the button closes the open menu, and Escape gives focus back to it', () => {
     renderWithRecording(<QueryBar />, recordSource(ORDER), 0)
-    const button = screen.getByRole('button', { name: 'Examples' })
+    const button = screen.getByRole('button', { name: 'Query examples' })
     fireEvent.click(button)
     fireEvent.mouseDown(button)
     fireEvent.click(button)
