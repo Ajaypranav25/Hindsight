@@ -1,5 +1,5 @@
 /** Pure syntax classification driven by the real lexer (no CodeMirror imports). */
-import { lex, type Token } from '../../core/index'
+import { contractKeywordStarts, lex, type Token } from '../../core/index'
 import { BUILTIN_NAMES } from '../../core/builtin-names'
 
 export type SyntaxClass =
@@ -59,14 +59,22 @@ function commentRange(span: { start: number; end: number }): StyledRange[] {
   return span.end > span.start ? [{ from: span.start, to: span.end, cls: 'comment' }] : []
 }
 
-/** Every styled range of `source`, sorted by position (tokens and comments merged). */
+/**
+ * Every styled range of `source`, sorted by position (tokens and comments merged). `requires` and
+ * `ensures` are keywords only in contract position (SPEC §3.1), which the token stream tells.
+ */
 export function highlightRanges(source: string): StyledRange[] {
   const { tokens, comments } = lex(source)
+  const contractWords = contractKeywordStarts(tokens)
   const ranges: StyledRange[] = []
   let c = 0
   for (const token of tokens) {
     while (c < comments.length && comments[c]!.start <= token.start)
       ranges.push(...commentRange(comments[c++]!))
+    if (contractWords.has(token.start)) {
+      ranges.push({ from: token.start, to: token.end, cls: 'keyword' })
+      continue
+    }
     ranges.push(...tokenRanges(token))
   }
   for (; c < comments.length; c++) ranges.push(...commentRange(comments[c]!))

@@ -4,7 +4,18 @@
  */
 import fc from 'fast-check'
 import { describe, expect, test } from 'vitest'
-import { type Answer, answer, type FinderTree, question, startFinder, verdict } from './bug-finder'
+import {
+  type Answer,
+  answer,
+  autoAnswer,
+  type AutoAnswer,
+  type FinderTree,
+  question,
+  startFinder,
+  type Strategy,
+  undo,
+  verdict,
+} from './bug-finder'
 import type { CallNode } from './calls'
 
 interface Scenario {
@@ -119,6 +130,56 @@ describe('the bug finder on generated call trees', () => {
         if (result.kind !== 'found') throw new Error('the search did not end')
         expect(wrong.has(result.call.id)).toBe(true)
         if (result.certainty === 'certain') expect(result.call.id).toBe(s.bug)
+      }),
+    )
+  })
+})
+
+describe('automatic answers on generated call trees', () => {
+  /** Answers the calls in `known` truthfully and leaves the rest to the person. */
+  function partialOracle(s: Scenario, known: ReadonlySet<number>) {
+    const wrong = wrongCalls(s.parents, s.bug)
+    return (call: CallNode): AutoAnswer | null =>
+      known.has(call.id)
+        ? { answer: wrong.has(call.id) ? 'wrong' : 'right', reason: 'known', line: null }
+        : null
+  }
+
+  test.each<Strategy>(['divide', 'top-down'])(
+    'a truthful partial oracle plus a truthful person still finds the planted bug (%s)',
+    (strategy) => {
+      fc.assert(
+        fc.property(scenario, fc.array(fc.nat(), { maxLength: 30 }), (s, seeds) => {
+          const wrong = wrongCalls(s.parents, s.bug)
+          const oracle = partialOracle(s, new Set(seeds.map((seed) => seed % s.nodes.length)))
+          let state = autoAnswer(startFinder(treeOf(s), s.nodes[0]!, { strategy }), oracle)
+          for (let call = question(state); call !== null; call = question(state)) {
+            state = autoAnswer(answer(state, wrong.has(call.id) ? 'wrong' : 'right'), oracle)
+          }
+          expect(verdict(state)).toEqual({
+            kind: 'found',
+            call: s.nodes[s.bug],
+            certainty: 'certain',
+          })
+          const automatic = state.judgments.filter((judgment) => judgment.auto !== undefined).length
+          expect(state.answeredAutomatically).toBe(automatic)
+        }),
+      )
+    },
+  )
+
+  test('taking back an automatic answer returns its question to the person', () => {
+    fc.assert(
+      fc.property(scenario, (s) => {
+        const everything = new Set(s.nodes.map((node) => node.id))
+        const oracle = partialOracle(s, everything)
+        const done = autoAnswer(startFinder(treeOf(s), s.nodes[0]!), oracle)
+        if (done.previous === null) return
+        const undone = undo(done)
+        const open = question(undone)
+        expect(open).not.toBeNull()
+        expect(autoAnswer(undone, oracle)).toBe(undone)
+        expect(undone.declined.has(open!.id)).toBe(true)
       }),
     )
   })

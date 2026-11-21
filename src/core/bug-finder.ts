@@ -16,7 +16,8 @@
  *   questions for N calls, however deep or wide the tree is.
  *
  * Answers are remembered by call key, so identical calls (common in recursion) are never asked
- * twice.
+ * twice. A `CallOracle` (contracts and assertions, `oracle.ts`) can answer questions without a
+ * person: `autoAnswer` applies its answers, each with its reason, until a question needs a human.
  */
 import type { CallNode } from './calls'
 
@@ -39,11 +40,25 @@ export interface Cleared {
   readonly unsure: boolean
 }
 
+/** An answer given without a person, with the evidence for it (ARCHITECTURE §7.6). */
+export interface AutoAnswer {
+  readonly answer: 'right' | 'wrong'
+  /** Why, as a phrase a question can show: `the assertion on line 30`. */
+  readonly reason: string
+  /** The line of the contract clause or assertion that decided it. */
+  readonly line: number | null
+}
+
+/** Answers a call automatically, or returns null when a person has to judge it. */
+export type CallOracle = (call: CallNode) => AutoAnswer | null
+
 export interface Judgment {
   readonly call: CallNode
   readonly answer: Answer
-  /** Carried over from an identical call the user already judged. */
+  /** Carried over from an identical call already judged. */
   readonly remembered: boolean
+  /** Present when an oracle gave the answer (`autoAnswer`), with its evidence. */
+  readonly auto?: AutoAnswer
 }
 
 export interface FinderState {
@@ -62,11 +77,15 @@ export interface FinderState {
   readonly unsure: boolean
   /** Answers by call key. */
   readonly memo: ReadonlyMap<string, Answer>
-  /** Every judgment so far, the user's and the remembered ones, in order. */
+  /** Every judgment so far, the user's, the automatic and the remembered ones, in order. */
   readonly judgments: readonly Judgment[]
   /** Questions the user has answered. */
   readonly asked: number
-  /** The state before the user's last answer; null at the start. */
+  /** Questions an oracle answered (`autoAnswer`). */
+  readonly answeredAutomatically: number
+  /** Calls whose automatic answer the user took back: `autoAnswer` leaves them to the user. */
+  readonly declined: ReadonlySet<number>
+  /** The state before the last answer (the user's or an automatic one); null at the start. */
   readonly previous: FinderState | null
 }
 
@@ -102,6 +121,8 @@ export function startFinder(
     memo,
     judgments: [],
     asked: 0,
+    answeredAutomatically: 0,
+    declined: new Set(),
     previous: null,
   })
 }
@@ -123,17 +144,50 @@ export function remaining(state: FinderState): number {
 
 /** Judges the open question; does nothing when the search is over. */
 export function answer(state: FinderState, given: Answer): FinderState {
+  return judge(state, given, null)
+}
+
+/**
+ * Answers questions with `oracle` for as long as it has an answer for the open one (and the user
+ * did not take that answer back). Each automatic answer is a step of its own, so `undo` takes them
+ * back one at a time. Works with both strategies.
+ */
+export function autoAnswer(state: FinderState, oracle: CallOracle): FinderState {
+  let current = state
+  for (;;) {
+    const call = question(current)
+    if (call === null || current.declined.has(call.id)) return current
+    const auto = oracle(call)
+    if (auto === null) return current
+    current = judge(current, auto.answer, auto)
+  }
+}
+
+/**
+ * The state before the last answer (the same state at the start). Taking back an automatic answer
+ * also declines it, so the user answers that question.
+ */
+export function undo(state: FinderState): FinderState {
+  const previous = state.previous
+  if (previous === null) return state
+  const taken = state.judgments[previous.judgments.length]
+  if (taken?.auto === undefined) return previous
+  return { ...previous, declined: new Set(previous.declined).add(taken.call.id) }
+}
+
+function judge(state: FinderState, given: Answer, auto: AutoAnswer | null): FinderState {
   const call = question(state)
   if (call === null) return state
   const key = state.tree.keyOf(call)
   const memo = key === null ? state.memo : new Map(state.memo).set(key, given)
-  const settled = settle({ ...state, memo }, { call, answer: given, remembered: false })
-  return { ...settled, asked: state.asked + 1, previous: state }
-}
-
-/** The state before the user's last answer (the same state at the start). */
-export function undo(state: FinderState): FinderState {
-  return state.previous ?? state
+  const judgment: Judgment =
+    auto === null
+      ? { call, answer: given, remembered: false }
+      : { call, answer: given, remembered: false, auto }
+  const settled = settle({ ...state, memo }, judgment)
+  return auto === null
+    ? { ...settled, asked: state.asked + 1, previous: state }
+    : { ...settled, answeredAutomatically: state.answeredAutomatically + 1, previous: state }
 }
 
 export function verdict(state: FinderState): Verdict {
