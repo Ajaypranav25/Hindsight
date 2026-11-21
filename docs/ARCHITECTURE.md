@@ -797,6 +797,11 @@ show, repr, LineIndex, and all types from api-types.ts / diagnostics.ts / span.t
 
 `hindsight <command>`; during development `npm run sight -- <command>`.
 
+The npm package `hindsight-lang` ships the bundle `dist/cli/hindsight.mjs` alone and has no runtime
+dependencies: `scripts/build-cli.mjs` fails if anything but a Node built-in is left unbundled, and the
+studio's libraries are devDependencies (Vite bundles them). `.github/workflows/release.yml` publishes
+it with provenance when a `v*` tag matching the package version is pushed.
+
 | command                               | behavior                                                                                                                                                                                                                                        |
 | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `run FILE [--max-steps N] [--seed S]` | print output; on error print a diagnostic and exit 1                                                                                                                                                                                            |

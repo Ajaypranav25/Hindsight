@@ -93,8 +93,16 @@ Keyboard: **F11** / **Shift+F11** step into forward/back, **F10** / **Shift+F10*
 
 ## The command line
 
-Run it through npm as below, or build it once with `npm run build:cli && npm link` to get a
-`hindsight` command.
+Install the `hindsight` command from npm (Node 22.12 or later; the package has no dependencies), or
+run it without installing through `npx`:
+
+```sh
+npm i -g hindsight-lang
+hindsight run examples/03-fibonacci.sight
+npx hindsight-lang run examples/03-fibonacci.sight   # the same, without a global install
+```
+
+From a checkout, run it through npm as below, or build it once with `npm run build:cli && npm link`.
 
 ```sh
 npm run sight -- run examples/03-fibonacci.sight
@@ -188,10 +196,11 @@ on the saved step with the what-if edits applied again.
 program, look at any step, ask where a value came from, fork a what-if and check its fix:
 
 ```json
-{ "mcpServers": { "hindsight": { "command": "hindsight", "args": ["mcp"] } } }
+{ "mcpServers": { "hindsight": { "command": "npx", "args": ["-y", "hindsight-lang", "mcp"] } } }
 ```
 
-From a checkout without a linked build, use `"command": "npx", "args": ["tsx", "src/cli/main.ts",
+With a global install, `"command": "hindsight", "args": ["mcp"]` does the same. From a checkout
+without a linked build, use `"command": "npx", "args": ["tsx", "src/cli/main.ts",
 "mcp"]` with the repository as the working directory. Tools: `run_trace`, `seek_state`,
 `query_provenance`, `fork_whatif`, `get_divergence`, `query`, `why_not`, `slice`, `solve`.
 
