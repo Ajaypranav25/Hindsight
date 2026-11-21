@@ -7,9 +7,9 @@ import { sanitize } from './format'
 import { exitQuietlyOnClosedPipe, nodeIO, type CliIO } from './io'
 import { McpServer, serveLine } from './mcp'
 import { ReplSession } from './repl'
+import { VERSION } from './version'
 
-/** Kept equal to package.json's version (a test checks). */
-export const VERSION = '0.3.0'
+export { VERSION }
 
 function startRepl(io: CliIO, seed: number): void {
   const session = new ReplSession(io, seed)

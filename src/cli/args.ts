@@ -14,7 +14,16 @@ export type Command =
   | {
       readonly kind: 'replay'
       readonly file: string
-      readonly at: number
+      /** null: the pen saved in a trace file. */
+      readonly at: number | null
+      readonly maxSteps: number
+      readonly seed: number
+    }
+  | {
+      readonly kind: 'record'
+      readonly file: string
+      /** The trace file to write; null: FILE with the `.sighttrace` extension. */
+      readonly out: string | null
       readonly maxSteps: number
       readonly seed: number
     }
@@ -100,6 +109,8 @@ Usage:
   hindsight check FILE                             report compile errors only
   hindsight disasm FILE                            show the bytecode
   hindsight replay FILE --at T [--max-steps N]     show the program state at step T
+  hindsight record FILE [-o OUT.sighttrace]        save the run as a trace file (re-recorded and
+                 [--max-steps N] [--seed S]        verified when opened)
   hindsight why FILE --line L --name X             list every change to variable X declared on line L
   hindsight test [DIR]                             run annotated conformance files (default: tests/lang)
   hindsight repl [--seed S]                        interactive prompt
@@ -117,7 +128,10 @@ Usage:
                                                    crash, else the last output line)
   hindsight repair FILE                            try one-token fixes for a crash
   hindsight mcp                                    serve the debugger to AI agents (MCP over stdio)
-  hindsight --help | --version`
+  hindsight --help | --version
+
+run, replay, why, whynot, slice and query also take a .sighttrace file in place of FILE: it brings
+its own step limit, seed and what-if edits (replay without --at shows the saved step).`
 
 const VALUE_FLAGS = new Set([
   '--max-steps',
@@ -130,7 +144,10 @@ const VALUE_FLAGS = new Set([
   '--want',
   '--output',
   '--limit',
+  '--out',
 ])
+/** Short spellings of options. */
+const ALIASES: ReadonlyMap<string, string> = new Map([['-o', '--out']])
 /** Options that take no value. */
 const SWITCHES = new Set(['--no-crash'])
 
@@ -141,6 +158,7 @@ const COMMANDS: ReadonlyMap<string, { readonly flags: readonly string[]; readonl
     ['check', { flags: [], arity: 1 }],
     ['disasm', { flags: [], arity: 1 }],
     ['replay', { flags: ['--at', '--max-steps', '--seed'], arity: 1 }],
+    ['record', { flags: ['--out', '--max-steps', '--seed'], arity: 1 }],
     ['why', { flags: ['--line', '--name', '--max-steps', '--seed'], arity: 1 }],
     ['test', { flags: [], arity: 1 }],
     ['repl', { flags: ['--seed'], arity: 0 }],
@@ -166,7 +184,7 @@ function split(argv: readonly string[]): Split | string {
   const positional: string[] = []
   const flags = new Map<string, string>()
   for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i]!
+    const arg = ALIASES.get(argv[i]!) ?? argv[i]!
     if (!arg.startsWith('--')) {
       positional.push(arg)
       continue
@@ -225,7 +243,7 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
   if (typeof parts === 'string') return { ok: false, error: parts }
   const { positional, flags } = parts
   const name = positional[0] ?? ''
-  const problem = unexpected(name, parts)
+  const problem = unexpected(name, parts) ?? traceProblem(name, parts)
   if (problem !== null) return { ok: false, error: problem }
   const maxSteps = integerFlag(flags, '--max-steps', DEFAULT_MAX_STEPS, 1)
   const seed = integerFlag(flags, '--seed', DEFAULT_SEED, Number.MIN_SAFE_INTEGER)
@@ -244,10 +262,19 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     case 'replay': {
       const file = needFile(positional, name)
       if (typeof file !== 'string') return { ok: false, error: file.error }
-      if (!flags.has('--at')) return { ok: false, error: "'replay' needs --at T" }
+      if (!flags.has('--at') && !isTraceFile(file))
+        return { ok: false, error: "'replay' needs --at T" }
       const at = integerFlag(flags, '--at', 0, 0)
       if (typeof at === 'string') return { ok: false, error: at }
-      return { ok: true, command: { kind: 'replay', file, at, maxSteps, seed } }
+      const step = flags.has('--at') ? at : null
+      return { ok: true, command: { kind: 'replay', file, at: step, maxSteps, seed } }
+    }
+    case 'record': {
+      const file = needFile(positional, name)
+      if (typeof file !== 'string') return { ok: false, error: file.error }
+      const out = flags.get('--out') ?? null
+      if (out === '') return { ok: false, error: "option '--out' needs a file name" }
+      return { ok: true, command: { kind: 'record', file, out, maxSteps, seed } }
     }
     case 'why': {
       const file = needFile(positional, name)
@@ -310,6 +337,27 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     default:
       return { ok: false, error: `unknown command '${name}'` }
   }
+}
+
+/** Commands that take a `.sighttrace` file in place of a program. */
+const TRACE_COMMANDS = new Set(['run', 'replay', 'why', 'whynot', 'slice', 'query'])
+
+/** True for a path the CLI reads as a trace file. */
+export function isTraceFile(path: string): boolean {
+  return path.toLowerCase().endsWith('.sighttrace')
+}
+
+/** A trace file where it does not fit: a command that takes none, or options it brings itself. */
+function traceProblem(command: string, parts: Split): string | null {
+  const file = parts.positional[1]
+  if (file === undefined || !isTraceFile(file)) return null
+  if (!TRACE_COMMANDS.has(command))
+    return `'${command}' takes a .sight program, not a trace file (trace files work with run, replay, why, whynot, slice and query)`
+  for (const flag of ['--max-steps', '--seed']) {
+    if (parts.flags.has(flag))
+      return `a trace file brings its own step limit and seed: drop ${flag}`
+  }
+  return null
 }
 
 const NAME_AND_VALUE = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/s
