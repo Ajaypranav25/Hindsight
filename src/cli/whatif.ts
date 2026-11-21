@@ -126,7 +126,7 @@ function divergenceLine(
   return `the futures diverge at step ${count(step)} · line ${line}, column ${col} · in ${sanitize(location.functionName)}`
 }
 
-function outcomeText(recording: Recording): string {
+export function outcomeText(recording: Recording): string {
   const outcome = recording.outcome
   if (outcome.kind === 'error') {
     return `ends with ${outcome.error.code}: ${sanitize(outcome.error.message)}`
@@ -161,7 +161,7 @@ export function diffRows(lines: readonly OutputDiffLine[]): (OutputDiffLine | nu
   return rows
 }
 
-function rowLines(row: OutputDiffLine | number, style: Style): string[] {
+export function rowLines(row: OutputDiffLine | number, style: Style): string[] {
   if (typeof row === 'number') return [style.dim(` … ${count(row)} unchanged lines`)]
   const sign = row.kind === 'same' ? ' ' : row.kind === 'removed' ? '-' : '+'
   const paint = row.kind === 'same' ? String : row.kind === 'removed' ? style.error : style.ok

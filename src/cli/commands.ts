@@ -19,6 +19,7 @@ import {
   sanitize,
   type Style,
 } from './format'
+import { diffCommand } from './diff'
 import type { CliIO } from './io'
 import { query, repair, slice, solve, whyNotCommand } from './lab'
 import { whatIf } from './whatif'
@@ -100,6 +101,8 @@ export function runCommand(command: Command, io: CliIO): ExitCode {
       const loaded = load(io, style, command.file)
       return loaded ? repair(io, style, loaded, command) : 1
     }
+    case 'diff':
+      return diffCommand(io, command)
     default:
       return 0
   }

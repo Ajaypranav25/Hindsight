@@ -127,6 +127,8 @@ npm run sight -- query examples/18-what-if.sight 'calls(steps) where ret > 15'
 npm run sight -- whynot FILE --line 12        # why did line 12 never run?
 npm run sight -- slice FILE                   # which lines led to the crash (or the last output)?
 npm run sight -- repair FILE                  # one-token fixes for a crash
+npm run sight -- diff OLD NEW                 # where do two versions start to behave differently?
+npm run sight -- diff FILE --set n=10         # the same program with another input
 npm run sight -- mcp                          # the debugger as an MCP server for AI agents
 ```
 
@@ -202,18 +204,55 @@ tried 5 earlier values in 11 what-if runs
 
 `whatif --set start=1..20` sweeps a range and prints one row per value.
 
+`diff` runs two versions of a program (or one program with a top-level `let` given another value)
+and compares what they did, call by call: calls are aligned by call tree, so inserted, removed and
+renamed calls are found, and the **origin** is the call that, given the same inputs, behaved
+differently while the calls it made did not — where the change starts. Exit codes follow diff(1):
+0 same behavior, 1 different, 2 trouble.
+
+```
+diff A = average.sight, B = fixed.sight
+A: 60 steps, finishes normally, 3 calls
+B: 58 steps, finishes normally, 3 calls
+output: 1 line only in A (-), 1 only in B (+)
+-68.75
++91.66666666666667
+changed calls (2):
+  the top-level code · output
+  average · result
+    - average(scores = [92, 88, 95]) returned 68.75  step 13
+    + average(scores = [92, 88, 95]) returned 91.66666666666667  step 13
+the change starts in:
+  ✓ average (lines 6–8): given the same inputs, it behaves differently while the calls it makes behave the same
+```
+
 ### MCP server
 
-`hindsight mcp` speaks the Model Context Protocol over stdio, so an AI agent can run a `.sight`
-program, look at any step, ask where a value came from, fork a what-if and check its fix:
+`hindsight mcp` speaks the Model Context Protocol over stdio, so an AI agent can stop guessing
+what a `.sight` program does and ask the recording instead: run it, look at any step, ask where a
+value came from, fork a what-if, find the bug and check its fix:
 
 ```json
 { "mcpServers": { "hindsight": { "command": "hindsight", "args": ["mcp"] } } }
 ```
 
 From a checkout without a linked build, use `"command": "npx", "args": ["tsx", "src/cli/main.ts",
-"mcp"]` with the repository as the working directory. Tools: `run_trace`, `seek_state`,
-`query_provenance`, `fork_whatif`, `get_divergence`, `query`, `why_not`, `slice`, `solve`.
+"mcp"]` with the repository as the working directory.
+
+| tool                                      | for                                                                                                                                                          |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `run_trace`                               | record a program: a trace id, the outcome, the output (in pages)                                                                                             |
+| `diagnose_failure`                        | a crash or a wrong output line in one call: error, stack, the values the failing statement reads, the slice, the causal chain and verified one-token repairs |
+| `find_bug`                                | a stateless interview about calls that ends at the function whose own code is wrong, with repair previews; expected results answer questions by themselves   |
+| `suggest_repairs`                         | one-token patches checked against a crash or against expectations like `{"call": "average([92, 88, 95])", "expected": "91.66666666666667"}`                  |
+| `diff_runs`                               | two versions (or two inputs) compared call by call: where the difference starts, and which expectations a fix meets                                          |
+| `seek_state`, `query_provenance`, `query` | the state at a step (with depth, item and frame budgets), where a value came from, moments by condition (in pages, or summarized)                            |
+| `fork_whatif`, `get_divergence`, `solve`  | counterfactuals forwards and backwards                                                                                                                       |
+| `why_not`, `slice`                        | why a line never ran; which lines can have caused a moment                                                                                                   |
+
+Results are sized for a context window: long lists come in pages that say how to fetch the next,
+`query` can summarize a loop into one row (`total: line 3 ×1,000, steps 21–9,013, values 1–500500`),
+and any result over about 50,000 characters is shortened with a note instead of failing.
 
 `why` answers the question a debugger usually makes you hunt for:
 

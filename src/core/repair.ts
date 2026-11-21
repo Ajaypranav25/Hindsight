@@ -98,6 +98,11 @@ export function repairExamples(tree: CallTree, state: FinderState): RepairExampl
   return examples
 }
 
+/** A recorded call as a repair example: the right or wrong behavior a repair must respect. */
+export function repairExample(details: CallDetails, answer: 'right' | 'wrong'): RepairExample {
+  return { ...signature(details), answer }
+}
+
 function signature(details: CallDetails): Omit<RepairExample, 'answer'> {
   return {
     name: details.call.name,
