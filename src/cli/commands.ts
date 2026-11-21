@@ -22,6 +22,7 @@ import {
 import { diffCommand } from './diff'
 import type { CliIO } from './io'
 import { query, repair, slice, solve, whyNotCommand } from './lab'
+import { profileCommand } from './profile'
 import { whatIf } from './whatif'
 
 export type ExitCode = 0 | 1 | 2
@@ -103,6 +104,10 @@ export function runCommand(command: Command, io: CliIO): ExitCode {
     }
     case 'diff':
       return diffCommand(io, command)
+    case 'profile': {
+      const loaded = load(io, style, command.file)
+      return loaded ? profileCommand(io, style, loaded, command) : 1
+    }
     default:
       return 0
   }
