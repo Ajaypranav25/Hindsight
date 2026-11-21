@@ -1,6 +1,6 @@
 {
   "name": "hindsight-lang",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "A tiny programming language with a time machine built in: run a program, then rewind it, scrub through it, and ask where any value came from.",
   "license": "MIT",
   "homepage": "https://hindsight-two.vercel.app",

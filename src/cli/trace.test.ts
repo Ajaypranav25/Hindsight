@@ -1,3 +1,4 @@
+import { VERSION } from './version'
 import { gunzipSync, gzipSync } from 'node:zlib'
 import { describe, expect, test } from 'vitest'
 import {
@@ -108,7 +109,7 @@ describe('hindsight record', () => {
     )
     expect(decoded.ok && decoded.bundle).toMatchObject({
       title: 'counter',
-      hindsightVersion: '0.3.0',
+      hindsightVersion: VERSION,
       source: COUNTER,
       output: ['total 1', 'total 3', 'total 6', 'total 10'],
     })
