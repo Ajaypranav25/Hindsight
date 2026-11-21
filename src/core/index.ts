@@ -26,6 +26,20 @@ import {
   repairSearch as repairSearchWith,
 } from './repair'
 import { record as recordWith, recordAsync as recordAsyncWith } from './recorder'
+import {
+  type ByteCodec,
+  decodeTraceFile,
+  decodeTraceFileSync,
+  type TraceBundle,
+} from './trace-file'
+import {
+  openedTrace,
+  replayTrace,
+  replayTraceAsync,
+  type TraceOpenResult,
+  type TraceReplay,
+  type TraceReplayOptions,
+} from './trace-open'
 import type { RuntimeDeps, VM, VMHooks } from './runtime-types'
 import { createVM } from './vm'
 
@@ -69,6 +83,19 @@ export type {
   RepairSearch,
 } from './repair'
 export { repairExamples } from './repair'
+export * from './trace-file'
+export type { StepWindow, TraceCheckpoints, TraceFingerprint } from './trace-hash'
+export { fingerprintRecording } from './trace-hash'
+export type {
+  TraceBundleInput,
+  TraceBundleResult,
+  TraceOpenResult,
+  TraceReplay,
+  TraceReplayErrorCode,
+  TraceReplayOptions,
+  TraceVerification,
+} from './trace-open'
+export { traceBundle, verifyTrace } from './trace-open'
 
 /** The prelude source (SPEC Appendix A). */
 export function getLibrarySource(): string {
@@ -184,4 +211,37 @@ export function recordAsync(
   options: AsyncRecordOptions = {},
 ): Promise<Recording> {
   return recordAsyncWith(program, runtimeDeps(), options)
+}
+
+/**
+ * Records a trace bundle's program again, re-applies its what-if edits and checks the run against
+ * the saved fingerprint (ARCHITECTURE §7.14).
+ */
+export function openTraceBundle(bundle: TraceBundle): TraceReplay {
+  return replayTrace({ compile, record }, bundle)
+}
+
+/** `openTraceBundle` in slices, abortable through `options.signal`. */
+export function openTraceBundleAsync(
+  bundle: TraceBundle,
+  options: TraceReplayOptions = {},
+): Promise<TraceReplay> {
+  return replayTraceAsync({ compile, recordAsync }, bundle, options)
+}
+
+/** Decodes a `.sighttrace` file and opens it; a compressed file needs `gunzip`. */
+export function openTraceFileSync(bytes: Uint8Array, gunzip?: ByteCodec | null): TraceOpenResult {
+  const decoded = decodeTraceFileSync(bytes, gunzip)
+  if (!decoded.ok) return { ok: false, code: 'format', error: decoded.error }
+  return openedTrace(decoded.bundle, openTraceBundle(decoded.bundle))
+}
+
+/** Decodes a `.sighttrace` file (with the host's DecompressionStream) and opens it in slices. */
+export async function openTraceFile(
+  bytes: Uint8Array,
+  options: TraceReplayOptions = {},
+): Promise<TraceOpenResult> {
+  const decoded = await decodeTraceFile(bytes)
+  if (!decoded.ok) return { ok: false, code: 'format', error: decoded.error }
+  return openedTrace(decoded.bundle, await openTraceBundleAsync(decoded.bundle, options))
 }
