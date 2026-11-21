@@ -180,14 +180,15 @@ describe('structural sharing between consecutive snapshots (ARCHITECTURE §6.8)'
     expect(last.retainedSince(null)).toBeGreaterThan(5000)
   })
 
-  test('changing one element of a big list copies one leaf of the list, not the list', () => {
+  test('changing one element of a big list copies one path of its tree, not the list', () => {
     const source = 'var xs = list(0..50000)\nxs[25000] = -1\nxs[49999] = -2\nprint(xs[25000])'
     const taken = snapshotsOf(source)
     const sizes = taken.snapshots.map((snapshot) => snapshot.size)
     expect(Math.max(...sizes)).toBeGreaterThan(50000)
-    // After the list exists, no snapshot copies more than a couple of 32-value leaves.
+    // After the list exists, a snapshot copies at most one path of the list's tree (a leaf and
+    // three inner nodes of up to 32 slots), not the list.
     const afterList = sizes.slice(sizes.indexOf(Math.max(...sizes)) + 1)
-    expect(Math.max(...afterList)).toBeLessThan(100)
+    expect(Math.max(...afterList)).toBeLessThan(200)
     for (const snapshot of taken.snapshots.slice(-3)) expectRestoresLikeFreshRun(taken, snapshot)
   })
 

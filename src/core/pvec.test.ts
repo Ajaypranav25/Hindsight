@@ -1,19 +1,11 @@
 import fc from 'fast-check'
 import { describe, expect, test } from 'vitest'
-import { type PNode, PVec } from './pvec'
+import { PVec } from './pvec'
 
 const identity = <T>(value: T): T => value
 
 function range(n: number): number[] {
   return Array.from({ length: n }, (_, i) => i)
-}
-
-function freshValues(vec: PVec<unknown>, serial: number): number {
-  let count = 0
-  vec.freshLeaves(serial, (leaf: PNode) => {
-    count += leaf.slots.length
-  })
-  return count
 }
 
 describe('persistent vectors', () => {
@@ -38,16 +30,22 @@ describe('persistent vectors', () => {
     expect(original.get(4999)).toBe(4999)
     expect(changed.get(17)).toBe(-1)
     expect(changed.get(4999)).toBe(-2)
-    // Two leaves were copied: a full one and the last one (5000 % 32 = 8 values).
-    expect(editor.copied).toBe(32 + 8)
-    expect(freshValues(changed, 1)).toBe(editor.copied)
-    expect(freshValues(changed, 2)).toBe(0)
+    // 5000 values: 157 leaves under 5 inner nodes under a root with 5 slots. Copied: the root,
+    // a full inner node and leaf for index 17, then the last inner node (29 leaves) and the last
+    // leaf (5000 % 32 = 8 values) for index 4999.
+    expect(editor.copied).toBe(5 + 32 + 32 + 29 + 8)
+    expect(changed.freshSlots(1)).toBe(editor.copied)
+    expect(changed.freshSlots(2)).toBe(0)
+    const fresh: boolean[] = []
+    changed.freshNodes(1, (_node, leaf) => fresh.push(leaf))
+    expect(fresh.filter((leaf) => leaf).length).toBe(2)
   })
 
   test('nodes born in the same edit are changed in place', () => {
     const editor = PVec.from(range(100), 1, identity).edit(2)
     for (let i = 0; i < 32; i++) editor.set(i, -i - 1)
-    expect(editor.copied).toBe(32)
+    // The root (4 slots) and the first leaf, once.
+    expect(editor.copied).toBe(4 + 32)
     expect(editor.build().toArray(identity).slice(0, 3)).toEqual([-1, -2, -3])
   })
 

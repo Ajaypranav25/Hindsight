@@ -120,6 +120,11 @@ export interface NativeContext {
    * allocation budget (SPEC §10.5); raises R025 when it runs out.
    */
   charge(units: number): void
+  /**
+   * Reports elements visited without allocating (comparisons of a sort, items of a scan), so the
+   * recorder's snapshot cadence counts the work of this step (ARCHITECTURE §7.1.4).
+   */
+  scan(units: number): void
   /** The deterministic generator (SPEC §10.3). */
   random(): number
   seed(n: number): void

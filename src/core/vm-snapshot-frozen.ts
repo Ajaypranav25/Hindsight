@@ -10,7 +10,7 @@
  */
 import type { RuntimeErrorInfo } from './api-types'
 import type { FunctionProto } from './bytecode'
-import { type PNode, PVec } from './pvec'
+import { PVec } from './pvec'
 import type { ClosureObj, NativeObj, RangeObj, VMStatus } from './runtime-types'
 
 /** A reference to the mutable object with this id. */
@@ -153,40 +153,35 @@ export function freshSize(object: FrozenObject, serial: number): number {
 }
 
 function freshSlots(slots: FrozenSlots, serial: number): number {
-  if (!(slots instanceof PVec)) return slots.length
-  let count = 0
-  slots.freshLeaves(serial, (leaf: PNode) => {
-    count += leaf.slots.length
-  })
-  return count
+  return slots instanceof PVec ? slots.freshSlots(serial) : slots.length
 }
 
-/** Calls `visit` with the id of every object `object` refers to. */
-export function forEachRef(object: FrozenObject, visit: (id: number) => void): void {
-  const check = (value: unknown): void => {
-    if (value instanceof Ref) visit(value.id)
-  }
+/**
+ * Calls `visit` with every value `object` holds (items, entries' keys and values, captures, a
+ * cell's value, an iterator's source); references to other objects are the `Ref`s among them.
+ */
+export function forEachValue(object: FrozenObject, visit: (value: Frozen) => void): void {
   switch (object.kind) {
     case 'list':
-      forEachSlot(object.items, check)
+      forEachSlot(object.items, visit)
       break
     case 'record':
-      forEachSlot(object.entries, check)
+      forEachSlot(object.entries, visit)
       break
     case 'closure':
-      for (const cell of object.upvalues) visit(cell.id)
+      for (const cell of object.upvalues) visit(cell)
       break
     case 'cell':
-      check(object.value)
+      visit(object.value)
       break
     case 'iterator':
-      check(object.source)
+      visit(object.source)
       break
   }
 }
 
 function forEachSlot(slots: FrozenSlots, visit: (value: Frozen) => void): void {
-  if (slots instanceof PVec) slots.toArray(visit)
+  if (slots instanceof PVec) slots.forEach(visit)
   else for (const value of slots) visit(value)
 }
 

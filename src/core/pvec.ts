@@ -8,7 +8,7 @@
  * changed (path copying), so the vector being edited is never affected. Births also tell which
  * nodes are new since an earlier version: a node that survives into a later version keeps its
  * birth, and a changed node's ancestors are all copied too, so walking down only into nodes born
- * after a serial finds exactly what was added after it (`freshLeaves`).
+ * after a serial finds exactly what was added after it (`freshNodes`).
  *
  * The tree height is at most 7 (32^7 > 2^31 indices), so the few recursive helpers below recurse
  * only that deep, never in proportion to user data.
@@ -85,9 +85,26 @@ export class PVec<T> {
     return out
   }
 
-  /** Calls `visit` for every leaf born after `serial` (see the module comment). */
-  freshLeaves(serial: number, visit: (leaf: PNode) => void): void {
+  /** Calls `visit` with every value in index order, skipping holes. */
+  forEach(visit: (value: T) => void): void {
+    if (this.root !== null) visitValues(this.root, this.shift, visit as (value: unknown) => void)
+  }
+
+  /**
+   * Calls `visit` for every node born after `serial` (see the module comment), telling whether it
+   * is a leaf.
+   */
+  freshNodes(serial: number, visit: (node: PNode, leaf: boolean) => void): void {
     if (this.root !== null) visitFresh(this.root, this.shift, serial, visit)
+  }
+
+  /** The slots of all nodes born after `serial`: what this version stores beyond that one. */
+  freshSlots(serial: number): number {
+    let count = 0
+    this.freshNodes(serial, (node) => {
+      count += node.slots.length
+    })
+    return count
   }
 
   /** An editor whose changes produce a new vector; nodes it creates are born with `serial`. */
@@ -126,17 +143,25 @@ function collect<U>(
   }
 }
 
+function visitValues(node: PNode, shift: number, visit: (value: unknown) => void): void {
+  const slots = node.slots
+  if (shift === 0) {
+    for (const value of slots) if (value !== undefined) visit(value)
+    return
+  }
+  for (const child of slots)
+    if (child !== undefined) visitValues(child as PNode, shift - BITS, visit)
+}
+
 function visitFresh(
   node: PNode,
   shift: number,
   serial: number,
-  visit: (leaf: PNode) => void,
+  visit: (node: PNode, leaf: boolean) => void,
 ): void {
   if (node.birth <= serial) return
-  if (shift === 0) {
-    visit(node)
-    return
-  }
+  visit(node, shift === 0)
+  if (shift === 0) return
   for (const child of node.slots) {
     if (child !== undefined) visitFresh(child as PNode, shift - BITS, serial, visit)
   }
@@ -144,8 +169,8 @@ function visitFresh(
 
 /**
  * Batched changes to a persistent vector. Owned nodes (born with this editor's serial) are changed
- * in place; shared ones are copied first. `copied` counts the leaf slots this editor copied or
- * created, i.e. the values it stored afresh.
+ * in place; shared ones are copied first. `copied` counts the slots of the nodes this editor
+ * copied or created (inner nodes too), i.e. what it stored afresh.
  */
 export class PVecEditor<T> {
   copied = 0
@@ -170,20 +195,25 @@ export class PVecEditor<T> {
     while (index >>> this.shift >= WIDTH) {
       this.root = new PNode(this.serial, [this.root])
       this.shift += BITS
+      this.copied += 1
     }
-    let node = this.own(this.root, this.shift)
+    let node = this.own(this.root)
     this.root = node
     for (let level = this.shift; level > 0; level -= BITS) {
       const slot = (index >>> level) & MASK
       const child = node.slots[slot] as PNode | undefined
-      const owned = child === undefined ? new PNode(this.serial, []) : this.own(child, level - BITS)
-      if (owned !== child) node.slots[slot] = owned
+      const owned = child === undefined ? new PNode(this.serial, []) : this.own(child)
+      if (owned !== child) this.store(node, slot, owned)
       node = owned
     }
-    const slot = index & MASK
+    this.store(node, index & MASK, value)
+    if (index >= this.size) this.size = index + 1
+  }
+
+  /** Writes a slot of an owned node, counting the slots it adds. */
+  private store(node: PNode, slot: number, value: unknown): void {
     if (slot >= node.slots.length) this.copied += slot + 1 - node.slots.length
     node.slots[slot] = value
-    if (index >= this.size) this.size = index + 1
   }
 
   /** Appends `value` at the end. */
@@ -205,12 +235,12 @@ export class PVecEditor<T> {
       this.root = this.root.slots[0] as PNode
       this.shift -= BITS
     }
-    let node = this.own(this.root, this.shift)
+    let node = this.own(this.root)
     this.root = node
     for (let level = this.shift; level > 0; level -= BITS) {
       const slot = (last >>> level) & MASK
       node.slots.length = slot + 1
-      const owned = this.own(node.slots[slot] as PNode, level - BITS)
+      const owned = this.own(node.slots[slot] as PNode)
       node.slots[slot] = owned
       node = owned
     }
@@ -222,9 +252,9 @@ export class PVecEditor<T> {
     return PVec.of<T>(this.size, this.shift, this.root)
   }
 
-  private own(node: PNode, shift: number): PNode {
+  private own(node: PNode): PNode {
     if (node.birth === this.serial) return node
-    if (shift === 0) this.copied += node.slots.length
+    this.copied += node.slots.length
     return new PNode(this.serial, node.slots.slice())
   }
 }

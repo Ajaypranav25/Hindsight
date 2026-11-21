@@ -8,12 +8,13 @@
  * the hot opcodes into separate functions measurably slows every step.
  */
 import { Op, type FunctionProto } from './bytecode'
-import { equals, isTruthy } from './values'
+import { isTruthy } from './values'
 import type { ClosureObj, Frame, Value } from './runtime-types'
 import {
   binaryOperandError,
   compareSlow,
   divideSlow,
+  equalsSlow,
   modulo,
   negateSlow,
   addSlow,
@@ -134,12 +135,16 @@ export function execute(m: MachineState, limit: number): void {
           break
         case Op.Eq: {
           const b = stack.pop() as Value
-          stack[stack.length - 1] = equals(stack[stack.length - 1] as Value, b)
+          const a = stack[stack.length - 1] as Value
+          stack[stack.length - 1] =
+            typeof b === 'object' && b !== null ? equalsSlow(m, a, b) : a === b
           break
         }
         case Op.Ne: {
           const b = stack.pop() as Value
-          stack[stack.length - 1] = !equals(stack[stack.length - 1] as Value, b)
+          const a = stack[stack.length - 1] as Value
+          stack[stack.length - 1] =
+            typeof b === 'object' && b !== null ? !equalsSlow(m, a, b) : a !== b
           break
         }
         case Op.Lt: {

@@ -21,7 +21,7 @@ import {
   type FrozenRoots,
   type MachineScalars,
   Ref,
-  forEachRef,
+  forEachValue,
   freshSize,
   objectSize,
   rootsSize,
@@ -50,7 +50,7 @@ export class MachineSnapshot implements VMSnapshot {
     readonly roots: FrozenRoots,
     readonly scalars: MachineScalars,
     readonly table: PVec<FrozenObject>,
-    /** The values this snapshot copied (roots, headers and changed contents). */
+    /** The values this snapshot copied: roots, objects or their changed leaves, table slots. */
     readonly size: number,
     /** The values held by all objects in the table. */
     readonly tableValues: number,
@@ -80,8 +80,11 @@ export class MachineSnapshot implements VMSnapshot {
         ? earlier.serial
         : 0
     let count = rootsSize(this.roots)
-    this.table.freshLeaves(after, (leaf) => {
-      for (const object of leaf.slots) {
+    this.table.freshNodes(after, (node, leaf) => {
+      // The table's own slots count too: they cost as much as values.
+      count += node.slots.length
+      if (!leaf) return
+      for (const object of node.slots) {
         if (object !== undefined) count += freshSize(object as FrozenObject, after)
       }
     })
@@ -104,9 +107,14 @@ export function takeSnapshot(m: MachineState): MachineSnapshot {
   freezer.drain()
   let table = freezer.table.build()
   let tableValues = freezer.tableValues
+  let size = freezer.copied + freezer.table.copied
   let compacted = base === null ? tableValues : base.compactedValues
   if (tableValues > COMPACT_FACTOR * compacted + COMPACT_SLACK) {
-    ;({ table, values: tableValues } = compactTable(table, roots, serial))
+    const result = compactTable(table, roots, serial)
+    table = result.table
+    tableValues = result.values
+    // A compaction stores a new table slot for every reachable object.
+    size += result.objects
     compacted = tableValues
   }
   const snapshot = new MachineSnapshot(
@@ -116,7 +124,7 @@ export function takeSnapshot(m: MachineState): MachineSnapshot {
     roots,
     scalarsOf(m),
     table,
-    freezer.copied,
+    size,
     tableValues,
     compacted,
   )
@@ -156,45 +164,51 @@ function scalarsOf(m: MachineState): MachineScalars {
   }
 }
 
-/** A table with only the objects reachable from `roots` (their copies reused). */
+/**
+ * A table with only the objects reachable from `roots` (their copies reused). Marks live in a
+ * bitset over the table's ids, so the new table is built in id order without sorting.
+ */
 function compactTable(
   table: PVec<FrozenObject>,
   roots: FrozenRoots,
   serial: number,
-): { table: PVec<FrozenObject>; values: number } {
-  const seen = new Set<number>()
+): { table: PVec<FrozenObject>; values: number; objects: number } {
+  const marks = new Uint32Array((table.length + 31) >>> 5)
   const work: number[] = []
-  const visit = (id: number): void => {
-    if (!seen.has(id)) {
-      seen.add(id)
+  const mark = (value: unknown): void => {
+    if (!(value instanceof Ref)) return
+    const id = value.id
+    const bit = 1 << (id & 31)
+    const word = id >>> 5
+    if ((marks[word]! & bit) === 0) {
+      marks[word] = marks[word]! | bit
       work.push(id)
     }
   }
-  forEachRootRef(roots, visit)
-  const reachable: FrozenObject[] = []
+  roots.stack.forEach(mark)
+  for (const frame of roots.frames) mark(frame.closure)
+  roots.openCells.forEach(mark)
+  roots.globals.forEach(mark)
   while (work.length > 0) {
     const id = work.pop()!
     const object = table.get(id)
     if (object === undefined) throw new InternalError(`snapshot has no object ${id}`)
-    reachable.push(object)
-    forEachRef(object, visit)
+    forEachValue(object, mark)
   }
-  reachable.sort((a, b) => a.id - b.id)
   const editor = PVec.empty<FrozenObject>().edit(serial)
   let values = 0
-  for (const object of reachable) {
-    editor.set(object.id, object)
-    values += objectSize(object)
+  let objects = 0
+  for (let word = 0; word < marks.length; word++) {
+    let bits = marks[word]!
+    while (bits !== 0) {
+      const low = bits & -bits
+      const id = (word << 5) + 31 - Math.clz32(low)
+      bits ^= low
+      const object = table.get(id)!
+      editor.set(id, object)
+      values += objectSize(object)
+      objects++
+    }
   }
-  return { table: editor.build(), values }
-}
-
-function forEachRootRef(roots: FrozenRoots, visit: (id: number) => void): void {
-  const check = (value: unknown): void => {
-    if (value instanceof Ref) visit(value.id)
-  }
-  roots.stack.forEach(check)
-  for (const frame of roots.frames) check(frame.closure)
-  for (const cell of roots.openCells) visit(cell.id)
-  roots.globals.forEach(check)
+  return { table: editor.build(), values, objects }
 }
