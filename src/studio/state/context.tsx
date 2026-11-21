@@ -71,6 +71,7 @@ export function pickActions(s: StudioStore): StudioActions {
     clearNotice: s.clearNotice,
     restorePreviousSource: s.restorePreviousSource,
     openSharedSource: s.openSharedSource,
+    openTraceFile: s.openTraceFile,
     forkWhatIf: s.forkWhatIf,
     leaveWhatIf: s.leaveWhatIf,
     openBugFinder: s.openBugFinder,

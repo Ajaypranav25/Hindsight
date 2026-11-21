@@ -87,15 +87,17 @@ export * from './trace-file'
 export type { StepWindow, TraceCheckpoints, TraceFingerprint } from './trace-hash'
 export { fingerprintRecording } from './trace-hash'
 export type {
+  AsyncTraceDeps,
   TraceBundleInput,
   TraceBundleResult,
+  TraceDeps,
   TraceOpenResult,
   TraceReplay,
   TraceReplayErrorCode,
   TraceReplayOptions,
   TraceVerification,
 } from './trace-open'
-export { traceBundle, verifyTrace } from './trace-open'
+export { replayTrace, replayTraceAsync, traceBundle, verifyTrace } from './trace-open'
 
 /** The prelude source (SPEC Appendix A). */
 export function getLibrarySource(): string {

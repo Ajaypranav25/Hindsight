@@ -161,6 +161,11 @@ export interface StudioActions {
    * link's `time` places the pen once it has been recorded.
    */
   openSharedSource(source: string, time?: number | null): void
+  /**
+   * Opens a `.sighttrace` file: its program replaces the editor's (keeping the user's own), is
+   * recorded again with its what-if edits, and the pen lands on the saved step.
+   */
+  openTraceFile(bytes: Uint8Array): Promise<void>
   /** Forks the shown run at the pen with `target` set to `value` (`name` labels the edit). */
   forkWhatIf(target: WriteTarget, value: EditValue, name: string): Promise<void>
   /** Leaves what-if mode: the real run comes back with its pen. */

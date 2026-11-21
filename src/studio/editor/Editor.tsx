@@ -16,6 +16,7 @@ import { diagnosticsTransaction } from './lint'
 import { computeOverlay, EMPTY_OVERLAY, originSpanAt, type EditorOverlay } from './overlay'
 import { editorExtensions, fromStore } from './setup'
 import { studioEffects, type EditorStudio } from './studio-field'
+import { traceDropHandlers } from './trace-drop'
 import './editor.css'
 
 /** After a user edit, the editor does not scroll to follow the pen for this long. */
@@ -41,6 +42,7 @@ export function Editor() {
   const guardLine = whyMark === null ? null : whyNotGuardLine(whyMark.why)
   const view = useStateView()
   const actions = useStudioActions()
+  const traceDrop = useMemo(() => traceDropHandlers(actions.openTraceFile), [actions])
 
   const hostRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<EditorView | null>(null)
@@ -147,7 +149,7 @@ export function Editor() {
   }, [time, recording, selectedFrameUid])
 
   return (
-    <div className="ed-root">
+    <div className="ed-root" {...traceDrop}>
       <div className="ed-host" ref={hostRef} />
       {overlay.libraryFunction !== null && <LibraryChip name={overlay.libraryFunction} />}
       <EditorLab />
