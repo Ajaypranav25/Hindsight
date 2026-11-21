@@ -231,7 +231,7 @@ function contextKey(recording: Recording, call: CallNode): string[] | null {
 const globalReads = new WeakMap<FunctionProto, readonly string[]>()
 
 /** The names of the globals a function's own code reads (`GetGlobal`), sorted. */
-function globalsReadBy(proto: FunctionProto): readonly string[] {
+export function globalsReadBy(proto: FunctionProto): readonly string[] {
   let names = globalReads.get(proto)
   if (names === undefined) {
     const found = new Set<string>()

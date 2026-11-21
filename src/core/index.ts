@@ -69,6 +69,9 @@ export type {
   RepairSearch,
 } from './repair'
 export { repairExamples } from './repair'
+export * from './run-diff'
+export type { InputResult } from './run-input'
+export { withInput } from './run-input'
 
 /** The prelude source (SPEC Appendix A). */
 export function getLibrarySource(): string {
