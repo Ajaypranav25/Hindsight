@@ -135,6 +135,10 @@ describe('the debug interview', () => {
       'Every call it makes returned the right value, but its own result is wrong.',
     )
     expect(out).toContain('   9 |   total(xs) / (len(xs) - 1)\n')
+    expect(out).toContain(
+      'Your answers as assertions (add them to the program and these questions answer themselves next time):\n' +
+        '  assert(total([88, 83, 79]) == 250)\n',
+    )
     expect(session.finished).toBe(true)
     expect(session.exitCode).toBe(0)
   })

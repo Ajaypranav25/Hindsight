@@ -11,6 +11,7 @@
 import {
   answer,
   type Answer,
+  answerAssertions,
   autoAnswer,
   type AutoAnswer,
   type CallNode,
@@ -278,6 +279,18 @@ export class DebugSession {
     if (details.lines)
       io.stdout(`\n${codeFrame(this.loaded.source, details.lines, style).join('\n')}\n`)
     this.printRepairs(result.call.protoId)
+    this.printAssertions()
+  }
+
+  /** The calls the user judged right, as assertions the oracle will read next time. */
+  private printAssertions(): void {
+    const assertions = answerAssertions(this.tree, this.state)
+    if (assertions.length === 0) return
+    const { io, style } = this
+    io.stdout(
+      `\n${style.bold('Your answers as assertions')} (add them to the program and these questions answer themselves next time):\n`,
+    )
+    for (const assertion of assertions) io.stdout(`  ${sanitize(assertion.text)}\n`)
   }
 
   /** One-token repairs that agree with every answer given (ARCHITECTURE §7.12). */
