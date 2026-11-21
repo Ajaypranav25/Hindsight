@@ -925,7 +925,9 @@ tabbed panels); the page may scroll vertically, never horizontally.
 - **Console**: one line per output event with its step number. Lines printed after the pen are
   ghosted; the line printed at the pen is marked. Clicking a line moves the pen to the moment it was
   printed. At the end of a failed run the error appears here with its hint and a link to the failing
-  moment. Hovering or focusing a line shows its tools, "What led to this?" and "Make this print…".
+  moment. Hovering or focusing a line shows its tools, "What led to this?" and "Make this print…",
+  over the line's right end; on phones and touch screens they sit under the line at the pen (a tap
+  moves the pen there) or under a focused line.
 - **Console line menu**: a right-click, the ContextMenu key or Shift+F10 on a console line opens a
   small menu (`chrome/ContextMenu.tsx`, a WAI-ARIA `menu` in a portal, placed inside the viewport):
   Make this print…, What led to this?, Go to this moment, Copy line. Focus moves to the first item;
