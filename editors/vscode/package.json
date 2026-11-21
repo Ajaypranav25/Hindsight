@@ -155,7 +155,8 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc -p .",
-    "vscode:prepublish": "npm run build",
+    "smoke": "node scripts/smoke.mjs",
+    "vscode:prepublish": "node scripts/build.mjs --minify",
     "package": "vsce package --no-dependencies"
   },
   "devDependencies": {
