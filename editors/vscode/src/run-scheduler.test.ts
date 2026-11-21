@@ -214,3 +214,18 @@ describe('run scheduler failures', () => {
     expect(scheduler.busy('a')).toBe(false)
   })
 })
+
+describe('run scheduler cancel', () => {
+  test('cancel aborts a run in flight when nothing is pending', async () => {
+    const timers = new ManualTimers()
+    const scheduler = new RunScheduler(timers)
+    const { job, runs } = controllable<string>()
+
+    const running = scheduler.run('a', job)
+    scheduler.cancel('a')
+    runs[0]!.resolve('late')
+
+    expect(runs[0]!.signal.aborted).toBe(true)
+    expect(await running).toBeNull()
+  })
+})

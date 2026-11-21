@@ -18,8 +18,14 @@ export default defineConfig({
     testTimeout: 20_000,
     coverage: {
       provider: 'v8',
-      include: ['src/**/*.{ts,tsx}'],
-      exclude: ['src/**/*.test.{ts,tsx}', 'src/studio/main.tsx', 'src/core/testing/**'],
+      // The extension's vscode-free modules count; its glue/ runs only inside VS Code.
+      include: ['src/**/*.{ts,tsx}', 'editors/vscode/src/*.ts'],
+      exclude: [
+        'src/**/*.test.{ts,tsx}',
+        'editors/vscode/src/*.test.ts',
+        'src/studio/main.tsx',
+        'src/core/testing/**',
+      ],
       reporter: ['text-summary', 'text', 'html'],
       // Just under the levels reached; raise them as coverage grows, never lower them.
       thresholds: { lines: 95, statements: 94, functions: 93, branches: 89 },

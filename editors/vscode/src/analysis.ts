@@ -233,12 +233,11 @@ export function crashSlice(recording: Recording): CrashSlice {
   }
 }
 
-function outcomeText(outcome: Outcome): string {
+/** How a run that did not fail ended (a failed run is described with its error). */
+function outcomeText(outcome: Exclude<Outcome, { kind: 'error' }>): string {
   switch (outcome.kind) {
     case 'finished':
       return 'finished normally'
-    case 'error':
-      return `stopped with ${outcome.error.code}`
     case 'step-limit':
       return `stopped at the step limit (${count(outcome.maxSteps)} steps)`
     default:

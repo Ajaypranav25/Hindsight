@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { compile, record, type Recording } from '../../../src/core/index'
+import { compile, record, recordAsync, type Recording } from '../../../src/core/index'
 import {
   analyze,
   crashSlice,
@@ -208,6 +208,26 @@ describe('why not, crash slices and run reports', () => {
     expect(limited.message).toBe(
       'The last run did not crash: it stopped at the step limit (1,000 steps).',
     )
+  })
+
+  test('say an aborted run did not crash', async () => {
+    const compiled = compile('print(1)\n')
+    if (!compiled.ok) throw new Error('compile failed')
+    const aborted = await recordAsync(compiled.program, { signal: { aborted: true } })
+
+    expect(crashSlice(aborted).message).toBe('The last run did not crash: it was stopped.')
+  })
+
+  test('say a crash cannot be sliced when the recording offers no replay', () => {
+    // Arrange: a stand-in that has the crash but not the recorder's replay access.
+    const real = recorded('print([1][3])\n')
+    const standIn = { outcome: real.outcome, program: real.program, length: real.length }
+
+    // Act
+    const slice = crashSlice(standIn as unknown as Recording)
+
+    // Assert
+    expect(slice).toEqual({ kind: 'unavailable', message: 'This run cannot be sliced.' })
   })
 
   test('report the output and how the run ended', () => {
