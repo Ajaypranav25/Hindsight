@@ -31,8 +31,12 @@
   cursor: pointer;
 }
 
-.ch-context-item:hover,
-.ch-context-item:focus-visible {
+.ch-context-item:hover {
+  background: var(--marker-soft);
+}
+
+/* The active item: focus moves with the arrow keys, also after a right-click. */
+.ch-context-item:focus {
   outline: none;
   background: var(--marker-soft);
   box-shadow: inset 2px 0 0 var(--marker);
@@ -40,6 +44,13 @@
 
 .ch-context-label {
   font-weight: 600;
+}
+
+.ch-context-code {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  font-variant-ligatures: none;
 }
 
 .ch-context-detail {

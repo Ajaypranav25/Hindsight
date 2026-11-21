@@ -66,7 +66,7 @@ export function SweepBanner(props: { readonly onClosed?: () => void }) {
             </p>
             <button
               type="button"
-              className="ch-button-small"
+              className="ch-button ch-button-small"
               onClick={() => {
                 closeSweep()
                 props.onClosed?.()

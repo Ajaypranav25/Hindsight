@@ -219,7 +219,7 @@ export function QueryBar() {
         <span className="tl-query__nav">
           <button
             type="button"
-            className="ch-button-small"
+            className="ch-button ch-button-small"
             disabled={previous === null}
             onClick={() => previous !== null && seek(previous)}
           >
@@ -227,7 +227,7 @@ export function QueryBar() {
           </button>
           <button
             type="button"
-            className="ch-button-small"
+            className="ch-button ch-button-small"
             disabled={next === null}
             onClick={() => next !== null && seek(next)}
           >
@@ -235,7 +235,7 @@ export function QueryBar() {
           </button>
           <button
             type="button"
-            className="ch-button-small"
+            className="ch-button ch-button-small"
             aria-expanded={listed}
             aria-controls={listId}
             onClick={() => setListed(!listed)}

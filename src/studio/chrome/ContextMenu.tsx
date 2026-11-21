@@ -20,6 +20,8 @@ export interface MenuAction {
   readonly label: string
   /** What the item does, said under its label. */
   readonly detail?: string
+  /** The label is code (a query), set in the code font. */
+  readonly code?: boolean
   readonly onSelect: () => void
   /** Give focus back to where the menu was opened from after choosing (default true). */
   readonly restoreFocus?: boolean
@@ -133,7 +135,13 @@ export function ContextMenu(props: {
             className="ch-context-item"
             onClick={() => choose(action)}
           >
-            <span className="ch-context-label">{action.label}</span>
+            <span
+              className={
+                action.code === true ? 'ch-context-label ch-context-code' : 'ch-context-label'
+              }
+            >
+              {action.label}
+            </span>
             {action.detail !== undefined && (
               <span className="ch-context-detail">{action.detail}</span>
             )}

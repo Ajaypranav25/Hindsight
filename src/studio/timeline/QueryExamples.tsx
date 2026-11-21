@@ -25,6 +25,7 @@ export function QueryExamples(props: {
   const actions: MenuAction[] = examples.map((example) => ({
     label: example.text,
     detail: example.detail,
+    code: true,
     // The field takes focus with the example in it.
     restoreFocus: false,
     onSelect: () => onTry(example),
@@ -34,7 +35,7 @@ export function QueryExamples(props: {
       <button
         ref={button}
         type="button"
-        className="ch-button-small tl-query__examples"
+        className="ch-button ch-button-small"
         aria-haspopup="menu"
         aria-expanded={anchor !== null}
         title="Example queries written with this program's names"
