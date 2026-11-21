@@ -52,6 +52,28 @@ jobs:
       - run: npm ci
       - run: npm run test:perf
 
+  # The extension's glue imports `vscode`, so it is type-checked and smoke-tested here, with the
+  # extension's own dependencies; its vscode-free modules are covered by the check job.
+  vscode:
+    name: VS Code extension
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: editors/vscode
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm run smoke
+
   e2e:
     name: End-to-end
     runs-on: ubuntu-latest

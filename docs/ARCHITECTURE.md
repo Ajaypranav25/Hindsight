@@ -860,7 +860,8 @@ Every module has co-located tests. Coverage target: 80 %+ lines for `src/core`, 
 the current overall levels, so they cannot drift down unnoticed. Wall-clock budgets live in
 `*.perf.test.ts` files, which `npm test` and coverage skip: `npm run test:perf` runs them one file
 at a time. Every corpus program and gallery example that compiles must also pass `verifyProgram`. The
-VS Code extension's vscode-free modules (`editors/vscode/src/*.test.ts`) run in the same suite (§12).
+VS Code extension's vscode-free modules (`editors/vscode/src/*.test.ts`) run in the same suite and
+count toward coverage (§12).
 
 ### 10.2 Conformance corpus
 
@@ -1148,4 +1149,5 @@ that bundles the core; it is never published from CI.
   `dist/extension.js` (CommonJS, Node 20; only `vscode` and Node built-ins may stay external, else
   the build fails). `scripts/smoke.mjs` loads that bundle against `scripts/fake-vscode.mjs` and
   drives it (open, save, edit, close, every command). `npm run package` (vsce) writes the `.vsix`,
-  which is git-ignored.
+  which is git-ignored. The CI job `vscode` runs `npm ci`, `typecheck`, `build` and `smoke` in
+  `editors/vscode`, which needs nothing from the root's dependencies.
