@@ -91,6 +91,14 @@ describe('snapshot cadence (ARCHITECTURE §7.1.4)', () => {
     expect(copy.list.map((entry) => entry.time)).toEqual([0, 512])
   })
 
+  test('a snapshot that is costly to restore spaces the next one out to twice that cost', () => {
+    // Copying 10 values is cheap, but a restore rebuilds 1,000: replay may cost up to 2,000.
+    const schedule = SnapshotSchedule.start(512)
+    const vm = fakeVM(() => 10, { restoreSize: 1000 })
+    schedule.take(vm.at(0), 0)
+    expect(schedule.next).toBe(2048)
+  })
+
   test('a step that does a lot of work brings the next snapshot forward', () => {
     const schedule = SnapshotSchedule.start(512)
     // Step 99 sorts a huge list: 10,000 units of work in one step.

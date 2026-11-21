@@ -66,10 +66,8 @@ function stepBackMs(recording: Recording, count: number): { max: number; avg: nu
 
 function snapshotStats(recording: Recording): string {
   const schedule = replayAccess(recording)!.core.schedule
-  const entries = schedule.list
-  const sizes = entries.reduce((sum, entry) => sum + entry.size, 0)
-  const retained = (schedule as unknown as { retainedValues?: number }).retainedValues ?? sizes
-  return `${entries.length} snapshots, retained ${retained.toLocaleString('en-US')} values, interval ${schedule.currentInterval}`
+  const retained = schedule.retainedValues
+  return `${schedule.list.length} snapshots, retained ${retained.toLocaleString('en-US')} values, interval ${schedule.currentInterval}`
 }
 
 function benchRecording(name: string, source: string, seeks: number, backSteps = 0): void {

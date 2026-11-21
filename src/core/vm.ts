@@ -92,7 +92,9 @@ class MachineVM implements VM {
   }
 
   get work(): number {
-    return this.machine.work
+    // Read once per recorded step: summed here rather than through MachineState's getter.
+    const m = this.machine
+    return m.time + m.allocated + m.scanned
   }
 
   snapshot(): VMSnapshot {

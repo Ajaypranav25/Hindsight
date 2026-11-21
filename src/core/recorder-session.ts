@@ -11,6 +11,11 @@ import type { AllocTimes, EventColumns, StepColumns } from './trace-columns'
 import type { TraceSink } from './trace-sink'
 
 const INITIAL_INTERVAL = 256
+/**
+ * Replay between two snapshots may cost up to this many times what restoring one costs, so a seek
+ * costs at most about three restores while snapshots stay rare for big heaps (§7.1.4).
+ */
+const RESTORE_FACTOR = 2
 /** Thinning starts when the retained snapshots hold more values than this (§7.1.4). */
 export const RETAINED_VALUES_LIMIT = 8_000_000
 
@@ -77,7 +82,7 @@ export class SnapshotSchedule {
     const schedule = new SnapshotSchedule(entries, this.budget, this.interval, 0, 0)
     schedule.retained = retainedBy(entries)
     schedule.thin()
-    schedule.scheduleAfter(vm.work, snapshot.size)
+    schedule.scheduleAfter(vm.work, snapshot)
     return schedule
   }
 
@@ -102,7 +107,7 @@ export class SnapshotSchedule {
   /** Snapshots the VM at `time` (unless one exists already) and applies the cadence rules. */
   take(vm: VM, time: number): void {
     const last = this.entries[this.entries.length - 1]
-    if (last !== undefined && last.time === time) this.scheduleAfter(vm.work, last.size)
+    if (last !== undefined && last.time === time) this.scheduleAfter(vm.work, last.snapshot)
     else this.add(time, vm.snapshot(), vm.work)
   }
 
@@ -114,11 +119,20 @@ export class SnapshotSchedule {
       this.retained += retainedSince(snapshot, last)
       this.thin()
     }
-    this.scheduleAfter(work, snapshot.size)
+    this.scheduleAfter(work, snapshot)
   }
 
-  private scheduleAfter(work: number, size: number): void {
-    this.nextWork = nextMultiple(work + Math.max(this.interval, 4 * size), this.interval)
+  /**
+   * The next snapshot is due after at least `interval` work, four times the values this one
+   * copied (so copying costs at most a quarter of the run) and twice what restoring it costs.
+   */
+  private scheduleAfter(work: number, snapshot: VMSnapshot): void {
+    const gap = Math.max(
+      this.interval,
+      4 * snapshot.size,
+      RESTORE_FACTOR * (snapshot.restoreSize ?? snapshot.size),
+    )
+    this.nextWork = nextMultiple(work + gap, this.interval)
   }
 
   /** The latest snapshot at or before `time` (time 0 always exists). */

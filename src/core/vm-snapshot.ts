@@ -66,6 +66,11 @@ export class MachineSnapshot implements VMSnapshot {
     return this.scalars.nextObjectId
   }
 
+  /** The values a restore rebuilds, at most: the roots and every object in the table. */
+  get restoreSize(): number {
+    return rootsSize(this.roots) + this.tableValues
+  }
+
   /**
    * The values this snapshot holds that `earlier` does not share: everything for null, else what
    * was copied after `earlier`. Sharing is counted only when `earlier` is in the same line with a

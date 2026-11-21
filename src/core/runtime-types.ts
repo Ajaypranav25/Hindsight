@@ -150,6 +150,8 @@ export interface VMSnapshot {
   readonly time: number
   /** Number of values this snapshot copied; drives the recorder's snapshot cadence. */
   readonly size: number
+  /** About the number of values `restore` rebuilds (absent: `size`); also drives the cadence. */
+  readonly restoreSize?: number
   /**
    * The values this snapshot holds that `earlier` (a snapshot taken before it by the same line of
    * VMs) does not share with it; all of them for null. Absent: `size` (nothing is shared).
