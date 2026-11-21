@@ -18,6 +18,14 @@ export class Ref {
   constructor(readonly id: number) {}
 }
 
+/**
+ * Whether a frozen value is a reference. The `typeof` test first matters: `instanceof` on a
+ * primitive is several times slower, and most frozen values are primitives.
+ */
+export function isRef(value: unknown): value is Ref {
+  return typeof value === 'object' && value !== null && value instanceof Ref
+}
+
 /** A value inside a snapshot: primitives and shared objects as they are, other objects by id. */
 export type Frozen = null | boolean | number | string | RangeObj | NativeObj | ClosureObj | Ref
 
@@ -186,6 +194,11 @@ function forEachSlot(slots: FrozenSlots, visit: (value: Frozen) => void): void {
 }
 
 /** The slots as a plain array (a copy for persistent vectors, the array itself otherwise). */
-export function slotArray<T>(slots: FrozenSlots, map: (value: Frozen) => T): T[] {
-  return slots instanceof PVec ? slots.toArray(map) : slots.map(map)
+export function slotArray(slots: FrozenSlots): readonly Frozen[] {
+  if (!(slots instanceof PVec)) return slots
+  const out: Frozen[] = []
+  slots.forEachLeaf((leaf) => {
+    for (const value of leaf) out.push(value)
+  })
+  return out
 }

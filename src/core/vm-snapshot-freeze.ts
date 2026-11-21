@@ -239,7 +239,7 @@ export class Freezer {
     const cached = this.m.positions.get(version.id)
     if (cached !== undefined && cached.version === version) return cached.positions
     const positions = new Map<string, number>()
-    const entries = slotArray(version.entries, (value) => value)
+    const entries = slotArray(version.entries)
     for (let i = 0; i < entries.length; i += 2) positions.set(entries[i] as string, i / 2)
     return positions
   }

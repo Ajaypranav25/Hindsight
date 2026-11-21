@@ -5,7 +5,7 @@
  * recursion. Every call builds fresh objects, so a snapshot can be restored any number of times.
  */
 import { InternalError } from './diagnostics'
-import type { PVec } from './pvec'
+import { PVec } from './pvec'
 import type {
   CellObj,
   ClosureObj,
@@ -19,8 +19,9 @@ import {
   type Frozen,
   type FrozenObject,
   type FrozenRoots,
+  type FrozenSlots,
   type MachineScalars,
-  Ref,
+  isRef,
   slotArray,
 } from './vm-snapshot-frozen'
 
@@ -61,8 +62,7 @@ class Thawer {
 
   constructor(private readonly table: PVec<FrozenObject>) {}
 
-  readonly value = (frozen: Frozen): Value =>
-    frozen instanceof Ref ? this.object(frozen.id) : frozen
+  readonly value = (frozen: Frozen): Value => (isRef(frozen) ? this.object(frozen.id) : frozen)
 
   /** The live object with this id, created (empty, queued for filling) on first use. */
   object(id: number): HeapObject {
@@ -82,6 +82,17 @@ class Thawer {
       const frozen = pending.pop() as FrozenObject
       this.fill(pending.pop() as HeapObject, frozen)
     }
+  }
+
+  /** Live values for frozen slots, read leaf by leaf (a hot path of every seek). */
+  private values(slots: FrozenSlots): Value[] {
+    const out: Value[] = []
+    const push = (leaf: readonly Frozen[]): void => {
+      for (const frozen of leaf) out.push(isRef(frozen) ? this.object(frozen.id) : frozen)
+    }
+    if (slots instanceof PVec) slots.forEachLeaf(push)
+    else push(slots)
+    return out
   }
 
   /** The object with its scalar fields; references are filled in later. */
@@ -119,11 +130,11 @@ class Thawer {
     switch (frozen.kind) {
       case 'list':
         // The shell's empty array is not shared with anything yet, so it is simply replaced.
-        ;(object as { items: Value[] }).items = slotArray(frozen.items, this.value)
+        ;(object as { items: Value[] }).items = this.values(frozen.items)
         break
       case 'record': {
         const fields = (object as RecordObj).fields
-        const entries = slotArray(frozen.entries, (value) => value)
+        const entries = slotArray(frozen.entries)
         for (let i = 0; i < entries.length; i += 2) {
           fields.set(entries[i] as string, this.value(entries[i + 1] as Frozen))
         }

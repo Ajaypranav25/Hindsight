@@ -85,6 +85,14 @@ export class PVec<T> {
     return out
   }
 
+  /**
+   * Calls `visit` with the slots of every leaf in index order (leaves may be shared: never change
+   * them). Fastest way to read a whole vector; holes inside leaves come out as undefined.
+   */
+  forEachLeaf(visit: (slots: readonly T[]) => void): void {
+    if (this.root !== null) visitLeaves(this.root, this.shift, visit as (slots: unknown[]) => void)
+  }
+
   /** Calls `visit` with every value in index order, skipping holes. */
   forEach(visit: (value: T) => void): void {
     if (this.root !== null) visitValues(this.root, this.shift, visit as (value: unknown) => void)
@@ -141,6 +149,15 @@ function collect<U>(
       while (out.length < end) out.push(map(undefined))
     }
   }
+}
+
+function visitLeaves(node: PNode, shift: number, visit: (slots: unknown[]) => void): void {
+  if (shift === 0) {
+    visit(node.slots)
+    return
+  }
+  for (const child of node.slots)
+    if (child !== undefined) visitLeaves(child as PNode, shift - BITS, visit)
 }
 
 function visitValues(node: PNode, shift: number, visit: (value: unknown) => void): void {

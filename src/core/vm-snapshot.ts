@@ -20,7 +20,7 @@ import {
   type FrozenObject,
   type FrozenRoots,
   type MachineScalars,
-  Ref,
+  isRef,
   forEachValue,
   freshSize,
   objectSize,
@@ -176,7 +176,7 @@ function compactTable(
   const marks = new Uint32Array((table.length + 31) >>> 5)
   const work: number[] = []
   const mark = (value: unknown): void => {
-    if (!(value instanceof Ref)) return
+    if (!isRef(value)) return
     const id = value.id
     const bit = 1 << (id & 31)
     const word = id >>> 5
