@@ -24,7 +24,14 @@ import {
   verdictReason,
 } from '../core/index'
 import { searchRepairs } from './lab'
-import { MUTANTS, REPAIRS, repairsJson } from './mcp-repair'
+import {
+  EXPECTATIONS,
+  expectationOracle,
+  MUTANTS,
+  parseExpectations,
+  REPAIRS,
+  repairsJson,
+} from './mcp-repair'
 import {
   type Args,
   callJson,
@@ -124,7 +131,7 @@ export function findBugTool(context: ToolContext): Tool {
   return {
     name: 'find_bug',
     description:
-      'Localize a wrong result without reading every function: an interview (algorithmic debugging) about recorded calls. Each call returns either the next question (a call with its arguments, result and side effects: is that what the function should do?) or the verdict (the function whose own code is wrong, its lines, certainty) with verified one-token repair previews that agree with your answers. STATELESS: pass trace_id (or source) and every answer so far as answers: [{"question": "<id from the question>", "answer": "right" | "wrong" | "unsure"}]. strategy "divide" (default) halves the suspects with each answer (about log2(calls) questions); "top-down" asks in execution order.',
+      'Localize a wrong result without reading every function: an interview (algorithmic debugging) about recorded calls. Each call returns either the next question (a call with its arguments, result and side effects: is that what the function should do?) or the verdict (the function whose own code is wrong, its lines, certainty) with verified one-token repair previews that agree with your answers. STATELESS: pass trace_id (or source) and every answer so far as answers: [{"question": "<id from the question>", "answer": "right" | "wrong" | "unsure"}]. strategy "divide" (default) halves the suspects with each answer (about log2(calls) questions); "top-down" asks in execution order. Know what some calls should return? Pass expectations (as for suggest_repairs) and questions about those calls answer themselves.',
     inputSchema: schema(
       {
         trace_id: TRACE_ID,
@@ -144,6 +151,11 @@ export function findBugTool(context: ToolContext): Tool {
           },
         },
         strategy: { type: 'string', enum: ['divide', 'top-down'], description: 'Default divide' },
+        expectations: {
+          ...EXPECTATIONS,
+          description:
+            'What some calls should return (as for suggest_repairs); questions about matching calls are answered automatically',
+        },
         max_mutants: MUTANTS,
         max_repairs: REPAIRS,
       },
@@ -179,12 +191,19 @@ function findBug(context: ToolContext, args: Args): Json {
   const strategy = choiceArg(args, 'strategy', ['divide', 'top-down'] as const, 'divide')
   const answers = parseAnswers(args.answers)
   const tree = callTree(trace.recording)
-  const interview = replayInterview(tree, answers, { strategy })
+  const oracle =
+    args.expectations === undefined
+      ? undefined
+      : expectationOracle(trace.recording, parseExpectations(args.expectations))
+  const interview = replayInterview(tree, answers, { strategy, oracle })
   const unused = [...answers.keys()].filter((id) => !interview.used.has(id))
   const base: JsonObject = {
     trace_id: trace.id,
     strategy,
     questions_answered: interview.used.size + interview.auto.length,
+    ...(interview.auto.length > 0
+      ? { answered_from_expectations: interview.auto.map((auto) => ({ ...auto })) }
+      : {}),
     ...(unused.length > 0
       ? {
           unused_answers: unused.slice(0, 50),

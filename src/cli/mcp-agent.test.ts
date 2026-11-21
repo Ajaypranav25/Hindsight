@@ -357,6 +357,35 @@ describe('find_bug', () => {
     expect(call(server, 'find_bug', { trace_id: 't1', strategy: 'sideways' }).isError).toBe(true)
   })
 
+  test('expectations answer the questions about the calls they match', () => {
+    const server = new McpServer('0')
+    const { body } = call(server, 'find_bug', {
+      source: AVERAGE,
+      expectations: [
+        { call: 'average([92, 88, 95])', expected: '91.66666666666667' },
+        { call: 'total([92, 88, 95])', expected: 275 },
+        { call: 'total([0])', expected: 0 },
+      ],
+    })
+    expect(body).toMatchObject({
+      status: 'verdict',
+      questions_answered: 2,
+      verdict: { function: 'average' },
+    })
+    expect(body.answered_from_expectations).toEqual([
+      { question: expect.stringMatching(/^average#/), answer: 'wrong' },
+      { question: expect.stringMatching(/^total#/), answer: 'right' },
+    ])
+    const partial = call(server, 'find_bug', {
+      trace_id: 't1',
+      expectations: [{ call: 'total([1, 2, 3])', expected: 6 }],
+    }).body
+    expect(partial).toMatchObject({ status: 'question', question: { function: 'average' } })
+    expect(
+      call(server, 'find_bug', { trace_id: 't1', expectations: [{ call: 'x(' }] }).isError,
+    ).toBe(true)
+  })
+
   test('an oracle answers questions without the agent', () => {
     const tree = callTree(recorded(AVERAGE))
     const interview = replayInterview(tree, new Map(), {

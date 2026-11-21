@@ -58,6 +58,24 @@ export const REPAIRS = {
   description: 'Stop after this many verified repairs (default 5)',
 } as const
 
+/** The schema of expectations: what some calls should return. */
+export const EXPECTATIONS = {
+  type: 'array',
+  description: 'For mode "examples": what calls should return',
+  items: {
+    type: 'object',
+    properties: {
+      call: { type: 'string', description: 'A call as source text: average([92, 88, 95])' },
+      function: { type: 'string' },
+      args: { type: 'array', description: 'Argument literals, as text or JSON values' },
+      expected: {
+        description: 'The value it should return: a literal as text, or a JSON value',
+      },
+      returns: { description: 'Same as expected' },
+    },
+  },
+} as const
+
 /** Verified repairs as JSON: what changed, the line before and after, what the calls do now. */
 export function repairsJson(result: RepairResult): JsonObject {
   return {
@@ -90,22 +108,7 @@ export function suggestRepairsTool(context: ToolContext): Tool {
           enum: ['crash', 'examples'],
           description: 'Default: examples when expectations are given, else crash',
         },
-        expectations: {
-          type: 'array',
-          description: 'For mode "examples": what calls should return',
-          items: {
-            type: 'object',
-            properties: {
-              call: { type: 'string', description: 'A call as source text: average([92, 88, 95])' },
-              function: { type: 'string' },
-              args: { type: 'array', description: 'Argument literals, as text or JSON values' },
-              expected: {
-                description: 'The value it should return: a literal as text, or a JSON value',
-              },
-              returns: { description: 'Same as expected' },
-            },
-          },
-        },
+        expectations: EXPECTATIONS,
         function: {
           type: 'string',
           description: 'The function to repair when expectations judge several wrong',
@@ -222,7 +225,7 @@ function target(calls: readonly CallNode[], named: string | null): CallNode {
 
 // --- expectations -------------------------------------------------------------------------------
 
-interface Expectation {
+export interface Expectation {
   readonly index: number
   readonly text: string
   readonly function: string
@@ -264,7 +267,7 @@ function callParts(text: string): { readonly name: string; readonly args: string
   }
 }
 
-function parseExpectations(given: unknown): Expectation[] {
+export function parseExpectations(given: unknown): Expectation[] {
   if (!Array.isArray(given) || given.length === 0) {
     throw new ToolError(
       'expectations must be a non-empty array of {call, expected} or {function, args, returns}',
@@ -338,6 +341,46 @@ function recordedText(recording: Recording, details: CallDetails): string {
   return fullText(recording, call.exit + 1, details, details.result.value)
 }
 
+function argumentTexts(recording: Recording, details: CallDetails): string[] {
+  return details.args.map((arg) => fullText(recording, details.call.entry, details, arg.value))
+}
+
+function sameArguments(expectation: Expectation, args: readonly string[]): boolean {
+  return (
+    args.length === expectation.args.length && args.every((text, i) => text === expectation.args[i])
+  )
+}
+
+/** A call the expectation matches did what it expected: returned the expected value. */
+function isRight(expectation: Expectation, details: CallDetails, recorded: string): boolean {
+  if (details.call.outcome !== 'returned') return false
+  if (expectation.canonical !== null && recorded === expectation.canonical) return true
+  const value = details.result?.value
+  return (
+    recorded === expectation.expected ||
+    (value?.kind === 'string' && value.value === expectation.expected)
+  )
+}
+
+/**
+ * Answers bug finder questions from expectations: a call of an expected function with the
+ * expected arguments is right when it returned the expected value and wrong otherwise; any other
+ * call is left to the agent (null).
+ */
+export function expectationOracle(
+  recording: Recording,
+  expectations: readonly Expectation[],
+): (details: CallDetails) => 'right' | 'wrong' | null {
+  return (details) => {
+    const named = expectations.filter((expectation) => expectation.function === details.call.name)
+    if (named.length === 0 || details.call.depth === 0) return null
+    const args = argumentTexts(recording, details)
+    const expectation = named.find((candidate) => sameArguments(candidate, args))
+    if (expectation === undefined) return null
+    return isRight(expectation, details, recordedText(recording, details)) ? 'right' : 'wrong'
+  }
+}
+
 function judge(tree: CallTree, expectation: Expectation): Judged {
   const { recording } = tree
   const matches: Match[] = []
@@ -347,24 +390,12 @@ function judge(tree: CallTree, expectation: Expectation): Judged {
     if (call.depth === 0 || call.name !== expectation.function) continue
     if (scanned++ >= MAX_CALLS_SCANNED) break
     const details = tree.details(call)
-    const args = details.args.map((arg) => fullText(recording, call.entry, details, arg.value))
+    const args = argumentTexts(recording, details)
     if (seen.length < 5) seen.push(`${call.name}(${args.join(', ')})`)
-    if (
-      args.length !== expectation.args.length ||
-      args.some((text, i) => text !== expectation.args[i])
-    )
-      continue
+    if (!sameArguments(expectation, args)) continue
     matches.push({ details, recorded: recordedText(recording, details) })
   }
-  const right = (match: Match): boolean => {
-    if (match.details.call.outcome !== 'returned') return false
-    if (expectation.canonical !== null && match.recorded === expectation.canonical) return true
-    const value = match.details.result?.value
-    return (
-      match.recorded === expectation.expected ||
-      (value?.kind === 'string' && value.value === expectation.expected)
-    )
-  }
+  const right = (match: Match): boolean => isRight(expectation, match.details, match.recorded)
   if (matches.length === 0) {
     const reason =
       scanned === 0
