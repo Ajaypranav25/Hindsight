@@ -6,7 +6,8 @@ import { compile, record, type Recording } from '../../core/index'
 import { commandForKey, NO_FOCUS, runCommand } from '../lib/shortcuts'
 import { memoryStorage } from '../lib/storage'
 import { StudioProvider } from '../state/context'
-import { activeSlice, liveWhyNot, wantedSliceStep } from '../state/lab'
+import { setAnalysisService } from '../analysis/service'
+import { activeSlice, liveWhyNot, SLICE_FAILED, wantedSliceStep } from '../state/lab'
 import { ManualScheduler } from '../state/scheduler'
 import { createStudioStore } from '../state/store'
 import { scriptedEngine } from '../state/testing'
@@ -23,7 +24,10 @@ beforeAll(() => {
   Range.prototype.getBoundingClientRect ??= rect as unknown as () => DOMRect
 })
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  setAnalysisService(null)
+})
 
 const SHIPPING =
   'var total = 50\ntotal = total + 25\nif total > 80 {\n  print("free shipping")\n}\n' +
@@ -234,6 +238,17 @@ describe('lines that led here', () => {
     const { store } = setup(source)
     act(() => store.getState().sliceFrom(recording.outputs[1]!.time, 'output line 2'))
     await screen.findByText('2 lines led to output line 2; the rest are dimmed')
+  })
+
+  test('a slice the analysis service cannot compute says so, and Close dismisses it', async () => {
+    setAnalysisService({ analyze: () => Promise.reject(new Error('no worker, no memory')) })
+    const source = 'let a = 1\nprint(a)\n'
+    const recording = recordSource(source)
+    const { store } = setup(source)
+    act(() => store.getState().sliceFrom(recording.outputs[0]!.time, 'output line 1'))
+    await screen.findByText(SLICE_FAILED)
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(store.getState().lab.sliceAt).toBeNull()
   })
 
   test('nothing is traced for a stale recording', () => {

@@ -115,6 +115,36 @@ describe('the worker side of the protocol', () => {
     expect(posts[1]!.message).toEqual({ type: 'cancelled', id: 1 })
   })
 
+  test('without a host scheduler, a search pauses through a message channel and finishes', async () => {
+    const recording = recordSource(PRICE)
+    const run = describeRun(recording)!
+    const posts: FromWorker[] = []
+    const done = new Promise<void>((resolve) => {
+      let clock = 0
+      const handle = createAnalysisHandler({
+        post: (message) => {
+          posts.push(message)
+          if (message.type === 'done') resolve()
+        },
+        now: () => (clock += 1000),
+      })
+      handle(analyze(1, run, { kind: 'solve', goal: { kind: 'output', index: 0, text: '100' } }))
+    })
+    await done
+    expect(posts.map((message) => message.type)).toEqual(['done'])
+  })
+
+  test('recording the run again throwing fails the job', () => {
+    const run = describeRun(recordSource(SHIPPING))!
+    const { handle, posts } = harness({
+      recreate: () => {
+        throw new Error('out of memory')
+      },
+    })
+    handle(analyze(3, run, { kind: 'slice', at: 0 }))
+    expect(posts[0]!.message).toEqual({ type: 'failed', id: 3, error: 'out of memory' })
+  })
+
   test('a sweep says how many values it has forked after every pause', () => {
     const recording = recordSource(PRICE)
     const run = describeRun(recording)!
