@@ -12,6 +12,7 @@ import {
   type QueryResult,
   record,
   type Recording,
+  type RepairOptions,
   type RepairRequest,
   type RepairResult,
   repairSearch,
@@ -209,8 +210,12 @@ export function slice(
 // --- repair -------------------------------------------------------------------------------------
 
 /** Runs a repair search to the end. */
-export function searchRepairs(recording: Recording, request: RepairRequest): RepairResult {
-  const search = repairSearch(recording, request)
+export function searchRepairs(
+  recording: Recording,
+  request: RepairRequest,
+  options: RepairOptions = {},
+): RepairResult {
+  const search = repairSearch(recording, request, options)
   let next = search.next()
   while (next.done !== true) next = search.next()
   return next.value

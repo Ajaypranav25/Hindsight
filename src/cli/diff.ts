@@ -165,7 +165,8 @@ function linesLabel(a: LineSpan | null, b: LineSpan | null): string {
   return textA === textB ? ` (${textA})` : ` (${textA} in A, ${textB} in B)`
 }
 
-function originReason(origin: OriginGroup): string {
+/** Why a call is an origin, as one clause. */
+export function originReason(origin: OriginGroup): string {
   const calls = origin.changes.includes('calls')
   const behavior = origin.changes.some((aspect) => aspect !== 'calls')
   if (calls && !behavior) return 'given the same inputs, it makes calls the other run does not'
