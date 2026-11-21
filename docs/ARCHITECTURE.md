@@ -204,9 +204,16 @@ step-over-able unit (§4.3.5).
 | identifier                                                    | `GetLocal` / `GetUpvalue` / `GetGlobal` / `GetBuiltin`                                                                                                                                                                                                                                                                                 |
 | function / lambda                                             | a separate `FunctionProto`; in the enclosing function `Closure k (isLocal, index)…`                                                                                                                                                                                                                                                    |
 | function body                                                 | parameter prologue: for each parameter `i` that is neither an identifier nor `_`: `GetLocal 1+i`; `Destructure k`; `Declare m` (first prologue instruction is stmtStart); then the body block in value mode (or the expression body, its first instruction stmtStart); `Return`                                                        |
+| `requires E` (contracts, SPEC §7.16)                          | after the parameter prologue, before the body, each clause in order: E [first instruction stmtStart]; `Check k` (`ContractConst`)                                                                                                                                                                                                      |
+| return in a function with `ensures` clauses                   | at every `return` and at the end of the body: the value; `Declare 1` (`result`, local kind `result`); each `ensures` clause in order: E [stmtStart]; `Check k`; then `Return`. Without `ensures` clauses: a bare `Return`, so contract-free functions compile exactly as before                                                        |
 
 Identifier parameters occupy their slots directly. Every other parameter's slot is a hidden local
 `$argI`; `_` parameters get no prologue.
+
+Contract clauses (`compiler/contracts.ts`) compile in a view of the function's scope that holds only
+the parameters (plus `result` in `ensures`) and no enclosing loop, so they cannot see the body's
+locals and `return` in them is E029. Each clause gets one `ContractConst` (kind, the clause's source
+text, the function's display name, the parameters' source texts) shared by every return it guards.
 
 #### 4.3.4 Patterns → `PatternDesc`
 
@@ -230,12 +237,16 @@ with the pattern's exact source text (for R014/R015) and `bindCount`. The VM int
   - `MatchPattern` and an arm's `Declare`: the arm's pattern; `NoMatch`: the subject;
   - block-ending `EndScope`/`PopN`: the block's closing `}` (1-character span);
   - implicit `Return`: the body's closing `}` or the expression body; the program's final
-    `Nil`/`Return`: the empty span at the end of the source.
+    `Nil`/`Return`: the empty span at the end of the source;
+  - a contract clause's instructions and its `Check`: spans as for any expression, the `Check` the
+    clause expression; the `Declare 1` of `result`: the `return` statement (or the body's `}`).
 - `stmtStart[i] = 1` for the first instruction of every statement, every `MatchPattern`, the first
-  instruction of every arm body, `IterNext`, the first instruction of a lambda's expression body and
-  the first instruction of a parameter prologue. Otherwise 0 (and 0 on operand indices).
+  instruction of every arm body, `IterNext`, the first instruction of a lambda's expression body,
+  the first instruction of a parameter prologue and the first instruction of every contract clause
+  (at each place it runs). Otherwise 0 (and 0 on operand indices).
 - `stmtSpanStart/stmtSpanEnd[i]`: the innermost enclosing statement; for `MatchPattern` and arm
-  bodies, the arm; for the expression body of a lambda, the body expression.
+  bodies, the arm; for the expression body of a lambda, the body expression; for a contract clause,
+  the clause expression.
 - `locals` (§4.3.2), `upvalueNames[i]` (the captured variable's name).
 - Display names: SPEC §7.12. `FunctionProto.name` is `null` for unnamed functions; the script is
   `kind: 'script'` named `'<top level>'`.
@@ -248,7 +259,9 @@ with the pattern's exact source text (for R014/R015) and `bindCount`. The VM int
 - `verify.ts`: `verifyProto(proto): string[]` and `verifyProgram(program): string[]`: an abstract
   interpreter that reports invalid opcodes or operands, out-of-range constant/local/upvalue/jump
   indices, inconsistent or negative stack depths at joins, debug arrays of the wrong length,
-  `stmtStart` on operand indices, and locals outside the frame or with inverted ranges.
+  `stmtStart` on operand indices, locals outside the frame or with inverted ranges, and a `Check`
+  whose constant is not a `ContractConst`. The disassembler comments `Check` with the clause
+  (`; ensures result >= 0`).
 
 ## 5. Bytecode (`src/core/bytecode.ts`)
 
@@ -302,6 +315,7 @@ Stack effects are written `( before -- after )`, top of stack on the right.
 | `Destructure`                       | k (pattern)                                            | `( v -- b1…bm )`                                     | R014 on mismatch                                                                     |
 | `MatchPattern`                      | k (pattern), target                                    | `( v -- v b1…bm )` or jump with `( v -- v )`         | bindings pushed only on success                                                      |
 | `NoMatch`                           | —                                                      | —                                                    | terminator: raises R015 with the subject on top                                      |
+| `Check`                             | k (`ContractConst`)                                    | `( v -- )`                                           | contracts (SPEC §7.16): falsy `v` raises R026 (`requires`) or R027 (`ensures`)       |
 
 ## 6. Runtime
 
@@ -373,6 +387,11 @@ The VM builds a `RuntimeErrorInfo` at the moment of failure: code, message, hint
 §10.4, and the stack innermost-first. If the failing instruction belongs to library code, the span is
 that of the `Call` instruction in the nearest user frame. After an error the VM state may be
 inconsistent; consumers never read it (the recorder rebuilds time `N` by replay).
+
+`Check` (opcode 57) is executed in `vm-exec-other.ts` through `vm-contracts.ts`, outside the hot
+dispatch switch. An R026 hint reads the arguments from the parameter slots (parameters are
+immutable, so they still hold them); an R027 hint reads the returned value, which sits just below
+the clause's value (it is the `result` local).
 
 ### 6.7 Hooks (recording events)
 
@@ -621,6 +640,33 @@ code is wrong. It is built only on the public `Recording` API.
   closest to half of the suspect's. "Wrong" makes it the suspect; "right" and "not sure" clear its
   subtree. `remaining(state)` counts the calls still under suspicion. The CLI and the studio start
   interviews this way; `top-down` remains available.
+- **The contract oracle** (`oracle.ts`, `oracle-syntax.ts`): `contractOracle(recording, tree)`
+  returns a `CallOracle`, `(call) => AutoAnswer | null` with `AutoAnswer = { answer: 'right' |
+'wrong', reason, line }`, that answers from what the program states about itself (SPEC §7.16) and
+  what the run proved. `autoAnswer(state, oracle)` applies its answers, one finder step each (with
+  both strategies, `remaining` and memo keys as for human answers), until the open question has no
+  automatic answer; each `Judgment` keeps its `auto` evidence, and `answeredAutomatically` counts
+  them. `undo` of an automatic answer also declines it (`FinderState.declined`): `autoAnswer` then
+  leaves that question to the user. `repairExamples` uses automatic answers like human ones.
+  Sources, in order:
+  1. **The run's failure.** R027 at call C: C is wrong ("its postcondition on line 3 failed").
+     R026 at C's entry: C is right ("its caller is to blame") and its caller is wrong. R018 at an
+     `assert(F(args) == EXPECTED)`: the call of F made there is wrong. Every call around the failure
+     (it did not return) is wrong.
+  2. **Assertions as examples.** An `assert` whose condition is `F(args) == EXPECTED` (either side,
+     also with a pipe) judges the call of F made while evaluating it: right when the assertion
+     passed, wrong when it failed. The verdict also applies to every call with the same inputs and
+     result anywhere in the run (`resultKey` in `call-details.ts`: function, context, arguments at
+     entry and outcome, effects ignored), found by one walk of the call tree with an explicit stack.
+  3. **Pinning postconditions.** A function whose `ensures` clauses contain a top-level conjunct
+     `result == EXPR` (either side) pins its result down: each of its calls that returned is right
+     (the clause held). Other postconditions only ever produce "wrong", through 1.
+  4. Otherwise null: a person (or, later, a model) answers.
+
+  A "right" answer only vouches for a result, so it is never given for a call that changed anything
+  outside itself (a person judges effects); a wrong result is wrong whatever else the call did.
+  Syntax is matched by spans: the oracle parses the program's source once and finds call sites
+  through `Recording.locationAt(call.entry - 1)`.
 
 ### 7.7 Events by time (`events.ts`)
 
@@ -647,7 +693,8 @@ built on first use; null above 4,000,000 steps).
   edit has no cause.
 
 `backwardSlice(recording, steps)` follows the edges backwards and returns the marked steps and the
-source lines they ran on; `errorSlice` slices the instruction a failed run stopped on;
+source lines they ran on; `errorSlice` slices the instruction a failed run stopped on (for R026 and
+R027 the `Check`, which depends on its clause's value, so the slice holds what the clause read);
 `upstreamWrites` lists the declarations and writes performed by steps of a slice, with names.
 
 ### 7.9 The query language (`query.ts`, `query-eval.ts`)
@@ -681,7 +728,11 @@ from the replay stack, and the variables it mentions are explained with `origin`
 set at step 810"). Other results: the function was never called (explained through its first call
 site that did not run), the block was entered but always left early or the run ended first
 (`cut-short`), the line did run, or the line holds no code. Call sites are found by name in the
-source text, so shadowing is not resolved.
+source text, so shadowing is not resolved. Contracts: a line in a function whose precondition
+failed at its entry is `cut-short` ("average was called, but at step 90 the precondition
+`len(xs) > 0` of average (line 2) failed (the caller passed xs = []), so its body never ran"); a run
+cut short by R026/R027 names the failed clause; a contract clause's own line is located like a
+body line.
 
 ### 7.11 The inverse what-if (`inverse.ts`)
 
@@ -730,6 +781,8 @@ compareRecordings(a, b): RecordingComparison             // what-if: divergence 
 parseLiteralValue(text): LiteralResult, formatLiteral(value): string
 callTree(recording): CallTree                            // bug finder: the recorded calls
 startFinder(tree, call, options), question, answer, undo, verdict, remaining
+contractOracle(recording, tree): CallOracle, autoAnswer(state, oracle) // §7.6 automatic answers
+contractKeywordStarts(tokens): ReadonlySet<number>       // editors: requires/ensures in position
 eventsBetween, callEffects                               // §7.6, §7.7
 dependenceOf, backwardSlice, errorSlice, upstreamWrites  // §7.8
 parseQuery, queryRecording, runQuery, queryTimes         // §7.9
@@ -763,6 +816,7 @@ show, repr, LineIndex, and all types from api-types.ts / diagnostics.ts / span.t
 
 | `whatif FILE --at T --set NAME=1..20` | a sweep (§7.13): one row per value with its steps, deepest depth, outcome and output change, then the longest run |
 | `debug FILE --strategy divide\|top-down` | how questions are chosen (default `divide`, §7.6); questions list side effects and the calls still under suspicion; the verdict is followed by repair previews (§7.12) when a one-token change agrees with the answers |
+| `debug FILE [--no-auto] [--no-ask]` | contracts and assertions answer what they can (§7.6), each printed with its evidence (`Question 2: total(...) returned 250 — right (the assertion on line 13)`); `--no-auto`: a person answers every question; `--no-ask`: nobody is asked, the interview stops at the first question without an automatic answer, prints it and exits 3. Exit codes: 0 verdict, 1 stopped without one (quit, input ended, load error), 3 open question under `--no-ask` |
 | `solve FILE --want TEXT [--output K]` | the inverse what-if (§7.11): earlier values that make output line `K` (default: the last) read `TEXT`; exit 1 when none is found |
 | `solve FILE --no-crash` | earlier values that avoid the run's runtime error |
 | `query FILE QUERY [--limit N]` | the query language (§7.9); prints up to `N` (default 50) stretches, changes or calls |
@@ -905,7 +959,9 @@ tabbed panels); the page may scroll vertically, never horizontally.
   Shift+←/→ step over. Home / End inside the tab strip or the slider belong to that widget, and
   shortcuts are off while a modal dialog is open. Just-my-code (default on) skips library frames.
   Breakpoints follow their lines through edits (dropped with deleted lines).
-- **Editor**: Hindsight highlighting from the real lexer (including comments); diagnostics as lint
+- **Editor**: Hindsight highlighting from the real lexer (including comments; `requires` and
+  `ensures` are keywords only in contract position, found in the token stream by
+  `contractKeywordStarts`); diagnostics as lint
   squiggles; the current statement's lines tinted and the current instruction's span outlined; the
   selected caller frame's call span marked differently; clickable breakpoint gutter; a heat gutter
   showing per-line hit counts (log scale) with a tooltip ("ran 1,204 times · click to jump to the
@@ -956,6 +1012,14 @@ tabbed panels); the page may scroll vertically, never horizontally.
   suspects" toggles call order; switching starts the interview over), a question shows the calls
   still under suspicion and what the call changed outside itself, and the verdict lists repair
   previews (searched in the background) with "Apply this change", which replaces the program text.
+- **Automatic answers** (§7.6 contract oracle): "Use contracts and assertions" (default on; a toggle
+  in the intro and the interview, switching starts the interview over) lets the program's contracts
+  and assertions answer what they can after every change (`state/bug-finder.ts`: the session keeps
+  its `CallOracle`). The interview lists those answers ("Answered by your contracts and
+  assertions": the question number, the call, right or wrong and the reason) and counts them in the
+  question numbers; Undo takes the last answer back, automatic or not, and an automatic one taken
+  back becomes the user's question. After a failed contract or assertion (R018, R026, R027) "Find
+  the bug" starts the interview at once, and the verdict says when no question was needed.
 - **Make it so** (§7.11): every console line has "Make this print…", an inline field holding the
   line's text; Enter searches for an earlier value that makes the line read the edited text. A
   runtime error offers "Make this not happen" and "Try one-token fixes". Answers are sentences with
