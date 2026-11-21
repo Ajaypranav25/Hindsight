@@ -214,6 +214,27 @@ history of 'total' (declared on line 8, average):
   ...
 ```
 
+## In VS Code
+
+`editors/vscode` is a VS Code extension for `.sight` files. It highlights the language and records
+the program every time you save, then shows what the run did: compile and runtime problems,
+**ran N times** above each function, and **never ran — why not?** above code the run never reached
+(click it for the explanation, written after the line). **Hindsight: Lines That Led to the Crash**
+dims everything outside the crash's backward slice, **Hindsight: Run File** prints the output, and
+**Hindsight: Open in Studio** opens the program in the studio with the pen on the cursor's line.
+
+It is not on the Marketplace yet; build and install the `.vsix` from a checkout:
+
+```sh
+cd editors/vscode
+npm install
+npm run package                                   # hindsight-vscode-<version>.vsix
+code --install-extension hindsight-vscode-*.vsix
+```
+
+To work on it, open `editors/vscode` in VS Code and press F5 for an Extension Development Host.
+Details: [editors/vscode/README.md](editors/vscode/README.md).
+
 ## How it works
 
 ```
@@ -284,6 +305,7 @@ src/core/          the language: lexer, parser, compiler, VM, recorder, navigato
 src/studio/        the React + CodeMirror studio
 src/cli/           the hindsight command-line tool
 src/conformance/   the annotation checker shared by the test suite and `hindsight test`
+editors/vscode/    the VS Code extension (language support, run on save, lenses, why-not)
 tests/lang/        the conformance corpus
 examples/          the studio's gallery programs
 docs/              language specification and architecture

@@ -34,6 +34,7 @@ tests/lang/**.sight   the conformance corpus (§10.2)
 tests/*.test.ts       cross-module tests (corpus runner, time-travel properties, API)
 e2e/                  Playwright tests for the studio
 examples/             gallery programs shown in the studio
+editors/vscode/       the VS Code extension (§12); its own package.json and node_modules
 ```
 
 Module dependency direction (no cycles):
@@ -858,7 +859,8 @@ Every module has co-located tests. Coverage target: 80 %+ lines for `src/core`, 
 `src/cli`, and the non-visual parts of `src/studio`; `vitest.config.ts` fails the coverage run below
 the current overall levels, so they cannot drift down unnoticed. Wall-clock budgets live in
 `*.perf.test.ts` files, which `npm test` and coverage skip: `npm run test:perf` runs them one file
-at a time. Every corpus program and gallery example that compiles must also pass `verifyProgram`.
+at a time. Every corpus program and gallery example that compiles must also pass `verifyProgram`. The
+VS Code extension's vscode-free modules (`editors/vscode/src/*.test.ts`) run in the same suite (§12).
 
 ### 10.2 Conformance corpus
 
@@ -1115,3 +1117,35 @@ respect the page rules: a two-to-four-word `<title>` ("Hindsight Studio"), side 
 `max(16px, env(safe-area-inset-left/right, 0px))`, `height: 100%` instead of `100vh`, no horizontal
 page scroll at 400 px, no `alert`/`confirm`/`prompt`, clipboard writes inside click handlers with a
 select-the-text fallback, and storage access wrapped in try/catch.
+
+## 12. VS Code extension (`editors/vscode`)
+
+A separate package (`hindsight-vscode`, engines `vscode ^1.90.0`, activation `onLanguage:sight`)
+that bundles the core; it is never published from CI.
+
+- **Declarative parts.** `language-configuration.json` (`//` and nesting `/* */` comments, brackets;
+  `{` auto-closes inside strings too, for interpolation) and `syntaxes/sight.tmLanguage.json`:
+  keywords exactly SPEC §2.4, builtins exactly `BUILTIN_NAMES`, `requires`/`ensures` as keywords
+  only between a `fn`'s parameter list and its body, strings with escapes and nested `{expr}`
+  interpolation. The grammar contribution maps `meta.embedded.line.sight` to token type `other`, so
+  quotes and brackets inside an interpolation behave as code. `src/manifest.test.ts` keeps these
+  files in step with the core (keywords, builtins) and with the code (command ids, setting bounds).
+- **vscode-free modules** (`src/analysis.ts`, `view.ts`, `run-scheduler.ts`, `studio-link.ts`):
+  `analyze` compiles and records with `recordAsync` (slices, an abort flag) and turns diagnostics
+  and the runtime error into 1-based problems; call counts come from one pass over the depth series
+  (a call begins where the depth rises, the call tree's rule, §7.6); never-ran lenses group the
+  consecutive statement lines with no `lineHits`; `crashSlice` uses `errorSlice`; studio links reuse
+  the studio's `shareFragment` (60,000-character limit). `RunScheduler` debounces saves per
+  document (300 ms) and aborts the run in flight when a newer one starts; a superseded run's result
+  is dropped. The root `npm run typecheck`, `lint` and `test` cover these modules.
+- **Glue** (`src/glue/`, the only code importing `vscode`; checked by `editors/vscode/tsconfig.json`
+  against `@types/vscode` and `@types/node` installed in `editors/vscode/node_modules`): each result
+  remembers the document version it recorded, and lenses and commands use it only while the
+  document still has that version (editing hides the lenses until the next save; "fresh" commands
+  re-run first). Open in Studio passes the URL to `env.openExternal` as a string, because a `Uri`
+  would percent-encode the fragment's `=` and `&`.
+- **Build.** `scripts/build.mjs` bundles `src/glue/extension.ts` with esbuild into
+  `dist/extension.js` (CommonJS, Node 20; only `vscode` and Node built-ins may stay external, else
+  the build fails). `scripts/smoke.mjs` loads that bundle against `scripts/fake-vscode.mjs` and
+  drives it (open, save, edit, close, every command). `npm run package` (vsce) writes the `.vsix`,
+  which is git-ignored.
