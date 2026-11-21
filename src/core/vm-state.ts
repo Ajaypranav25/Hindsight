@@ -95,6 +95,11 @@ export class MachineState {
   readonly refs: Ref[] = []
   /** Key positions of large records in the latest snapshot (vm-snapshot.ts). */
   readonly positions = new Map<number, RecordPositions>()
+  /**
+   * After a restore: the live objects by id it created or reused (each matches its copy in `base`
+   * unless the change log names it), for delta restores; null otherwise.
+   */
+  live: Map<number, HeapObject> | null = null
 
   constructor(program: Program, options: VMOptions) {
     this.program = program
@@ -159,6 +164,7 @@ export class MachineState {
     this.changeLog.length = 0
     this.logBelow = 0
     this.positions.clear()
+    this.live = null
   }
 
   // -------------------------------------------------------------------------------------------

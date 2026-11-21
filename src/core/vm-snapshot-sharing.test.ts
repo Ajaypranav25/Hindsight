@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vitest'
 import type { Program } from './bytecode'
 import type { RuntimeDeps, VM, VMSnapshot } from './runtime-types'
 import { compileMain, freshVMAt, recordSource, testRuntime } from './testing/recording'
-import { digest } from './testing/vm-digest'
+import { digest, liveDigest } from './testing/vm-digest'
 import { MachineSnapshot } from './vm-snapshot'
 
 /** Mutation-heavy programs: big lists and records use the persistent-vector path (> 32 slots). */
@@ -80,6 +80,15 @@ const PROGRAMS: Record<string, string> = {
     'p[0](1)',
     'p[0](2)',
     'print(a(), b(), p[1]())',
+  ].join('\n'),
+  patchedList: [
+    'var xs = list(0..2000)',
+    'for i in 0..30 {',
+    '  xs[i * 61 % 2000] = -i',
+    '  if i % 7 == 0 { push(xs, [i]) }',
+    '  if i % 11 == 0 { pop(xs) }',
+    '}',
+    'print(len(xs), xs[61])',
   ].join('\n'),
   random: [
     'var xs = []',
@@ -249,6 +258,47 @@ describe('structural sharing between consecutive snapshots (ARCHITECTURE §6.8)'
     expect(last.lineage).not.toBe(first.lineage)
     expect(last.retainedSince(first)).toBe(last.retainedSince(null))
     expectRestoresLikeFreshRun({ program, runtime, snapshots: [] }, last)
+  })
+})
+
+describe('delta restores (ARCHITECTURE §6.8)', () => {
+  for (const [name, source] of Object.entries(PROGRAMS)) {
+    test(`${name}: one VM restoring snapshots in any order and running on matches fresh runs`, () => {
+      const taken = snapshotsOf(source, 3)
+      const count = taken.snapshots.length
+      const moves = fc.array(fc.tuple(fc.nat(count - 1), fc.nat(12)), {
+        minLength: 1,
+        maxLength: 8,
+      })
+      fc.assert(
+        fc.property(moves, (picks) => {
+          const vm = newVM(taken.program, taken.runtime)
+          for (const [pick, extra] of picks) {
+            const snapshot = taken.snapshots[pick]!
+            vm.restore(snapshot)
+            vm.runUntil(snapshot.time + extra)
+            const reference = freshVMAt(taken.program, taken.runtime, vm.time)
+            expect(liveDigest(vm)).toBe(liveDigest(reference))
+          }
+          // A full snapshot of the end state agrees too (object counter, generator).
+          const last = freshVMAt(taken.program, taken.runtime, vm.time)
+          expect(digest(vm)).toBe(digest(last))
+        }),
+        { numRuns: 30 },
+      )
+    })
+  }
+
+  test('objects that did not change between two snapshots keep their identity', () => {
+    const taken = snapshotsOf('let xs = list(0..5000)\nvar t = 0\nfor i in 0..20 { t += i }')
+    const vm = newVM(taken.program, taken.runtime)
+    const late = taken.snapshots[taken.snapshots.length - 1]!
+    const earlier = taken.snapshots[taken.snapshots.length - 20]!
+    vm.restore(earlier)
+    const list = vm.globals.get('xs')
+    vm.restore(late)
+    expect(vm.globals.get('xs')).toBe(list)
+    expect(liveDigest(vm)).toBe(liveDigest(freshVMAt(taken.program, taken.runtime, late.time)))
   })
 })
 

@@ -115,6 +115,28 @@ export class PVec<T> {
     return count
   }
 
+  /**
+   * Calls `visit` with every index at which `this` and `other` hold different values (by
+   * identity; a hole differs from any value), descending only into nodes the two do not share. So
+   * comparing two versions of one vector costs about the number of differences.
+   */
+  diff<U>(other: PVec<U>, visit: (index: number) => void): void {
+    let a = this.root
+    let b = other.root
+    const shift = Math.max(this.shift, other.shift)
+    // A shorter tree is the leftmost path of a taller one: lift it to the same height.
+    for (let s = this.shift; s < shift && a !== null; s += BITS) a = new PNode(-1, [a])
+    for (let s = other.shift; s < shift && b !== null; s += BITS) b = new PNode(-1, [b])
+    if (a === null && b === null) return
+    if (a === null || b === null) {
+      // One side is empty: every index of the other differs.
+      const length = a === null ? other.length : this.length
+      for (let i = 0; i < length; i++) visit(i)
+      return
+    }
+    diffNodes(a, b, shift, 0, visit)
+  }
+
   /** An editor whose changes produce a new vector; nodes it creates are born with `serial`. */
   edit(serial: number): PVecEditor<T> {
     return new PVecEditor<T>(this.root, this.shift, this.length, serial)
@@ -150,6 +172,34 @@ function collect<U>(
     }
   }
 }
+
+function diffNodes(
+  a: PNode | undefined,
+  b: PNode | undefined,
+  shift: number,
+  offset: number,
+  visit: (index: number) => void,
+): void {
+  if (a === b) return
+  const as = a?.slots ?? EMPTY_SLOTS
+  const bs = b?.slots ?? EMPTY_SLOTS
+  const count = Math.max(as.length, bs.length)
+  if (shift === 0) {
+    for (let i = 0; i < count; i++) if (as[i] !== bs[i]) visit(offset + i)
+    return
+  }
+  for (let i = 0; i < count; i++) {
+    diffNodes(
+      as[i] as PNode | undefined,
+      bs[i] as PNode | undefined,
+      shift - BITS,
+      offset + i * (1 << shift),
+      visit,
+    )
+  }
+}
+
+const EMPTY_SLOTS: readonly unknown[] = []
 
 function visitLeaves(node: PNode, shift: number, visit: (slots: unknown[]) => void): void {
   if (shift === 0) {

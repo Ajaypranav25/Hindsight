@@ -124,3 +124,48 @@ describe('persistent vectors', () => {
     )
   })
 })
+
+describe('persistent vector differences', () => {
+  const diffOf = (a: PVec<unknown>, b: PVec<unknown>): number[] => {
+    const found: number[] = []
+    a.diff(b, (index) => found.push(index))
+    return found
+  }
+
+  test('diff finds exactly the changed indices, at any heights and lengths', () => {
+    const original = PVec.from<number, number | string>(range(3000), 1, (x) => x)
+    const editor = original.edit(2)
+    editor.set(5, -5)
+    editor.set(2999, -1)
+    editor.set(40_000, 'far')
+    const changed = editor.build()
+    expect(diffOf(original, changed)).toEqual([5, 2999, 40_000])
+    expect(diffOf(changed, original)).toEqual([5, 2999, 40_000])
+    expect(diffOf(original, original)).toEqual([])
+    const shorter = original.edit(3)
+    shorter.truncate(10)
+    expect(diffOf(original, shorter.build())).toEqual(range(2990).map((i) => i + 10))
+    expect(
+      diffOf(
+        PVec.empty(),
+        PVec.from([1, 2], 1, (x) => x),
+      ),
+    ).toEqual([0, 1])
+  })
+
+  test('diff agrees with comparing every index, for random edits', () => {
+    fc.assert(
+      fc.property(fc.array(fc.tuple(fc.nat(5000), fc.integer()), { maxLength: 30 }), (edits) => {
+        const original = PVec.from(range(1500), 1, (x) => x)
+        const editor = original.edit(2)
+        for (const [index, value] of edits) editor.set(index, value)
+        const changed = editor.build()
+        const expected: number[] = []
+        for (let i = 0; i < Math.max(original.length, changed.length); i++) {
+          if (original.get(i) !== changed.get(i)) expected.push(i)
+        }
+        expect(diffOf(original, changed)).toEqual(expected)
+      }),
+    )
+  })
+})

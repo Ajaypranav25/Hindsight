@@ -25,6 +25,25 @@ export function digest(vm: VM): string {
   return [...parts, ...objects].join('\n')
 }
 
+/**
+ * A digest of the live state through the public `VM` interface only, without taking a snapshot (so
+ * it does not change the machine's base or its delta-restore state). It omits the object counter
+ * and the generator, which only a snapshot sees.
+ */
+export function liveDigest(vm: VM): string {
+  const seen = new Set<HeapObject>()
+  const objects: string[] = []
+  const describe = (value: Value): string => describeValue(value, seen, objects)
+  const parts = [
+    `time=${vm.time} status=${vm.status} work=${vm.work}`,
+    `stack=${vm.stack.map(describe).join(',')}`,
+    `frames=${vm.frames.map((f) => `${f.uid}:${describe(f.closure)}@${f.ip}+${f.base}`).join(',')}`,
+    `cells=${vm.openCells.map((c) => `${describe(c)}@${c.stackIndex}`).join(',')}`,
+    `globals=${Array.from(vm.globals, ([k, v]) => `${k}=${describe(v)}`).join(',')}`,
+  ]
+  return [...parts, ...objects].join('\n')
+}
+
 /** Primitives inline; heap objects by id, with their contents appended once to `objects`. */
 function describeValue(root: Value, seen: Set<HeapObject>, objects: string[]): string {
   const work: Value[] = [root]

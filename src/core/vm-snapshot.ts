@@ -26,7 +26,8 @@ import {
   objectSize,
   rootsSize,
 } from './vm-snapshot-frozen'
-import { type MachineRecord, thaw } from './vm-snapshot-thaw'
+import { deltaThawer } from './vm-snapshot-delta'
+import { type MachineRecord, Thawer, thaw, thawRoots } from './vm-snapshot-thaw'
 import type { MachineState } from './vm-state'
 
 export type { MachineRecord } from './vm-snapshot-thaw'
@@ -134,12 +135,23 @@ export function takeSnapshot(m: MachineState): MachineSnapshot {
     compacted,
   )
   m.trackFrom(snapshot)
+  // Live objects now match the new base only where they were copied; delta restores need a map
+  // built by a restore.
+  m.live = null
   return snapshot
 }
 
-/** Replaces the machine's state with fresh objects for `snapshot`, which becomes its base. */
+/**
+ * Replaces the machine's state with the state `snapshot` holds, which becomes its base. When the
+ * machine's base and `snapshot` belong to the same line and the machine was positioned by a
+ * restore, only objects that differ are rebuilt (a delta restore): those changed since the base
+ * (the change log) and those whose copies differ between the two tables (a diff of the shared
+ * radix trees). They are refilled in place, every other live object is reused as it is, and the
+ * roots are rebuilt. Otherwise every object is created afresh.
+ */
 export function restoreSnapshot(m: MachineState, snapshot: MachineSnapshot): void {
-  const record = snapshot.thaw()
+  const thawer = deltaThawer(m, snapshot) ?? new Thawer(snapshot.table)
+  const record = thawRoots(thawer, snapshot.roots, snapshot.scalars)
   m.stack = record.stack
   m.frames = record.frames
   m.openCells = record.openCells
@@ -154,6 +166,7 @@ export function restoreSnapshot(m: MachineState, snapshot: MachineSnapshot): voi
   m.error = record.error
   m.positions.clear()
   m.trackFrom(snapshot)
+  m.live = thawer.live
 }
 
 function scalarsOf(m: MachineState): MachineScalars {
