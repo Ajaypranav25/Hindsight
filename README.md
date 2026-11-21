@@ -32,7 +32,7 @@ npm run dev          # opens Hindsight Studio at http://localhost:5173
 The studio opens with a gallery program already recorded. Pick another from **Examples**: a bug hunt
 where the answer is one click away, a crash you can rewind out of, recursion that draws mountain
 ranges, closures, a breadth-first maze search, the Game of Life, a bug to find by answering
-questions, a what-if to fork, and more.
+questions, a what-if to fork, contracts that let the bug finder answer its own questions, and more.
 
 ## A taste of the language
 
@@ -65,6 +65,21 @@ through calls; strings interpolate `{expressions}`. Error messages are specific 
 (`undefined variable 'lenght'` → `did you mean 'length'?`). The full reference is
 [docs/SPEC.md](docs/SPEC.md).
 
+Functions can state what they need and what they promise. Contracts are checked on every call:
+
+```
+fn average(xs)
+  requires len(xs) > 0                  // checked at entry: a failure blames the caller
+  ensures result == sum(xs) / len(xs)   // checked at every return, with result bound
+{
+  sum(xs) / len(xs)
+}
+```
+
+A broken `requires` is `R026 precondition failed: len(xs) > 0` with the arguments in the hint; a
+broken `ensures` is `R027 postcondition failed: …` with the returned value. `requires`, `ensures`
+and `result` stay ordinary names everywhere else.
+
 ## The studio
 
 |                                 |                                                                                                                                                                                                                                           |
@@ -79,6 +94,7 @@ through calls; strings interpolate `{expressions}`. Error messages are specific 
 | **Just my code**                | Library functions (`map`, `filter`, `sort_by`, …) are written in Hindsight and recorded too; just-my-code skips them unless you want to look inside.                                                                                      |
 | **What if?**                    | Change any variable, list element or record field at the pen: the run forks there, the strip chart shows where the new future diverges (with the real run as a ghost behind it), and changed output is marked. Fork again to stack edits. |
 | **Bug finder**                  | Answer right / wrong / not sure about recorded calls (`average(xs = [88, 83, 79])` returned `54`) until Hindsight names the function whose own code is wrong. Identical calls are asked about only once.                                  |
+| **Self-answering bug finder**   | Contracts and assertions answer the questions they can, each with its reason (`right: the assertion on line 13`, `wrong: its postcondition on line 29 failed`); Undo takes one back. With enough of them the verdict needs no questions.  |
 | **Moment links**                | Copy a link that carries the program and the pen's step: it opens on the very moment you were looking at, so a bug report lands on the bug.                                                                                               |
 
 ![The heap graph after reversing a linked list, in the light theme](docs/images/heap.png)
@@ -105,6 +121,7 @@ npm run sight -- test                                            # the conforman
 npm run sight -- repl
 npm run sight -- whatif examples/18-what-if.sight --at 1144 --set start=27   # fork the run
 npm run sight -- debug examples/17-find-the-bug.sight                       # find the bug
+npm run sight -- debug examples/19-contracts.sight --no-ask   # contracts answer every question
 npm run sight -- solve examples/18-what-if.sight --want "longest: 111"      # what past prints this?
 npm run sight -- query examples/18-what-if.sight 'calls(steps) where ret > 15'
 npm run sight -- whynot FILE --line 12        # why did line 12 never run?
@@ -148,6 +165,23 @@ Every call it makes returned the right value, but its own result is wrong.
 
 `debug` asks by halving the calls under suspicion (`--strategy top-down` asks in call order), shows
 what a call changed outside itself, and ends with one-token repairs that agree with your answers.
+
+Contracts and assertions answer what they can on their own, so `examples/19-contracts.sight` needs
+no questions at all:
+
+```
+Question 1: total(items = [...], percent = 10) raised an error: postcondition failed: … — wrong (its postcondition on line 29 failed)
+Question 2: subtotal(items = [...]) returned 55 — right (an identical call passed the assertion on line 38)
+Question 3: discount(amount = 55, percent = 10) returned 5.5 — right (its postcondition on line 15 held)
+Question 4: shipping(amount = 55) returned 0 — right (an identical call passed the assertion on line 39)
+Found it: the bug is in total (lines 27–33).
+✓ line 32: `+` → `-`
+```
+
+A failed `ensures` blames its function, a failed `requires` its caller; an `ensures result == …`
+vouches for every call that returned; `assert(f(args) == expected)` judges every call of `f` with
+those arguments. `--no-auto` asks you everything; `--no-ask` never asks: it stops at the first
+question nothing can answer and exits with code 3, so scripts and agents can tell.
 
 `solve` runs a what-if backwards, and `query` finds moments by condition (`when x > 3 and depth > 1`,
 `changed(order.paid)`, `calls(f) where ret < 0`):
