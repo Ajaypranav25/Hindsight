@@ -96,7 +96,9 @@ print(wait(t))`
       const details = tree.details(call)
       asked.push(`${call.name} ${details.result?.text}`)
       const right =
-        call.name === 'sq' ? details.result?.text === String(Number(details.args[0]!.text) ** 2) : false
+        call.name === 'sq'
+          ? details.result?.text === String(Number(details.args[0]!.text) ** 2)
+          : false
       state = answer(state, right ? 'right' : 'wrong')
     }
     const result = verdict(state)
