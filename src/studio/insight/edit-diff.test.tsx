@@ -6,7 +6,7 @@ import { setAnalysisService } from '../analysis/service'
 import { renderWithRecording } from '../panels/test-fixtures'
 import { fakeRecording } from '../state/testing'
 import type { EditRun } from '../state/types'
-import { EDIT_DIFF_MAX_STEPS, EditDiffStrip, summaryParts } from './EditDiffStrip'
+import { changeText, EDIT_DIFF_MAX_STEPS, EditDiffStrip, summaryParts } from './EditDiffStrip'
 import type { EditDiffSummary } from './insight-protocol'
 
 const BEFORE = 'fn double(x) {\n  x * 2\n}\nfor i in [1, 2, 3, 4] { print(double(i)) }\n'
@@ -147,5 +147,36 @@ describe('the summary line', () => {
 
     expect(clamped.some((part) => part.startsWith('pen kept'))).toBe(false)
     expect(kept).toContain('pen kept in main')
+  })
+})
+
+describe('a changed call', () => {
+  const call = (did: string) => ({
+    name: 'f',
+    entry: 1,
+    exit: 2,
+    depth: 1,
+    signature: 'f()',
+    did,
+    lines: null,
+  })
+
+  test('reads old result → new result, or names what changed when those read the same', () => {
+    const base = { renamed: false, inputsChanged: false }
+
+    expect(changeText({ ...base, a: call('returned 1'), b: call('returned 2'), changes: [] })).toBe(
+      'returned 1 → returned 2',
+    )
+    expect(
+      changeText({
+        ...base,
+        a: call('finished'),
+        b: call('finished'),
+        changes: ['output', 'calls'],
+      }),
+    ).toBe('its output, the calls it made changed')
+    expect(changeText({ ...base, a: call('finished'), b: call('finished'), changes: [] })).toBe(
+      'finished',
+    )
   })
 })

@@ -80,7 +80,10 @@ export function contractsSummary(found: FunctionContracts | null, result: InferR
   if (found.suggestions.length === 0) {
     return `No contracts to suggest: ${found.name} ${found.note ?? 'gave nothing to go on'}.`
   }
-  const read = `${formatCount(found.calls)} ${found.calls === 1 ? 'call' : 'calls'}`
-  const checked = result.verified ? ', checked by recording the program with them' : ''
-  return `What every one of its ${read} did${checked}.`
+  const calls = `${formatCount(found.calls)} ${found.calls === 1 ? 'call' : 'calls'}`
+  const sampled = found.sampled < found.calls ? `; ${formatCount(found.sampled)} were read` : ''
+  const checked = result.verified
+    ? ', and the clauses checked by recording the program with them'
+    : ''
+  return `What every one of its ${calls} did${sampled}${checked}.`
 }

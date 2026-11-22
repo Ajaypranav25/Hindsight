@@ -85,6 +85,10 @@ describe('which function a request is about', () => {
     )
     expect(contractsSummary(null, result)).toBe('This function did not take part in the run.')
     expect(contractsSummary({ ...found!, note: null }, result)).toContain('gave nothing to go on')
+    const sampled = { ...found!, calls: 450, sampled: 200, suggestions: [{} as never] }
+    expect(contractsSummary(sampled, { ...result, verified: false })).toBe(
+      'What every one of its 450 calls did; 200 were read.',
+    )
   })
 
   test('support reads in calls and inputs', () => {
@@ -113,7 +117,9 @@ describe('suggesting contracts in the studio', () => {
 
     const card = screen.getByRole('region', { name: 'Contracts for double' })
     expect(card.textContent).toContain('Reading the recorded calls of double')
-    await screen.findByText(/What every one of its 4 calls did, checked by recording/)
+    await screen.findByText(
+      /What every one of its 4 calls did, and the clauses checked by recording/,
+    )
     const pin = screen.getByRole('checkbox', { name: 'ensures result == 2 * x' })
     expect((pin as HTMLInputElement).checked).toBe(true)
     const others = screen

@@ -180,12 +180,28 @@ function CallItem(props: {
           {change.b.signature}
           {count}
         </span>
-        <span className="in-edit-change">
-          {change.a.did} → {change.b.did}
-        </span>
+        <span className="in-edit-change">{changeText(change)}</span>
       </button>
     </li>
   )
+}
+
+const ASPECT_WORDS: Readonly<Record<ChangedCall['changes'][number], string>> = {
+  arguments: 'its arguments',
+  context: 'what it read',
+  outcome: 'its outcome',
+  result: 'its result',
+  error: 'its error',
+  effects: 'its side effects',
+  output: 'its output',
+  calls: 'the calls it made',
+}
+
+/** `returned 4 → returned 6`, or what changed when that reads the same: `its output changed`. */
+export function changeText(change: ChangedCall): string {
+  if (change.a.did !== change.b.did) return `${change.a.did} → ${change.b.did}`
+  const aspects = change.changes.map((aspect) => ASPECT_WORDS[aspect])
+  return aspects.length === 0 ? change.b.did : `${aspects.join(', ')} changed`
 }
 
 function OutputItem(props: {
