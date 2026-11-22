@@ -6,12 +6,15 @@ import { compile, record, type Recording } from '../../core/index'
 import { commandForKey, NO_FOCUS, runCommand } from '../lib/shortcuts'
 import { memoryStorage } from '../lib/storage'
 import { StudioProvider } from '../state/context'
-import { activeSlice, liveWhyNot, wantedSliceStep } from '../state/lab'
+import { setAnalysisService } from '../analysis/service'
+import { activeSlice, liveWhyNot, SLICE_FAILED, wantedSliceStep } from '../state/lab'
 import { ManualScheduler } from '../state/scheduler'
 import { createStudioStore } from '../state/store'
 import { scriptedEngine } from '../state/testing'
 import { Editor } from './Editor'
+import { labMarks } from './lab-gutter'
 import { idleCodeLines, whyNotGuardLine, whyNotMoment } from './lab-lines'
+import { liveStudio } from './studio-field'
 
 beforeAll(() => {
   // jsdom has no layout; CodeMirror measures text through these.
@@ -21,7 +24,10 @@ beforeAll(() => {
   Range.prototype.getBoundingClientRect ??= rect as unknown as () => DOMRect
 })
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  setAnalysisService(null)
+})
 
 const SHIPPING =
   'var total = 50\ntotal = total + 25\nif total > 80 {\n  print("free shipping")\n}\n' +
@@ -61,6 +67,26 @@ function setup(source: string, time?: number) {
   return { store, container, editor, recording }
 }
 
+/**
+ * The lab gutter's marks as [line, kind]: the kinds drawn in the gutter (jsdom has no layout to
+ * tell lines apart by), each paired with its line from the overlay the gutter draws.
+ */
+const gutterMarks = (container: HTMLElement, editor: EditorView) => {
+  const drawn = [...container.querySelectorAll('.ed-gutter-lab .ed-lab-mark')]
+    .map((cell) => /ed-lab-(cause|effect|guard)/.exec(cell.className)?.[1])
+    .filter((kind) => kind !== undefined)
+  const overlay = liveStudio(editor.state)?.overlay
+  const lines = labMarks(
+    editor.state.doc.lines,
+    overlay?.keepLines ?? null,
+    overlay?.effectLine ?? null,
+    overlay?.guardLine ?? null,
+  )
+  const marks = [...lines].sort((a, b) => a[0] - b[0])
+  expect(drawn).toEqual(marks.map(([, kind]) => kind))
+  return marks
+}
+
 const dimmed = (container: HTMLElement) =>
   [...container.querySelectorAll('.cm-line')]
     .map((line, i) => (line.classList.contains('ed-line-dim') ? i + 1 : 0))
@@ -72,28 +98,43 @@ describe('lines that did not run', () => {
     expect([...idleCodeLines(recordSource('print(1)\n'))]).toEqual([])
   })
 
-  test('the heat gutter marks them, and asking explains with a way to the decision', () => {
-    const { store, container, recording } = setup(SHIPPING)
+  test('the heat gutter marks them, and asking explains under the line', async () => {
+    // Arrange
+    const { store, container, editor, recording } = setup(SHIPPING)
     expect(container.querySelectorAll('.ed-heat-idle')).toHaveLength(2)
+    // Act
     act(() => store.getState().askWhyNot(4))
+    // Assert: a block widget right after line 4, laid out from the structured fields.
     const note = screen.getByRole('group', { name: 'Why line 4 did not run' })
-    expect(note.textContent).toContain('`total > 80` was false (total was 75')
-    expect(document.activeElement).toBe(note)
-    // The guard's line is marked while the note is open.
+    expect(note.closest('.cm-content')).not.toBeNull()
+    expect(note.previousElementSibling?.textContent).toBe('  print("free shipping")')
+    const mark = liveWhyNot(store.getState().lab, recording)!
+    if (mark.why.kind !== 'guard') throw new Error('expected a guard')
+    const set = mark.why.operands[0]!.origin!
+    expect(note.textContent).toContain(
+      `if total > 80 was false at step ${mark.why.time} because total was 75, set at step ${set.time} (line 2).`,
+    )
+    await waitFor(() => expect(document.activeElement).toBe(note))
+    // The guard's line is marked, in the text and with a gutter badge.
     expect(container.querySelectorAll('.cm-line')[2]!.classList.contains('ed-line-guard')).toBe(
       true,
     )
-    const mark = liveWhyNot(store.getState().lab, recording)!
+    expect(gutterMarks(container, editor)).toEqual([[3, 'guard']])
     expect(whyNotGuardLine(mark.why)).toBe(3)
+    fireEvent.click(screen.getByRole('button', { name: 'Go to where it was set' }))
+    expect(store.getState().time).toBe(set.time + 1)
     fireEvent.click(screen.getByRole('button', { name: 'Go to the decision' }))
     expect(store.getState().time).toBe(whyNotMoment(mark.why))
     expect(recording.locationAt(store.getState().time)?.opName).toBe('JumpIfFalse')
-    fireEvent.keyDown(note, { key: 'Escape' })
+    fireEvent.keyDown(screen.getByRole('group', { name: 'Why line 4 did not run' }), {
+      key: 'Escape',
+    })
     expect(screen.queryByRole('group', { name: 'Why line 4 did not run' })).toBeNull()
     expect(container.querySelector('.ed-line-guard')).toBeNull()
+    expect(document.activeElement?.classList.contains('cm-content')).toBe(true)
   })
 
-  test('a function nobody called has no moment to go to; a line that ran says so', () => {
+  test('an uncalled function and a line that ran are explained in sentences', () => {
     const { store } = setup(SHIPPING)
     act(() => store.getState().askWhyNot(7))
     expect(screen.getByRole('group', { name: 'Why line 7 did not run' }).textContent).toContain(
@@ -106,6 +147,24 @@ describe('lines that did not run', () => {
     )
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
     expect(store.getState().lab.whyNot).toBeNull()
+  })
+
+  test('an uncalled function whose call site was skipped lays out that guard', () => {
+    const source =
+      'fn shout(s) {\n  print(s)\n}\nlet loud = false\nif loud {\n  shout("hi")\n}\nprint(1)\n'
+    const { store } = setup(source)
+    act(() => store.getState().askWhyNot(2))
+    const note = screen.getByRole('group', { name: 'Why line 2 did not run' })
+    expect(note.textContent).toContain('did not run.')
+    expect(note.textContent).toMatch(/if loud was false at step \d+ because loud was false/)
+  })
+
+  test('editing the program closes the explanation', () => {
+    const { store, editor } = setup(SHIPPING)
+    act(() => store.getState().askWhyNot(4))
+    expect(screen.getByRole('group', { name: 'Why line 4 did not run' })).toBeTruthy()
+    act(() => editor.dispatch({ changes: { from: 0, insert: '\n' } }))
+    expect(screen.queryByRole('group', { name: 'Why line 4 did not run' })).toBeNull()
   })
 
   test('Shift+F9 asks about the cursor line; nothing is asked of a stale recording', () => {
@@ -142,18 +201,54 @@ describe('lines that led here', () => {
     await waitFor(() => expect(dimmed(container)).toEqual([3, 5]))
   })
 
-  test('"What led here?" traces the pen\'s step until the pen moves', async () => {
+  test('"What led here?" marks causes and the effect and lists the chain until dismissed', async () => {
+    // Arrange
     const source = 'let a = 1\nlet b = 2\nlet c = a + 10\nprint(c)\n'
     const recording = recordSource(source)
     const at = recording.outputs[0]!.time
-    const { store, container } = setup(source, at)
+    const { store, container, editor } = setup(source, at)
     expect(wantedSliceStep(store.getState())).toBeNull()
+    // Act
     fireEvent.click(screen.getByRole('button', { name: 'What led here?' }))
+    // Assert: the others dimmed, a causal bar on each cause and the effect on line 4.
     await screen.findByText(`3 lines led to step ${at}; the rest are dimmed`)
     expect(dimmed(container)).toEqual([2, 5])
-    act(() => store.getState().seek(at - 1))
-    expect(dimmed(container)).toEqual([])
+    expect(gutterMarks(container, editor)).toEqual([
+      [1, 'cause'],
+      [3, 'cause'],
+      [4, 'effect'],
+    ])
+    const chain = screen.getByRole('list', { name: 'Causal chain, newest first' })
+    const links = [...chain.querySelectorAll('button')].map((link) => link.textContent)
+    expect(links[0]).toMatch(/^c = 11 · step \d+ · line 3$/)
+    expect(links[1]).toMatch(/^a = 1 · step \d+ · line 1$/)
+    // A link moves the pen; the slice stays while the pen explores its causes.
+    fireEvent.click(chain.querySelector('button')!)
+    expect(store.getState().time).toBeLessThan(at)
+    expect(dimmed(container)).toEqual([2, 5])
     expect(screen.getByRole('button', { name: 'What led here?' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Show all lines' }))
+    expect(dimmed(container)).toEqual([])
+    expect(gutterMarks(container, editor)).toEqual([])
+  })
+
+  test('a step traced from a console line is named after the line in the chip', async () => {
+    const source = 'let a = 1\nprint(a)\nprint(a + 1)\n'
+    const recording = recordSource(source)
+    const { store } = setup(source)
+    act(() => store.getState().sliceFrom(recording.outputs[1]!.time, 'output line 2'))
+    await screen.findByText('2 lines led to output line 2; the rest are dimmed')
+  })
+
+  test('a slice the analysis service cannot compute says so, and Close dismisses it', async () => {
+    setAnalysisService({ analyze: () => Promise.reject(new Error('no worker, no memory')) })
+    const source = 'let a = 1\nprint(a)\n'
+    const recording = recordSource(source)
+    const { store } = setup(source)
+    act(() => store.getState().sliceFrom(recording.outputs[0]!.time, 'output line 1'))
+    await screen.findByText(SLICE_FAILED)
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(store.getState().lab.sliceAt).toBeNull()
   })
 
   test('nothing is traced for a stale recording', () => {

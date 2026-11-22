@@ -25,6 +25,9 @@ export default defineConfig({
         'editors/vscode/src/*.test.ts',
         'src/studio/main.tsx',
         'src/core/testing/**',
+        // Worker entry points: they only wire the tested handler to a real worker.
+        'src/studio/analysis/analysis.worker.ts',
+        'src/studio/analysis/analysis-worker-factory*.ts',
       ],
       reporter: ['text-summary', 'text', 'html'],
       // Just under the levels reached; raise them as coverage grows, never lower them.

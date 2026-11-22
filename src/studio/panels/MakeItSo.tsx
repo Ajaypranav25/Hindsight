@@ -4,8 +4,8 @@ import {
   type InverseResult,
   type InverseSolution,
   type Recording,
-  solveInverseAsync,
 } from '../../core/index'
+import { analyze } from '../analysis/service'
 import { formatCount } from '../lib/format'
 import { useStudioActions } from '../state/context'
 import { useAsyncSearch } from '../state/use-search'
@@ -73,13 +73,15 @@ export function WishForm(props: {
 
 /**
  * The inverse what-if's answers (ARCHITECTURE §7.11, §11.3): sentences naming an earlier value
- * that reaches the goal, each with "Try it", which forks the run with that value.
+ * that reaches the goal, each with "Try it", which forks the run with that value (on the main
+ * thread). The search runs in the analysis service, in a worker where there is one.
  */
 export function WishResults(props: { readonly wish: Wish; readonly onClose: () => void }) {
   const { wish, onClose } = props
-  const search = useAsyncSearch<InverseResult>(wish, (signal) =>
-    solveInverseAsync(wish.recording, wish.goal, { signal }),
-  )
+  const search = useAsyncSearch<InverseResult>(wish, async (signal) => {
+    const answer = await analyze(wish.recording, { kind: 'solve', goal: wish.goal }, signal)
+    return answer.result
+  })
   const { seek, forkWhatIf } = useStudioActions()
   const tryIt = (solution: InverseSolution) => {
     const { candidate, value } = solution
@@ -91,13 +93,15 @@ export function WishResults(props: { readonly wish: Wish; readonly onClose: () =
       <header className="pn-wishes-head">
         <h3 className="pn-label">To get {wish.label}</h3>
         <button type="button" className="ch-button ch-button-small" onClick={onClose}>
-          {search.status === 'done' ? 'Close' : 'Stop'}
+          {search.status === 'done' || search.status === 'failed' ? 'Close' : 'Stop'}
         </button>
       </header>
       <div aria-live="polite">
-        {search.status === 'done' ? (
-          <Answers result={search.result} onTry={tryIt} />
-        ) : (
+        {search.status === 'done' && <Answers result={search.result} onTry={tryIt} />}
+        {search.status === 'failed' && (
+          <p className="pn-note">The search could not be run: {search.error}</p>
+        )}
+        {search.status !== 'done' && search.status !== 'failed' && (
           <p className="pn-note">Searching the past for a value that does it…</p>
         )}
       </div>

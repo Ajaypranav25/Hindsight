@@ -201,7 +201,7 @@ export interface StudioActions {
     text: string,
   ): Promise<void>
   /** Opens run `index` of the sweep as a what-if. */
-  openSweepRun(index: number): void
+  openSweepRun(index: number): Promise<void>
   /** Drops the sweep (stopping it if it is still running). */
   closeSweep(): void
   /** Explains in the editor why `line` did not run (ARCHITECTURE §7.10). */
@@ -209,8 +209,11 @@ export interface StudioActions {
   closeWhyNot(): void
   /** Stores the slice computed for the editor. */
   setSlice(slice: SliceMark | null): void
-  /** "What led here?": traces the causes of step `time` (null: stop). */
-  sliceFrom(time: number | null): void
+  /**
+   * "What led here?": traces the causes of step `time` (null: stop); `label` names the step in the
+   * chip ("output line 3"), else it is called by its number.
+   */
+  sliceFrom(time: number | null, label?: string | null): void
   /** Turns the dimming of lines that did not lead to a runtime error on or off. */
   setDimming(dimming: boolean): void
 }

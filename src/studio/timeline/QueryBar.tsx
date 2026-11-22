@@ -1,26 +1,34 @@
 /**
  * The query bar (ARCHITECTURE §7.9, §11.3): jump to moments by what was true then. Enter runs the
- * query against the run on display; its matches are marked on the strip chart, counted beside the
- * field, stepped through with Previous and Next, and listed on request.
+ * query against the run on display (through the analysis service, in a worker where there is
+ * one); its matches are marked on the strip chart, counted beside the field, stepped through with
+ * Previous and Next, and listed on request. Examples offers one query per form, written with the
+ * program's own names.
  */
-import { type FormEvent, useEffect, useId, useMemo, useState } from 'react'
+import { type FormEvent, useEffect, useId, useMemo, useRef, useState } from 'react'
 import {
   type ProvenanceEvent,
-  queryRecording,
   type QueryResult,
   queryTimes,
   type Recording,
   type TracedValue,
   writeName,
 } from '../../core/index'
+import { AnalysisCancelled } from '../analysis/local'
+import { analysisService } from '../analysis/service'
 import { formatCount } from '../lib/format'
 import { useStudio, useStudioActions } from '../state/context'
 import { liveQuery } from '../state/lab'
+import { QueryExamples } from './QueryExamples'
+import { queryExamples, type QueryExample, queryPlaceholder } from './query-examples'
 import './lab.css'
 
 const PLACEHOLDER = 'when x > 10 and depth > 2 · changed(o.f) · calls(f) where ret < 0'
 /** The most rows the list shows. */
 export const MAX_QUERY_ROWS = 200
+/** The most matches a query returns. */
+const QUERY_LIMIT = 2000
+export const QUERY_FAILED = 'The query could not be run.'
 
 export interface QueryRow {
   /** Where activating the row puts the pen. */
@@ -112,22 +120,41 @@ export function QueryBar() {
   const [problem, setProblem] = useState<{ recording: Recording; text: string } | null>(null)
   const [pending, setPending] = useState<{ recording: Recording; text: string } | null>(null)
   const [listed, setListed] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
   const errorId = useId()
   const listId = useId()
+  const examples = useMemo(
+    () => (recording === null ? [] : queryExamples(recording.program.source)),
+    [recording],
+  )
 
-  // The search runs after "Searching…" has been painted: a long run takes a moment to scan.
+  // The analysis service scans the run after "Searching…" has been painted (in a worker where
+  // there is one); a newer query or another run cancels it.
   useEffect(() => {
     if (pending === null) return
-    const timer = setTimeout(() => {
-      const outcome = queryRecording(pending.recording, pending.text, { limit: 2000 })
-      setPending(null)
-      if (outcome.ok) {
-        setQueryMarks({ recording: pending.recording, text: pending.text, result: outcome.result })
-      } else {
-        setProblem({ recording: pending.recording, text: outcome.error })
-      }
-    }, 0)
-    return () => clearTimeout(timer)
+    const controller = new AbortController()
+    const request = { kind: 'query', text: pending.text, limit: QUERY_LIMIT } as const
+    analysisService()
+      .analyze(pending.recording, request, controller.signal)
+      .then(
+        (answer) => {
+          if (answer.kind !== 'query') return
+          setPending(null)
+          const { outcome } = answer
+          if (outcome.ok) {
+            const { recording: asked, text: query } = pending
+            setQueryMarks({ recording: asked, text: query, result: outcome.result })
+          } else {
+            setProblem({ recording: pending.recording, text: outcome.error })
+          }
+        },
+        (error: unknown) => {
+          if (error instanceof AnalysisCancelled) return
+          setPending(null)
+          setProblem({ recording: pending.recording, text: QUERY_FAILED })
+        },
+      )
+    return () => controller.abort()
   }, [pending, setQueryMarks])
 
   const times = useMemo(() => (marks ? queryTimes(marks.result) : []), [marks])
@@ -146,12 +173,20 @@ export function QueryBar() {
     setListed(false)
     setQueryMarks(null)
   }
-  const submit = (event: FormEvent) => {
-    event.preventDefault()
+  const ask = (query: string) => {
     setProblem(null)
     setQueryMarks(null)
-    if (recording === null || text.trim() === '') return setPending(null)
-    setPending({ recording, text })
+    if (recording === null || query.trim() === '') return setPending(null)
+    setPending({ recording, text: query })
+  }
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    ask(text)
+  }
+  const tryExample = (example: QueryExample) => {
+    setText(example.text)
+    ask(example.text)
+    inputRef.current?.focus()
   }
 
   return (
@@ -159,9 +194,10 @@ export function QueryBar() {
       <label className="tl-query__field">
         <span className="tl-chart__label">Query</span>
         <input
+          ref={inputRef}
           className="tl-query__input"
           value={text}
-          placeholder={PLACEHOLDER}
+          placeholder={examples.length > 0 ? queryPlaceholder(examples) : PLACEHOLDER}
           spellCheck={false}
           autoComplete="off"
           disabled={recording === null}
@@ -175,6 +211,7 @@ export function QueryBar() {
           }}
         />
       </label>
+      <QueryExamples examples={examples} onTry={tryExample} />
       <span className="tl-query__summary" aria-live="polite">
         {searching ? 'Searching…' : marks ? querySummary(marks.result) : ''}
       </span>
@@ -182,7 +219,7 @@ export function QueryBar() {
         <span className="tl-query__nav">
           <button
             type="button"
-            className="ch-button-small"
+            className="ch-button ch-button-small"
             disabled={previous === null}
             onClick={() => previous !== null && seek(previous)}
           >
@@ -190,7 +227,7 @@ export function QueryBar() {
           </button>
           <button
             type="button"
-            className="ch-button-small"
+            className="ch-button ch-button-small"
             disabled={next === null}
             onClick={() => next !== null && seek(next)}
           >
@@ -198,7 +235,7 @@ export function QueryBar() {
           </button>
           <button
             type="button"
-            className="ch-button-small"
+            className="ch-button ch-button-small"
             aria-expanded={listed}
             aria-controls={listId}
             onClick={() => setListed(!listed)}
