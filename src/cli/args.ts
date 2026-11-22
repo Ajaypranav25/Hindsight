@@ -1,4 +1,11 @@
-import { DEFAULT_MAX_STEPS, DEFAULT_SEED, type EditValue } from '../core/api-types'
+import {
+  DEFAULT_MAX_STEPS,
+  DEFAULT_QUANTUM,
+  DEFAULT_SCHEDULE_SEED,
+  DEFAULT_SEED,
+  type EditValue,
+  type ScheduleOptions,
+} from '../core/api-types'
 import type { Strategy } from '../core/bug-finder'
 import { parseSweepValues } from '../core/sweep'
 
@@ -8,6 +15,8 @@ export type Command =
       readonly file: string
       readonly maxSteps: number
       readonly seed: number
+      /** `--schedule random`: how tasks interleave (undefined: round-robin). */
+      readonly schedule?: ScheduleOptions
     }
   | { readonly kind: 'check'; readonly file: string }
   | { readonly kind: 'disasm'; readonly file: string }
@@ -18,6 +27,7 @@ export type Command =
       readonly at: number | null
       readonly maxSteps: number
       readonly seed: number
+      readonly schedule?: ScheduleOptions
     }
   | {
       readonly kind: 'record'
@@ -26,6 +36,7 @@ export type Command =
       readonly out: string | null
       readonly maxSteps: number
       readonly seed: number
+      readonly schedule?: ScheduleOptions
     }
   | {
       readonly kind: 'why'
@@ -112,6 +123,15 @@ export type Command =
       readonly maxSteps: number
       readonly seed: number
     }
+  | {
+      readonly kind: 'races'
+      readonly file: string
+      readonly runs: number
+      /** The first schedule seed (run i uses seed + i). */
+      readonly seed: number
+      readonly quantum: number
+      readonly maxSteps: number
+    }
   | { readonly kind: 'mcp' }
 
 export type ParsedArgs =
@@ -121,6 +141,8 @@ export const USAGE = `hindsight: a tiny programming language with a time machine
 
 Usage:
   hindsight run FILE [--max-steps N] [--seed S]     run a program
+                 [--schedule random]               interleave tasks at random (default:
+                 [--schedule-seed S] [--quantum Q] round-robin); also for replay and record
   hindsight check FILE                             report compile errors only
   hindsight disasm FILE                            show the bytecode
   hindsight replay FILE --at T [--max-steps N]     show the program state at step T
@@ -149,6 +171,9 @@ Usage:
                                                    name the calls where the difference starts
   hindsight diff FILE --set NAME=VALUE             compare a run with one in which the top-level
                                                    binding NAME starts as the literal VALUE
+  hindsight races FILE [--runs N] [--seed S]       run a program with tasks under N random
+                 [--quantum Q] [--max-steps N]     schedules (seeds S, S+1, ...); name the shared
+                                                   places behind different results (exit 1)
   hindsight mcp                                    serve the debugger to AI agents (MCP over stdio)
   hindsight --help | --version
 
@@ -167,7 +192,13 @@ const VALUE_FLAGS = new Set([
   '--output',
   '--limit',
   '--out',
+  '--schedule',
+  '--schedule-seed',
+  '--quantum',
+  '--runs',
 ])
+/** The options that choose a task schedule (SPEC §10.6). */
+const SCHEDULE_FLAGS = ['--schedule', '--schedule-seed', '--quantum']
 /** Short spellings of options. */
 const ALIASES: ReadonlyMap<string, string> = new Map([['-o', '--out']])
 /** Options that take no value. */
@@ -176,11 +207,11 @@ const SWITCHES = new Set(['--no-crash', '--no-auto', '--no-ask'])
 /** What each command accepts: its options, and how many arguments may follow its name. */
 const COMMANDS: ReadonlyMap<string, { readonly flags: readonly string[]; readonly arity: number }> =
   new Map([
-    ['run', { flags: ['--max-steps', '--seed'], arity: 1 }],
+    ['run', { flags: ['--max-steps', '--seed', ...SCHEDULE_FLAGS], arity: 1 }],
     ['check', { flags: [], arity: 1 }],
     ['disasm', { flags: [], arity: 1 }],
-    ['replay', { flags: ['--at', '--max-steps', '--seed'], arity: 1 }],
-    ['record', { flags: ['--out', '--max-steps', '--seed'], arity: 1 }],
+    ['replay', { flags: ['--at', '--max-steps', '--seed', ...SCHEDULE_FLAGS], arity: 1 }],
+    ['record', { flags: ['--out', '--max-steps', '--seed', ...SCHEDULE_FLAGS], arity: 1 }],
     ['why', { flags: ['--line', '--name', '--max-steps', '--seed'], arity: 1 }],
     ['test', { flags: [], arity: 1 }],
     ['repl', { flags: ['--seed'], arity: 0 }],
@@ -195,6 +226,7 @@ const COMMANDS: ReadonlyMap<string, { readonly flags: readonly string[]; readonl
     ['slice', { flags: ['--at', '--max-steps', '--seed'], arity: 1 }],
     ['repair', { flags: ['--max-steps', '--seed'], arity: 1 }],
     ['diff', { flags: ['--set', '--limit', '--max-steps', '--seed'], arity: 2 }],
+    ['races', { flags: ['--runs', '--seed', '--quantum', '--max-steps'], arity: 1 }],
     ['mcp', { flags: [], arity: 0 }],
   ])
 
@@ -276,13 +308,17 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
   if (typeof maxSteps === 'string') return { ok: false, error: maxSteps }
   if (typeof seed === 'string') return { ok: false, error: seed }
 
+  const schedule = name === 'races' ? undefined : scheduleFlags(flags)
+  if (typeof schedule === 'string') return { ok: false, error: schedule }
+
   switch (name) {
     case 'run':
     case 'check':
     case 'disasm': {
       const file = needFile(positional, name)
       if (typeof file !== 'string') return { ok: false, error: file.error }
-      if (name === 'run') return { ok: true, command: { kind: 'run', file, maxSteps, seed } }
+      if (name === 'run')
+        return { ok: true, command: { kind: 'run', file, maxSteps, seed, schedule } }
       return { ok: true, command: { kind: name, file } }
     }
     case 'replay': {
@@ -293,14 +329,14 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
       const at = integerFlag(flags, '--at', 0, 0)
       if (typeof at === 'string') return { ok: false, error: at }
       const step = flags.has('--at') ? at : null
-      return { ok: true, command: { kind: 'replay', file, at: step, maxSteps, seed } }
+      return { ok: true, command: { kind: 'replay', file, at: step, maxSteps, seed, schedule } }
     }
     case 'record': {
       const file = needFile(positional, name)
       if (typeof file !== 'string') return { ok: false, error: file.error }
       const out = flags.get('--out') ?? null
       if (out === '') return { ok: false, error: "option '--out' needs a file name" }
-      return { ok: true, command: { kind: 'record', file, out, maxSteps, seed } }
+      return { ok: true, command: { kind: 'record', file, out, maxSteps, seed, schedule } }
     }
     case 'why': {
       const file = needFile(positional, name)
@@ -362,6 +398,8 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     }
     case 'diff':
       return diffCommand(positional, flags, maxSteps, seed)
+    case 'races':
+      return racesCommand(positional, flags, maxSteps)
     case 'mcp':
       return { ok: true, command: { kind: 'mcp' } }
     default:
@@ -383,12 +421,53 @@ function traceProblem(command: string, parts: Split): string | null {
   if (file === undefined || !isTraceFile(file)) return null
   if (!TRACE_COMMANDS.has(command))
     return `'${command}' takes a .sight program, not a trace file (trace files work with run, replay, why, whynot, slice and query)`
-  for (const flag of ['--max-steps', '--seed']) {
+  for (const flag of ['--max-steps', '--seed', ...SCHEDULE_FLAGS]) {
     if (parts.flags.has(flag))
-      return `a trace file brings its own step limit and seed: drop ${flag}`
+      return `a trace file brings its own step limit, seed and schedule: drop ${flag}`
   }
   return null
 }
+
+/** `--schedule random [--schedule-seed S] [--quantum Q]`; undefined for round-robin. */
+function scheduleFlags(flags: ReadonlyMap<string, string>): ScheduleOptions | undefined | string {
+  const policy = flags.get('--schedule') ?? 'round-robin'
+  if (policy !== 'round-robin' && policy !== 'random')
+    return "--schedule must be 'round-robin' or 'random'"
+  if (policy === 'round-robin') {
+    for (const flag of ['--schedule-seed', '--quantum']) {
+      if (flags.has(flag)) return `option '${flag}' needs --schedule random`
+    }
+    return undefined
+  }
+  const seed = integerFlag(flags, '--schedule-seed', DEFAULT_SCHEDULE_SEED, 0)
+  const quantum = integerFlag(flags, '--quantum', DEFAULT_QUANTUM, 1)
+  if (typeof seed === 'string') return seed
+  if (typeof quantum === 'string') return quantum
+  return { policy: 'random', quantum, seed }
+}
+
+/** `races FILE [--runs N] [--seed S] [--quantum Q]`: --seed is the first schedule seed. */
+function racesCommand(
+  positional: readonly string[],
+  flags: ReadonlyMap<string, string>,
+  maxSteps: number,
+): ParsedArgs {
+  const file = needFile(positional, 'races')
+  if (typeof file !== 'string') return { ok: false, error: file.error }
+  const runs = integerFlag(flags, '--runs', DEFAULT_RACE_RUNS, 2)
+  if (typeof runs === 'string') return { ok: false, error: runs }
+  if (runs > MAX_RACE_RUNS)
+    return { ok: false, error: `option '--runs' must be at most ${MAX_RACE_RUNS}` }
+  const seed = integerFlag(flags, '--seed', 1, 0)
+  if (typeof seed === 'string') return { ok: false, error: seed }
+  const quantum = integerFlag(flags, '--quantum', DEFAULT_QUANTUM, 1)
+  if (typeof quantum === 'string') return { ok: false, error: quantum }
+  return { ok: true, command: { kind: 'races', file, runs, seed, quantum, maxSteps } }
+}
+
+/** Schedules `races` tries by default, and at most. */
+const DEFAULT_RACE_RUNS = 20
+const MAX_RACE_RUNS = 500
 
 const NAME_AND_VALUE = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/s
 
