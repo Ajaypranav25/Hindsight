@@ -172,6 +172,30 @@ describe('verifyCandidate', () => {
     )
   })
 
+  test('crash: a rewrite that drops or weakens the failed postcondition is rejected', () => {
+    // Arrange
+    const recording = recorded(
+      'fn half(n)\n  ensures result * 2 == n\n{\n  n / 3\n}\nprint(half(4))\n',
+    )
+    const target = repairTarget(recording, { kind: 'crash' })
+    if (typeof target === 'string') throw new Error(target)
+    const context = { recording, target, goal: { kind: 'crash' as const }, examples: [], seed: 1 }
+
+    // Act
+    const dropped = verifyCandidate(context, 'fn half(n) { n / 3 }')
+    const weakened = verifyCandidate(context, 'fn half(n)\n  ensures result > 0\n{\n  n / 3\n}')
+    const fixed = verifyCandidate(context, 'fn half(n)\n  ensures result * 2 == n\n{\n  n / 2\n}')
+
+    // Assert
+    for (const check of [dropped, weakened]) {
+      expect(check.verified).toBe(false)
+      expect(!check.verified && check.reasons[0]).toMatch(
+        /^the postcondition that failed \(result \* 2 == n, line 2\) is gone/,
+      )
+    }
+    expect(fixed.verified).toBe(true)
+  })
+
   test('examples: right calls must keep their results and wrong ones must return the expected value', () => {
     // Arrange
     const { recording, goal } = averageGoal()
