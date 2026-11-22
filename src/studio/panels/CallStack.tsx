@@ -82,7 +82,7 @@ function FrameRow(props: {
         </span>
         {summary && <span className="pn-frame-locals">{summary}</span>}
       </button>
-      <ContractsFrameButton frame={frame} />
+      {selected && <ContractsFrameButton frame={frame} />}
     </li>
   )
 }

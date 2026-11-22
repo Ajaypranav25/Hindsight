@@ -68,7 +68,7 @@ function SuggestChip() {
   )
 }
 
-/** A small button on a call stack frame that opens the card for its function. */
+/** A small button on the selected call stack frame that opens the card for its function. */
 export function ContractsFrameButton(props: { readonly frame: FrameView }) {
   const recording = useStudio((s) => s.recording)
   const fresh = useFreshRun()
