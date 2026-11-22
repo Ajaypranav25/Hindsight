@@ -33,13 +33,13 @@ import {
   MUTANTS,
   parseExpectations,
   REPAIRS,
+  repairBudget,
   repairsJson,
 } from './mcp-repair'
 import {
   type Args,
   callJson,
   choiceArg,
-  integerArg,
   type Json,
   type JsonObject,
   MAX_STEPS,
@@ -297,10 +297,7 @@ function verdictJson(
   const repairs = searchRepairs(
     tree.recording,
     { kind: 'examples', protoId: found.call.protoId, examples: repairExamples(tree, state) },
-    {
-      maxMutants: integerArg(args, 'max_mutants', 150, 1, 400),
-      maxRepairs: integerArg(args, 'max_repairs', 5, 1, 10),
-    },
+    repairBudget(args, tree.recording),
   )
   return {
     ...base,

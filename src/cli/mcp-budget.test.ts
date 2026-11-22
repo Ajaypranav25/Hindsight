@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'vitest'
+import type { Recording } from '../core/index'
 import { McpServer } from './mcp'
 import { guardResponse, MAX_RESPONSE_CHARS } from './mcp-guard'
+import { REPAIR_STEP_BUDGET, repairBudget } from './mcp-repair'
 import type { Json } from './mcp-shared'
 import { jsonLiteral } from './mcp-shared'
 
@@ -215,5 +217,53 @@ describe('run_trace output pages and the response size guard', () => {
       ),
     ).toThrow('too large')
     expect(() => jsonLiteral(undefined, 'v')).toThrow('JSON value')
+  })
+})
+
+describe('repair budgets', () => {
+  test('every repair search caps its mutants so they run 40,000,000 steps at most', () => {
+    // Arrange
+    const short = { length: 1_000 } as Recording
+    const long = { length: 2_000_000 } as Recording
+    const huge = { length: 10_000_000 } as Recording
+
+    // Act
+    const budgets = [
+      repairBudget({}, short),
+      repairBudget({ max_mutants: 400 }, short),
+      repairBudget({ max_mutants: 400 }, long),
+      repairBudget({}, huge, { mutants: 120, repairs: 3 }),
+    ]
+
+    // Assert
+    expect(budgets).toEqual([
+      { maxMutants: 150, maxRepairs: 5 },
+      { maxMutants: 400, maxRepairs: 5 },
+      { maxMutants: 10, maxRepairs: 5 },
+      { maxMutants: 10, maxRepairs: 3 },
+    ])
+    expect(REPAIR_STEP_BUDGET).toBe(40_000_000)
+  })
+
+  test('suggest_repairs takes the budget: a long run checks fewer mutants', () => {
+    // Arrange: about 800,000 steps, so a mutant may run 3,200,000 and 12 fit the budget.
+    const server = new McpServer('0')
+    const source = [
+      'var t = 0',
+      'while t < 200000 { t += 1 }',
+      'fn last(xs) {',
+      '  let a = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10',
+      '  let b = 1 - 2 - 3 - 4 - 5 - 6 - 7 - 8 - 9 - 10',
+      '  xs[len(xs) + 2 + a * 0 + b * 0]',
+      '}',
+      'print(last([1, 2]))',
+    ].join('\n')
+
+    // Act
+    const { body } = call(server, 'suggest_repairs', { source, mode: 'crash', max_mutants: 400 })
+
+    // Assert
+    expect(body.mutants_checked).toBeGreaterThan(0)
+    expect(body.mutants_checked).toBeLessThanOrEqual(12)
   })
 })

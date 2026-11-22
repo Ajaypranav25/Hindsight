@@ -1167,8 +1167,9 @@ before the agent is asked when the agent's expectations decide it (`oracle`,
 are listed in `answered_from_contracts` with their reasons.
 
 **Budgets.** Searches are bounded by counts, never by the clock, so results are deterministic:
-`diagnose_failure` checks at most `max_mutants` (default 120) mutants, fewer on long runs so that
-all mutants together run at most 40,000,000 steps. Every list that can be long says when it was
+every repair search (`diagnose_failure`, `suggest_repairs`, `find_bug`; `repairBudget` in
+`mcp-repair.ts`) checks at most `max_mutants` mutants (default 120 for `diagnose_failure`, 150
+for the others), fewer on long runs so that all mutants together run at most 40,000,000 steps. Every list that can be long says when it was
 cut and how to fetch more. Finally, the **size guard** shortens any result whose JSON exceeds
 50,000 characters instead of failing: long lists keep their first items, long texts their
 beginning, and maps with more than 32 keys their first keys, halving the allowance until the result

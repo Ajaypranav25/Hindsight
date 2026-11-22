@@ -24,7 +24,7 @@ import {
 } from '../core/index'
 import { deepText } from '../core/call-values'
 import { searchRepairs } from './lab'
-import { MUTANTS, REPAIRS, repairsJson } from './mcp-repair'
+import { MUTANTS, REPAIRS, repairBudget, repairsJson } from './mcp-repair'
 import {
   type Args,
   integerArg,
@@ -53,10 +53,7 @@ const MAX_HOT_LINES = 5
 const CHAIN_TEXT = 120
 const RANGE = { offset: 0, limit: 1 } as const
 const VALUE_LIMITS = { depth: 1, items: 10 } as const
-/** Steps all repair mutants may run together; caps the mutant count on long runs. */
-const REPAIR_STEP_BUDGET = 40_000_000
-const DEFAULT_MUTANTS = 120
-const DEFAULT_REPAIRS = 3
+const REPAIR_DEFAULTS = { mutants: 120, repairs: 3 } as const
 
 export function diagnoseTool(context: ToolContext): Tool {
   return {
@@ -130,7 +127,11 @@ function crash(trace: Trace, args: Args): Json {
   const at = index.lineCol(error.span.start)
   const state = recording.stateAt(recording.length)
   const slice = errorSlice(recording)
-  const repairs = searchRepairs(recording, { kind: 'crash' }, repairBudget(args, recording))
+  const repairs = searchRepairs(
+    recording,
+    { kind: 'crash' },
+    repairBudget(args, recording, REPAIR_DEFAULTS),
+  )
   return {
     trace_id: trace.id,
     status: 'crashed',
@@ -166,15 +167,6 @@ function crash(trace: Trace, args: Args): Json {
       'verify_patch checks a fix you write yourself (the whole patched program) against this run.',
       'seek_state at an earlier step of the causal chain shows the state before it went wrong.',
     ],
-  }
-}
-
-function repairBudget(args: Args, recording: Recording) {
-  const perMutant = Math.max(recording.length * 4, recording.length + 50_000)
-  const affordable = Math.max(10, Math.floor(REPAIR_STEP_BUDGET / perMutant))
-  return {
-    maxMutants: Math.min(integerArg(args, 'max_mutants', DEFAULT_MUTANTS, 1, 400), affordable),
-    maxRepairs: integerArg(args, 'max_repairs', DEFAULT_REPAIRS, 1, 10),
   }
 }
 
