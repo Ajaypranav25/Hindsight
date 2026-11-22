@@ -1112,6 +1112,7 @@ parseSweepValues, sweep, sweepAsync, heapEdges, diffHeaps // §7.13
 diffRuns(a, b, { maxNodes?, maxCompared?, limit? }): RunDiff // §7.14
 withInput(source, name, literal): InputResult             // §7.14
 exploreSchedules(program, ExploreOptions): ScheduleExploration, raceCandidates // §7.16
+taskWaitText(wait, name?), normalSchedule(schedule)      // SPEC §10.6: wait sentences, canonical schedules
 timeAfter(call): number                                   // §7.6: the time after a call, per task
 sliceProblem(recording): string | null                    // §7.8: why a slice is missing
 encodeTraceFile, encodeTraceFileSync, decodeTraceFile,    // §7.15 trace files
@@ -1123,8 +1124,8 @@ show, repr, LineIndex, and all types from api-types.ts / diagnostics.ts / span.t
 
 `Recording.fork` and `forkAsync` (§7.5) are methods of every recording. `RunOptions` and
 `RecordOptions` take `schedule: { policy: 'round-robin' | 'random', quantum?, seed? }` (SPEC
-§10.6); recordings answer `taskSeries()` and `taskAt(t)` (§7.1), and `NavOptions.allTasks` lets
-steps cross tasks (§7.2).
+§10.6); recordings answer `taskSeries()`, `taskAt(t)` and `taskSwitches()` (§7.1), state views
+list `tasks` (§7.4), and `NavOptions.allTasks` lets steps cross tasks (§7.2).
 
 `compile` runs the stages of SPEC §11.2 and returns only the first failing stage's diagnostics
 (sorted, de-duplicated). It never throws for user input. `run` and `record` agree on outcomes.
@@ -1286,18 +1287,26 @@ the fast run's.
 
 **Lines.** A diagnostic's or runtime error's line is the line of its span start (SPEC §10.4, §11.1).
 
+**Tasks.** `tests/lang/tasks/` runs under the default round-robin schedule, which is deterministic,
+so expected output is annotated like any other program's and deadlocks as runtime errors (R028).
+
 ### 10.3 Time-travel properties (`tests/timetravel.test.ts`, fast-check)
 
 For corpus and generated programs: `stateAt(t)` equals the state reached by a fresh VM run to `t`;
 seeking in random orders gives identical views; forward navigation results are `> t` (or `N`) and
 backward `< t` (or 0); step over skips sibling calls; `origin` never returns an event at or after
-`before`; `restore(snapshot())` then `k` steps equals `k` steps on the original.
+`before`; `restore(snapshot())` then `k` steps equals `k` steps on the original. The brute-force
+navigator the steps are compared against follows the running task (§7.2), and
+`src/core/tasks-recording.test.ts` checks that random-order seeks in multi-task recordings under a
+random schedule equal a fresh run to `t` under the same schedule.
 
 ### 10.4 End-to-end (`e2e/`)
 
 Playwright against the dev server with the local Chrome (`channel: 'chrome'`): load, run an example,
 step forwards and backwards, scrub the timeline, click output to jump, jump to a variable's origin,
-toggle breakpoints, compile errors, sharing links.
+toggle breakpoints, compile errors, sharing links; for programs with tasks
+(`studio-tasks.spec.ts`), the swim lanes (lane colors read off the canvas), the deadlock message
+and task list, and the schedule picker recording again under seeds 1 and 2.
 
 ## 11. Studio (`src/studio`)
 
@@ -1354,7 +1363,11 @@ tabbed panels); the page may scroll vertically, never horizontally.
   next run"); inline value hints for the selected frame's live locals at the end of their
   declaration lines; hovering an identifier shows its value at the current time.
 - **Call stack**: innermost frame first; library frames dimmed (collapsed with just-my-code);
-  clicking a frame selects it (variables and editor follow).
+  clicking a frame selects it (variables and editor follow). For a program with tasks (SPEC §10.6)
+  the frames are the running task's, and a **Tasks** list follows (`TaskList.tsx`): every task's
+  number, name and status (running, ready, what it waits for, or done with its result) and, for
+  the others, their frames with lines; it stays at the end of a finished run, naming the tasks the
+  main task left unfinished.
 - **Variables**: locals of the selected frame, its captured variables, and globals. Values render as
   expandable trees (lists, records, functions; long lists page through `objectAt`). Values that
   changed since the previous step flash. Every row has **⟲ origin** (move the pen to
@@ -1367,7 +1380,8 @@ tabbed panels); the page may scroll vertically, never horizontally.
 - **Console**: one line per output event with its step number. Lines printed after the pen are
   ghosted; the line printed at the pen is marked. Clicking a line moves the pen to the moment it was
   printed. At the end of a failed run the error appears here with its hint and a link to the failing
-  moment. Hovering or focusing a line shows its tools, "What led to this?" and "Make this print…",
+  moment; a deadlock (R028) lists what every task waits for, one item per task, and a finished run
+  that left tasks unfinished says which and what they wait for. Hovering or focusing a line shows its tools, "What led to this?" and "Make this print…",
   over the line's right end; on phones and touch screens they sit under the line at the pen (a tap
   moves the pen there) or under a focused line.
 - **Console line menu**: a right-click, the ContextMenu key or Shift+F10 on a console line opens a
@@ -1384,6 +1398,16 @@ tabbed panels); the page may scroll vertically, never horizontally.
   step, line and function. Markers: output events (ticks on the top margin), breakpoint hits, watched
   writes, the error flag at the end. Rendering uses a per-pixel min/max envelope (precomputed
   mipmaps) so 2,000,000 steps draw in a few milliseconds.
+- **Swim lanes** (`lib/lanes.ts`, `timeline/chart-lanes.ts`): for a run with tasks the plot splits
+  into one band per task (at most 8; further tasks share the last, `+N more`), each labelled
+  `2 worker`, with the depth of that task's own steps in its own lane color (`--lane-1`…`--lane-6`,
+  light and dark) and its waiting stretches hatched (`--lane-wait`): from the switch at which the
+  task blocked to the switch back to it (`Recording.taskSwitches()`), so a stretch includes the
+  time after it was woken and before it ran again. Each lane has a min/max mipmap that starts at
+  blocks of 8 steps (finer levels are read from the depth and task series), about N/4 small
+  integers per lane: 1.4 million steps over four tasks build in about 45 ms and draw in about 6
+  ms. The pen's dot and watch marks sit in their task's lane, the readout says "Depth by task" and
+  the tooltip names the task. Channel hand-offs are not drawn as connectors.
 - **What if** (§7.5): every primitive value of a local, global, captured variable, list element or
   record field has a "What if" button (double-clicking the value works too) that edits it inline as
   a literal at the pen's step. Enter forks the run (`forkAsync`) and shows the new timeline. A
@@ -1465,7 +1489,11 @@ tabbed panels); the page may scroll vertically, never horizontally.
 - **Status**: recording progress; "Finished · 56,789 steps · 12 lines"; "Runtime error on line 7 · …"
   (click to jump); "Step limit reached · Record 2M more" (calls `extendAsync`).
 - **Settings**: step budget (500 k / 2 M / 10 M), just-my-code, auto-run, instruction-level
-  stepping (adds a step-instruction button, shows `opName` and operand temps), theme.
+  stepping (adds a step-instruction button, shows `opName` and operand temps), theme, and the
+  **task schedule** (`ScheduleSetting.tsx`): round-robin, or random with a seed, a quantum and
+  "Next seed". With auto-run on, changing it records the program again at once, so another
+  interleaving is one click away; settings stored before the schedule existed keep their other
+  fields (`storedSettings`).
 - **Sharing**: "Copy link" puts the program in the URL fragment (`#src=` + base64url of the UTF-8
   source, uncompressed; programs over 60,000 characters are not linked) with the pen's step
   (`&t=`), making a moment link: opening it records the program and puts the pen at that step, so a
@@ -1563,9 +1591,10 @@ also checks the answer's kind) with a request, an `AbortSignal` and, for sweeps,
 callback.
 
 - **Runs as data**: a `Recording` cannot cross a thread boundary, so a request carries a
-  `RunDescription` instead: `{source, seed, maxSteps, edits, length, outcome}`, where `edits` is
-  the what-if chain the recording was forked with (`Recording.whatIf.edits`). The worker compiles
-  and records the program again (`record` with the same seed and step limit) and repeats each fork
+  `RunDescription` instead: `{source, seed, schedule?, maxSteps, edits, length, outcome}`, where
+  `edits` is the what-if chain the recording was forked with (`Recording.whatIf.edits`) and
+  `schedule` the task schedule it ran under (absent for round-robin). The worker compiles and
+  records the program again (`record` with the same seed, schedule and step limit) and repeats each fork
   request in time order; recording is deterministic, so this is the same run step for step, which
   it checks against `length` and `outcome`. A run the user stopped (`aborted`) cannot be described
   and runs on the main thread. The worker keeps the last run it recorded, so several analyses of

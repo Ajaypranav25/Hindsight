@@ -80,6 +80,32 @@ A broken `requires` is `R026 precondition failed: len(xs) > 0` with the argument
 broken `ensures` is `R027 postcondition failed: …` with the returned value. `requires`, `ensures`
 and `result` stay ordinary names everywhere else.
 
+Tasks and channels make concurrency something you can rewind. `spawn` starts a task, channels pass
+values between tasks (unbuffered ones are a rendezvous), `wait` joins a task and `yield` lets
+another run:
+
+```
+let jobs = channel(2)
+fn worker() {
+  var job = recv(jobs)
+  while job != nil {           // recv returns nil once the channel is closed and empty
+    print(job * job)
+    job = recv(jobs)
+  }
+}
+let w = spawn(worker)
+for i in 1..=3 { send(jobs, i) }
+close(jobs)
+wait(w)
+```
+
+Tasks are cooperative and deterministic: one instruction at a time on one machine, switching only
+when a task blocks, yields or ends. The default round-robin schedule is fully predictable; a
+**random** schedule (a seed and a quantum, chosen by the tool, never by `random()`) also preempts,
+so races show up, and the same seed always gives the same interleaving. When every task is
+waiting, the run stops with `R028 deadlock: every task is waiting` and a hint that says what each
+task waits for. See [SPEC §10.6](docs/SPEC.md).
+
 ## The studio
 
 |                                 |                                                                                                                                                                                                                                                                                                                                                                                                             |
@@ -103,6 +129,8 @@ and `result` stay ordinary names everywhere else.
 | **Console line menu**           | Right-click a console line (or press Shift+F10 or the ContextMenu key on it) for Make this print…, What led to this?, Go to this moment and Copy line.                                                                                                                                                                                                                                                      |
 | **Sweeps**                      | Type `1..20` instead of one value in a what-if: the run forks once per value, every run is drawn as a ghost trace on the strip chart and listed with its steps, depth, outcome and output change; a row opens that run.                                                                                                                                                                                     |
 | **Heap ghost edges**            | During a what-if the heap graph draws the references only the what-if has solid and the ones only the real run has dashed.                                                                                                                                                                                                                                                                                  |
+| **Swim lanes**                  | A program with tasks gets one lane per task on the strip chart, each in its own color with its call depth, and hatched stretches where the task was waiting on a channel or another task. The call stack lists every task with what it is doing or waiting for.                                                                                                                                             |
+| **Schedules and deadlocks**     | Settings > Task schedule switches between round-robin and a random schedule with a seed; Next seed records the program again under another interleaving, so a lost update can be caught in the act and rewound. A deadlock is explained in the console: one line per task, saying what it waits for and where.                                                                                              |
 | **Off the main thread**         | Slices, queries, the Make-it-so search, repair previews and sweeps run in a Web Worker, which records the same run again from its description (program, seed, step limit, what-if edits) and sends back plain results; without workers they run on the page in small slices.                                                                                                                                |
 
 ![The heap graph after reversing a linked list, in the light theme](docs/images/heap.png)
@@ -146,6 +174,8 @@ npm run sight -- slice FILE                   # which lines led to the crash (or
 npm run sight -- repair FILE                  # one-token fixes for a crash
 npm run sight -- diff OLD NEW                 # where do two versions start to behave differently?
 npm run sight -- diff FILE --set n=10         # the same program with another input
+npm run sight -- races examples/21-bank-race.sight   # try 20 random schedules, name the race
+npm run sight -- run FILE --schedule random --schedule-seed 3   # one interleaving, reproducibly
 npm run sight -- mcp                          # the debugger as an MCP server for AI agents
 ```
 
@@ -243,6 +273,24 @@ the change starts in:
   ✓ average (lines 6–8): given the same inputs, it behaves differently while the calls it makes behave the same
 ```
 
+`races` records a program with tasks under many random schedules (`--runs`, `--seed`, `--quantum`),
+lists the different results, and explains the first two: where the schedules diverge, the shared
+places more than one task wrote before the output differed (the race candidates), and the calls
+where the difference starts. It exits 1 when the results differ.
+
+```
+20 schedules (random, quantum 10): 19 different results
+   2 runs  printed "alice 90, bob 110, total 200"  seeds 1, 9
+   1 run   printed "alice 150, bob 90, total 240"  seed 2
+   …
+race candidates (written by more than one task before that):
+  accounts.bob  task 2 (teller) 5×, task 3 (teller) 5× · lines 10, 11
+  accounts.alice  task 2 (teller) 5×, task 3 (teller) 5× · lines 10, 11
+```
+
+`run`, `replay` and `record` take `--schedule random [--schedule-seed S] [--quantum Q]`; trace files
+keep the schedule.
+
 ### Trace files
 
 A moment link stops working once a program passes 60,000 characters. A `.sighttrace` file holds the
@@ -275,17 +323,18 @@ With a global install (`npm i -g hindsight-lang`), `"command": "hindsight", "arg
 same. From a checkout without a linked build, use `"command": "npx", "args": ["tsx", "src/cli/main.ts",
 "mcp"]` with the repository as the working directory.
 
-| tool                                      | for                                                                                                                                                          |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `run_trace`                               | record a program: a trace id, the outcome, the output (in pages)                                                                                             |
-| `diagnose_failure`                        | a crash or a wrong output line in one call: error, stack, the values the failing statement reads, the slice, the causal chain and verified one-token repairs |
-| `find_bug`                                | a stateless interview about calls that ends at the function whose own code is wrong, with repair previews; expected results answer questions by themselves   |
-| `suggest_repairs`                         | one-token patches checked against a crash or against expectations like `{"call": "average([92, 88, 95])", "expected": "91.66666666666667"}`                  |
-| `diff_runs`                               | two versions (or two inputs) compared call by call: where the difference starts, and which expectations a fix meets                                          |
-| `seek_state`, `query_provenance`, `query` | the state at a step (with depth, item and frame budgets), where a value came from, moments by condition (in pages, or summarized)                            |
-| `fork_whatif`, `get_divergence`, `solve`  | counterfactuals forwards and backwards                                                                                                                       |
-| `why_not`, `slice`                        | why a line never ran; which lines can have caused a moment                                                                                                   |
-| `export_trace`, `open_trace`              | a recorded run as a small `.sighttrace` file (base64) to attach to an issue, and back                                                                        |
+| tool                                      | for                                                                                                                                                              |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `run_trace`                               | record a program: a trace id, the outcome, the output (in pages)                                                                                                 |
+| `diagnose_failure`                        | a crash or a wrong output line in one call: error, stack, the values the failing statement reads, the slice, the causal chain and verified one-token repairs     |
+| `find_bug`                                | a stateless interview about calls that ends at the function whose own code is wrong, with repair previews; expected results answer questions by themselves       |
+| `suggest_repairs`                         | one-token patches checked against a crash or against expectations like `{"call": "average([92, 88, 95])", "expected": "91.66666666666667"}`                      |
+| `diff_runs`                               | two versions (or two inputs) compared call by call: where the difference starts, and which expectations a fix meets                                              |
+| `seek_state`, `query_provenance`, `query` | the state at a step (with depth, item and frame budgets), where a value came from, moments by condition (in pages, or summarized)                                |
+| `fork_whatif`, `get_divergence`, `solve`  | counterfactuals forwards and backwards                                                                                                                           |
+| `why_not`, `slice`                        | why a line never ran; which lines can have caused a moment                                                                                                       |
+| `explore_schedules`                       | the race finder for programs with tasks: distinct results under random schedules, each kept as a trace, with the race candidates; `run_trace` takes a `schedule` |
+| `export_trace`, `open_trace`              | a recorded run as a small `.sighttrace` file (base64) to attach to an issue, and back                                                                            |
 
 Results are sized for a context window: long lists come in pages that say how to fetch the next,
 `query` can summarize a loop into one row (`total: line 3 ×1,000, steps 21–9,013, values 1–500500`),
