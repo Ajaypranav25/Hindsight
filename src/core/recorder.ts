@@ -41,6 +41,7 @@ import { runSliced } from './recorder-async'
 import { LruCache, Seeker } from './recorder-seek'
 import { type RecordingCore, RecordingSession, SnapshotSchedule } from './recorder-session'
 import type { RuntimeDeps, VM } from './runtime-types'
+import { normalSchedule } from './tasks-info'
 import { AllocTimes, EventColumns, StepColumns } from './trace-columns'
 import { TraceSink } from './trace-sink'
 
@@ -96,7 +97,7 @@ export function startSession(
   const events = new EventColumns()
   const allocs = new AllocTimes()
   const sink = new TraceSink(events, allocs, [], 0)
-  const taskSchedule = options.schedule
+  const taskSchedule = normalSchedule(options.schedule)
   const vm = newVM(program, runtime, seed, taskSchedule)
   vm.hooks = sink
   return new RecordingSession({

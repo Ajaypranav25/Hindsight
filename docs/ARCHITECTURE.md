@@ -739,10 +739,16 @@ user input.
 3. **Seek barrier.** The edited state is snapshotted at `time` and pinned, so thinning keeps it.
    Every seek at or after `time` starts from it, and a VM positioned before `time` never runs on
    across it (that would replay the parent's unedited future).
-4. **New future.** Recording continues from `time` with the parent's seed and step limit (or
-   `options.maxSteps`). `recording.whatIf` holds the parent's length, the fork step, the edit, and
+4. **New future.** Recording continues from `time` with the parent's seed, schedule (§6.11) and
+   step limit (or `options.maxSteps`). `recording.whatIf` holds the parent's length, the fork step, the edit, and
    every edit in the timeline: a fork of a fork keeps its parent's edits at or before its own step
    (later ones belonged to the future it replaced).
+
+With tasks, an edit may target a local of any task's live frames (not only the running one's),
+and an open cell's edit goes to the slot of its own task's stack (`fork-edit.ts`); stacks are
+snapshot roots, so the edited state's snapshot holds it. The new future keeps the parent's schedule:
+under the random policy the scheduler's generator and next preemption come from the restored state,
+so the edit can change only what the program itself does after it.
 
 `compareRecordings(a, b)` compares two runs of one program: the first step where they behave
 differently (location, events or output; the what-if edit events themselves are skipped) and a
@@ -976,8 +982,10 @@ writes an uncompressed payload otherwise; `encodeTraceFileSync(bundle, gzip?)` a
 `decodeTraceFileSync(bytes, gunzip?)` take a codec instead (the CLI passes `node:zlib`).
 
 **Bundle** (`TraceBundle`): `format: 'hindsight-trace'`, `version: 1`, `hindsightVersion`, `title`
-(an example title or file name, or null), `source`, `seed`, `maxSteps` (the real run's step
-limit), `edits` (the what-if chain, oldest first, as `TimedEdit` fork requests, each on the run the
+(an example title or file name, or null), `source`, `seed`, `schedule` (optional: present only
+for the random policy, as `{policy: 'random', quantum, seed}`; absent means round-robin, which is
+what every file written before tasks existed means, so the format stays version 1), `maxSteps`
+(the real run's step limit), `edits` (the what-if chain, oldest first, as `TimedEdit` fork requests, each on the run the
 previous one made), `forkMaxSteps`, `time` (the pen, in `0..length` of the final run), `outcome`
 (a summary: `finished`, `step-limit`, `aborted`, or `error` with code, message and 1-based line),
 `length`, `output` (the final run's lines), `fingerprint` and `checkpoints`.
@@ -990,7 +998,7 @@ the outcome, written as
 differing checkpoint window, narrowed to one step when the stride is 1.
 
 **Opening.** `replayTrace(deps, bundle)` (and `replayTraceAsync`, in slices, abortable) compiles
-the source, records it with the saved seed and step limit, re-applies the edits with `fork` (under
+the source, records it with the saved seed, schedule and step limit, re-applies the edits with `fork` (under
 `forkMaxSteps`) and verifies the final run: `{verified: true}`, or `{verified: false, message,
 firstDifference}` when another Hindsight version replays differently or an edit can no longer be
 applied. It takes `compile`/`record` as dependencies (as `repairSearch` does) so the studio passes

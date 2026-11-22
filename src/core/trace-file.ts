@@ -170,6 +170,8 @@ function bundleJson(bundle: TraceBundle): unknown {
     title: bundle.title,
     source: bundle.source,
     seed: bundle.seed,
+    // Written only for the random policy, so round-robin files read as before tasks existed.
+    ...(bundle.schedule === undefined ? {} : { schedule: bundle.schedule }),
     maxSteps: bundle.maxSteps,
     edits: bundle.edits.map((timed) => ({
       time: timed.time,

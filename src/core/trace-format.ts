@@ -1,7 +1,7 @@
 /**
  * The `.sighttrace` format (ARCHITECTURE §7.15): the bundle a trace file holds and its limits.
  */
-import type { TimedEdit } from './api-types'
+import type { ScheduleOptions, TimedEdit } from './api-types'
 import type { TraceCheckpoints } from './trace-hash'
 
 export const TRACE_FORMAT = 'hindsight-trace'
@@ -41,6 +41,11 @@ export interface TraceBundle {
   readonly title: string | null
   readonly source: string
   readonly seed: number
+  /**
+   * How tasks interleaved: absent for round-robin, which files written before tasks existed mean
+   * too (format version 1 either way); else the random policy with its quantum and seed.
+   */
+  readonly schedule?: ScheduleOptions
   /** The real run's step limit. */
   readonly maxSteps: number
   /** The what-if chain, oldest first: each is a fork request on the run the previous one made. */

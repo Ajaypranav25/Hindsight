@@ -14,10 +14,12 @@ import {
   type Outcome,
   type RecordOptions,
   type Recording,
+  type ScheduleOptions,
 } from './api-types'
 import type { Program } from './bytecode'
 import { replayAccess } from './recorder'
 import { LineIndex } from './span'
+import { normalSchedule } from './tasks-info'
 import {
   MAX_TRACE_SOURCE_LENGTH,
   MAX_TRACE_STEPS,
@@ -79,6 +81,7 @@ export function traceBundle(input: TraceBundleInput): TraceBundleResult {
     title: input.title ?? null,
     source,
     seed: replayAccess(recording)?.core.seed ?? DEFAULT_SEED,
+    ...scheduleField(normalSchedule(replayAccess(recording)?.core.taskSchedule)),
     maxSteps,
     edits: recording.whatIf?.edits ?? [],
     forkMaxSteps,
@@ -176,6 +179,11 @@ function replayed(
   }
 }
 
+/** `{schedule}` when there is one: a round-robin bundle carries no field. */
+function scheduleField(schedule: ScheduleOptions | undefined): { schedule?: ScheduleOptions } {
+  return schedule === undefined ? {} : { schedule }
+}
+
 function forkOptions(bundle: TraceBundle): { maxSteps?: number } {
   return bundle.forkMaxSteps === null ? {} : { maxSteps: bundle.forkMaxSteps }
 }
@@ -184,7 +192,11 @@ function forkOptions(bundle: TraceBundle): { maxSteps?: number } {
 export function replayTrace(deps: TraceDeps, bundle: TraceBundle): TraceReplay {
   const compiled = deps.compile(bundle.source)
   if (!compiled.ok) return compileFailure(compiled)
-  const base = deps.record(compiled.program, { maxSteps: bundle.maxSteps, seed: bundle.seed })
+  const base = deps.record(compiled.program, {
+    maxSteps: bundle.maxSteps,
+    seed: bundle.seed,
+    schedule: bundle.schedule,
+  })
   let recording = base
   for (const [index, timed] of bundle.edits.entries()) {
     const result = recording.fork(timed.time, timed.edit, forkOptions(bundle))
@@ -215,6 +227,7 @@ export async function replayTraceAsync(
   const base = await deps.recordAsync(compiled.program, {
     maxSteps: bundle.maxSteps,
     seed: bundle.seed,
+    schedule: bundle.schedule,
     ...slicing,
   })
   if (signal?.aborted) return ABORTED

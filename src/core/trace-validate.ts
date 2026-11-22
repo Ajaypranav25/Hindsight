@@ -3,7 +3,8 @@
  * field of the parsed JSON is checked and copied into a fresh object, reading only own properties,
  * so nothing from the file is spread or merged and keys such as `__proto__` stay inert.
  */
-import type { EditValue, TimedEdit, WriteTarget } from './api-types'
+import type { EditValue, ScheduleOptions, TimedEdit, WriteTarget } from './api-types'
+import { MAX_QUANTUM } from './tasks-info'
 import {
   MAX_TRACE_EDITS,
   MAX_TRACE_PAYLOAD_BYTES,
@@ -188,6 +189,18 @@ function forkLimit(value: unknown, chain: readonly TimedEdit[]): number | null {
   return integer(value, 'forkMaxSteps', last.time + 1, MAX_TRACE_STEPS)
 }
 
+/** The optional schedule: absent (round-robin) or the random policy with quantum and seed. */
+function schedule(value: unknown): ScheduleOptions | undefined {
+  if (value === undefined) return undefined
+  const fields = object(value, 'schedule')
+  check(own(fields, 'policy') === 'random', "schedule.policy must be 'random'")
+  return {
+    policy: 'random',
+    quantum: integer(own(fields, 'quantum'), 'schedule.quantum', 1, MAX_QUANTUM),
+    seed: integer(own(fields, 'seed'), 'schedule.seed', 0, 0xffffffff),
+  }
+}
+
 function headerFields(fields: Fields): { hindsightVersion: string; title: string | null } {
   check(own(fields, 'format') === TRACE_FORMAT, `format must be '${TRACE_FORMAT}'`)
   check(own(fields, 'version') === TRACE_FORMAT_VERSION, `version must be ${TRACE_FORMAT_VERSION}`)
@@ -212,6 +225,7 @@ export function validateBundle(value: unknown): TraceBundle | string {
       Number.MIN_SAFE_INTEGER,
       Number.MAX_SAFE_INTEGER,
     )
+    const taskSchedule = schedule(own(fields, 'schedule'))
     const maxSteps = integer(own(fields, 'maxSteps'), 'maxSteps', 1, MAX_TRACE_STEPS)
     const length = integer(own(fields, 'length'), 'length', 0, MAX_TRACE_STEPS)
     const chain = edits(own(fields, 'edits'))
@@ -234,6 +248,7 @@ export function validateBundle(value: unknown): TraceBundle | string {
       title,
       source,
       seed,
+      ...(taskSchedule === undefined ? {} : { schedule: taskSchedule }),
       maxSteps,
       edits: chain,
       forkMaxSteps,
