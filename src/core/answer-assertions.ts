@@ -94,7 +94,7 @@ function assertionFor(
   if (proto === null || proto.name === null) return null
   const declared = topLevel.get(proto.name)
   if (declared === undefined || declared.span.start !== proto.debug.span.start) return null
-  if (!readsOnlyFunctions(recording, call, proto)) return null
+  if (!readsOnlyFunctions(recording, proto, topLevel)) return null
   const details = tree.details(call)
   if (details.result === null || changeTexts(details).length > 0) return null
   const args: string[] = []
@@ -115,24 +115,49 @@ function mainProto(recording: Recording, protoId: number): FunctionProto | null 
 }
 
 /** Whether every global the function's code reads held a function when the call began. */
-function readsOnlyFunctions(recording: Recording, call: CallNode, proto: FunctionProto): boolean {
+/**
+ * Whether the call means the same wherever its assertion runs: the function captures nothing, and
+ * neither its code, nor the functions created in it, nor any top-level function they name reads a
+ * global other than a top-level `fn` (those are all defined before the assertions, which go after
+ * the last one, and never change). A global variable could be undefined there, or hold another
+ * value than when the call was made.
+ */
+function readsOnlyFunctions(
+  recording: Recording,
+  proto: FunctionProto,
+  topLevel: ReadonlyMap<string, ast.FunctionExpr>,
+): boolean {
   if (proto.upvalueCount > 0) return false
-  const { code, constants } = proto
-  const names = new Set<string>()
-  for (let ip = 0; ip < code.length; ip += instructionLength(code, ip, constants)) {
-    if (code[ip] === Op.GetGlobal) names.add(constants[code[ip + 1]!] as string)
-  }
-  if (names.size === 0) return true
-  const globals = recording.stateAt(call.entry).globals
-  for (const name of names) {
-    const global = globals.find((candidate) => candidate.name === name)
-    const value = global?.value
-    if (value === undefined || value.kind !== 'ref' || value.type !== 'function') return false
+  const seen = new Set<FunctionProto>()
+  const work: FunctionProto[] = [proto]
+  for (let next = work.pop(); next !== undefined; next = work.pop()) {
+    if (seen.has(next)) continue
+    seen.add(next)
+    const { code, constants } = next
+    for (const constant of constants) {
+      if (typeof constant === 'object' && constant !== null && constant.tag === 'proto') {
+        work.push(constant)
+      }
+    }
+    for (let ip = 0; ip < code.length; ip += instructionLength(code, ip, constants)) {
+      if (code[ip] !== Op.GetGlobal) continue
+      const declared = topLevel.get(constants[code[ip + 1]!] as string)
+      const callee = declared === undefined ? null : protoAt(recording, declared.span.start)
+      if (callee === null) return false
+      work.push(callee)
+    }
   }
   return true
 }
 
-/** `value` as Hindsight source that evaluates to an equal value, or null when there is none. */
+/** The program's own function that starts at `start`, if any. */
+function protoAt(recording: Recording, start: number): FunctionProto | null {
+  for (const proto of recording.program.protos) {
+    if (proto.debug.source === 'main' && proto.debug.span.start === start) return proto
+  }
+  return null
+}
+
 export function sourceText(recording: Recording, t: number, value: ValueView): string | null {
   const writer = new SourceWriter(recording, t)
   return writer.write(value, 0) ? writer.out : null

@@ -751,8 +751,10 @@ code is wrong. It is built only on the public `Recording` API.
 
 - **Answers as assertions** (`answer-assertions.ts`): `answerAssertions(tree, state)` writes every
   call a person judged right (not automatic, not remembered) as `assert(f(args) == result)` in
-  Hindsight source, when it can be replayed anywhere: `f` is declared at the top level, its code
-  reads no global but functions (checked against the globals when the call began), the call
+  Hindsight source, when it can be replayed anywhere: `f` is declared at the top level and
+  captures nothing, neither its code nor the functions created in it nor any top-level function
+  they name (followed transitively) reads a global other than a top-level `fn` (a global variable
+  may not exist yet where the assertions go, or hold another value), the call
   changed nothing outside itself, and the arguments and result are plain data (numbers, strings,
   booleans, `nil`, lists and records of those; at most 8 levels, 50 elements and 200 characters).
   `insertAssertions(source, texts)` adds them after the last top-level function declaration. On

@@ -100,6 +100,37 @@ print(scaled(1), grow(xs), outer(), named("a \\{b\\}"), crash())
     ])
   })
 
+  test('leaves out calls whose lambdas or callees read a global variable', () => {
+    // Arrange: inserted after the last fn, these assertions would run before `scale` exists.
+    const viaLambda = `fn scaled(xs) { map(xs, |x| x * scale) }
+fn report(xs) { scaled(xs) }
+var scale = 2
+print(report([1, 2]))
+`
+    const viaCallee = `fn times(x) { x * scale }
+fn twice(x) { times(x) + 0 }
+fn report(x) { twice(x) }
+var scale = 2
+print(report(3))
+`
+    const clean = `fn inc(x) { x + 1 }
+fn twice(x) { inc(inc(x)) }
+fn report(x) { twice(x) }
+print(report(3))
+`
+
+    // Act
+    const texts = [viaLambda, viaCallee, clean].map((source) => {
+      const { tree, state } = interview(source, ['wrong', 'right'])
+      return answerAssertions(tree, state).map((entry) => entry.text)
+    })
+
+    // Assert
+    expect(texts).toEqual([[], [], ['assert(twice(3) == 5)']])
+    const again = recorded(insertAssertions(clean, texts[2]!))
+    expect(again.outcome.kind).toBe('finished')
+  })
+
   test('automatic and remembered answers are not repeated as assertions', () => {
     // Arrange
     const source = `fn sq(n) ensures result == n * n { n * n }
