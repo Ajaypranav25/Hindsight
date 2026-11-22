@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { compile, record, type Recording } from '../../core/index'
 import { setAnalysisService } from '../analysis/service'
@@ -86,7 +86,9 @@ describe('the Profile panel', () => {
     )
     const recording = recordSource(FIB)
     const { store } = renderWithRecording(<ProfilePanel />, recording)
-    const chart = await screen.findByRole('img', { name: /Flame chart of/ })
+    const chart = (await screen.findByRole('img', { name: /Flame chart of/ })) as HTMLCanvasElement
+    // The chart is drawn once its width is known.
+    await waitFor(() => expect(chart.width).toBe(400))
     vi.spyOn(chart, 'getBoundingClientRect').mockReturnValue({
       left: 0,
       top: 0,
