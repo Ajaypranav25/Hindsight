@@ -14,7 +14,7 @@ import type {
 } from '../../core/api-types'
 import type { Program } from '../../core/bytecode'
 import type { Diagnostic } from '../../core/diagnostics'
-import type { Answer, Strategy } from '../../core/index'
+import type { Answer, MappedMoment, MomentPrecision, Strategy } from '../../core/index'
 import type { BugFinderState } from './bug-finder'
 import type { LabState, QueryMarks, SliceMark } from './lab'
 
@@ -32,6 +32,8 @@ export interface Settings {
   readonly theme: ThemeSetting
   /** Statements per second during playback. */
   readonly playbackSpeed: number
+  /** After an edit, move the pen to the same moment of the new run (not the same step number). */
+  readonly keepPlace: boolean
 }
 
 export type RunStatus =
@@ -91,6 +93,16 @@ export interface StudioState {
   readonly bugFinder: BugFinderState
   /** The query marks and the sweep on the strip chart (ARCHITECTURE §7.9, §7.13). */
   readonly lab: LabState
+  /** Set when `recording` re-records an edited program: the run before the edit (§11.3). */
+  readonly editRun: EditRun | null
+}
+
+/** An edited program's new run and the run before the edit, for "Since your edit". */
+export interface EditRun {
+  readonly previous: Recording
+  readonly recording: Recording
+  /** How the pen was carried over, when it was mapped to the same moment. */
+  readonly place: { readonly call: string; readonly precision: MomentPrecision } | null
 }
 
 /** One edit of a what-if, as the studio names it. */
@@ -226,6 +238,8 @@ export interface Engine {
   recordAsync(program: Program, options: AsyncRecordOptions): Promise<Recording>
   /** Compares the real run `a` with a what-if `b`. */
   compare(a: Recording, b: Recording): RecordingComparison
+  /** The moment of run `b` equivalent to step `t` of run `a` (absent: the step number is kept). */
+  mapMoment?(a: Recording, b: Recording, t: number): MappedMoment
 }
 
 /**

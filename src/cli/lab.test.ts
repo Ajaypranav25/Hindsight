@@ -221,6 +221,8 @@ describe('hindsight mcp', () => {
       'diagnose_failure',
       'suggest_repairs',
       'find_bug',
+      'profile',
+      'infer_contracts',
       'export_trace',
       'open_trace',
     ])

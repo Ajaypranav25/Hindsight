@@ -9,6 +9,7 @@ import {
   runCommand,
   runShortcutLabel,
   setEditorCursorLine,
+  subscribeEditorCursorLine,
   shortcutList,
   type FocusContext,
   type FocusTarget,
@@ -228,6 +229,18 @@ describe('editor cursor registry', () => {
     setEditorCursorLine(3)
     setEditorCursorLine(null)
     expect(getEditorCursorLine()).toBeNull()
+  })
+
+  test('tells subscribers when the line changes, and only then', () => {
+    const seen: (number | null)[] = []
+    const stop = subscribeEditorCursorLine(() => seen.push(getEditorCursorLine()))
+    setEditorCursorLine(4)
+    setEditorCursorLine(4)
+    setEditorCursorLine(7)
+    stop()
+    setEditorCursorLine(9)
+    expect(seen).toEqual([4, 7])
+    setEditorCursorLine(null)
   })
 })
 

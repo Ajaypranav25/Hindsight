@@ -30,6 +30,7 @@ function state(patch: Partial<StudioState> = {}): StudioState {
     whatIf: null,
     bugFinder: INITIAL_BUG_FINDER,
     lab: INITIAL_LAB,
+    editRun: null,
     ...patch,
   }
 }

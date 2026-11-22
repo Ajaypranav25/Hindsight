@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import type { FrameView, RuntimeErrorInfo } from '../../core/index'
 import { getLibrarySource, LineIndex } from '../../core/index'
+import { ContractsFrameButton } from '../insight/ContractsCard'
 import { formatCount } from '../lib/format'
 import { useStateView, useStudio, useStudioActions } from '../state/context'
 import { selectedFrame, visibleFrames } from '../state/selectors'
@@ -66,7 +67,7 @@ function FrameRow(props: {
   const { frame, selected, onSelect } = props
   const summary = localsSummary(frame.locals)
   return (
-    <li>
+    <li className="in-frame-row">
       <button
         type="button"
         className={`pn-frame${frame.library ? ' pn-frame--library' : ''}`}
@@ -81,6 +82,7 @@ function FrameRow(props: {
         </span>
         {summary && <span className="pn-frame-locals">{summary}</span>}
       </button>
+      {selected && <ContractsFrameButton frame={frame} />}
     </li>
   )
 }

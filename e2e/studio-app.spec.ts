@@ -83,6 +83,7 @@ test.describe('phone layout', () => {
       'Variables',
       'Heap',
       'Bug finder',
+      'Profile',
       'Console',
     ])
     await expect(tabs.getByRole('tab', { name: 'Variables' })).toHaveAttribute(

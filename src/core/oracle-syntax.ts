@@ -22,8 +22,9 @@ export interface OracleSyntax {
   readonly assertions: readonly AssertionExample[]
 }
 
-type Node =
+export type SyntaxNode =
   ast.Stmt | ast.Expr | ast.Block | ast.Spread | ast.RecordField | ast.MatchArm | ast.ContractClause
+type Node = SyntaxNode
 
 export function spanKey(span: Span): string {
   return `${span.start}:${span.end}`
@@ -93,7 +94,7 @@ function assertionExample(call: ast.Call): AssertionExample | null {
 }
 
 /** The direct children of a node that can contain expressions, statements or functions. */
-function childrenOf(node: Node): readonly Node[] {
+export function childrenOf(node: Node): readonly Node[] {
   switch (node.kind) {
     case 'ExprStmt':
       return [node.expr]

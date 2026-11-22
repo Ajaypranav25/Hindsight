@@ -112,6 +112,28 @@ export type Command =
       readonly maxSteps: number
       readonly seed: number
     }
+  | {
+      readonly kind: 'profile'
+      readonly file: string
+      /** Rows listed per table. */
+      readonly top: number
+      /** Also list the lines that took the most steps. */
+      readonly lines: boolean
+      /** Print folded stacks (flame graph input) instead of tables. */
+      readonly folded: boolean
+      readonly maxSteps: number
+      readonly seed: number
+    }
+  | {
+      readonly kind: 'infer'
+      readonly file: string
+      /** Only this function; null: every function called often enough. */
+      readonly fn: string | null
+      /** Insert the suggested clauses into the file's function headers. */
+      readonly write: boolean
+      readonly maxSteps: number
+      readonly seed: number
+    }
   | { readonly kind: 'mcp' }
 
 export type ParsedArgs =
@@ -149,6 +171,10 @@ Usage:
                                                    name the calls where the difference starts
   hindsight diff FILE --set NAME=VALUE             compare a run with one in which the top-level
                                                    binding NAME starts as the literal VALUE
+  hindsight profile FILE [--top N] [--lines]       where the run spent its steps, per function
+                 [--folded]                        (and per line); --folded: flame graph input
+  hindsight infer FILE [--fn NAME] [--write]       suggest requires/ensures clauses that held in
+                                                   every recorded call; --write adds them
   hindsight mcp                                    serve the debugger to AI agents (MCP over stdio)
   hindsight --help | --version
 
@@ -166,12 +192,14 @@ const VALUE_FLAGS = new Set([
   '--want',
   '--output',
   '--limit',
+  '--top',
+  '--fn',
   '--out',
 ])
 /** Short spellings of options. */
 const ALIASES: ReadonlyMap<string, string> = new Map([['-o', '--out']])
 /** Options that take no value. */
-const SWITCHES = new Set(['--no-crash', '--no-auto', '--no-ask'])
+const SWITCHES = new Set(['--no-crash', '--no-auto', '--no-ask', '--lines', '--folded', '--write'])
 
 /** What each command accepts: its options, and how many arguments may follow its name. */
 const COMMANDS: ReadonlyMap<string, { readonly flags: readonly string[]; readonly arity: number }> =
@@ -195,6 +223,8 @@ const COMMANDS: ReadonlyMap<string, { readonly flags: readonly string[]; readonl
     ['slice', { flags: ['--at', '--max-steps', '--seed'], arity: 1 }],
     ['repair', { flags: ['--max-steps', '--seed'], arity: 1 }],
     ['diff', { flags: ['--set', '--limit', '--max-steps', '--seed'], arity: 2 }],
+    ['profile', { flags: ['--top', '--lines', '--folded', '--max-steps', '--seed'], arity: 1 }],
+    ['infer', { flags: ['--fn', '--write', '--max-steps', '--seed'], arity: 1 }],
     ['mcp', { flags: [], arity: 0 }],
   ])
 
@@ -362,6 +392,9 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     }
     case 'diff':
       return diffCommand(positional, flags, maxSteps, seed)
+    case 'profile':
+    case 'infer':
+      return insightCommand(name, positional, flags, maxSteps, seed)
     case 'mcp':
       return { ok: true, command: { kind: 'mcp' } }
     default:
@@ -469,4 +502,30 @@ function diffCommand(
     ok: true,
     command: { kind: 'diff', fileA, fileB, set: { name, value }, limit, maxSteps, seed },
   }
+}
+
+/** `profile FILE [--top N] [--lines] [--folded]` or `infer FILE [--fn NAME] [--write]`. */
+function insightCommand(
+  name: 'profile' | 'infer',
+  positional: readonly string[],
+  flags: ReadonlyMap<string, string>,
+  maxSteps: number,
+  seed: number,
+): ParsedArgs {
+  const file = needFile(positional, name)
+  if (typeof file !== 'string') return { ok: false, error: file.error }
+  if (name === 'infer') {
+    const fn = flags.get('--fn') ?? null
+    if (fn !== null && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(fn))
+      return { ok: false, error: `--fn needs a function name, got '${fn}'` }
+    const write = flags.has('--write')
+    return { ok: true, command: { kind: 'infer', file, fn, write, maxSteps, seed } }
+  }
+  const top = integerFlag(flags, '--top', 15, 1)
+  if (typeof top === 'string') return { ok: false, error: top }
+  const lines = flags.has('--lines')
+  const folded = flags.has('--folded')
+  if (folded && (lines || flags.has('--top')))
+    return { ok: false, error: "'profile --folded' prints every stack: drop --lines and --top" }
+  return { ok: true, command: { kind: 'profile', file, top, lines, folded, maxSteps, seed } }
 }

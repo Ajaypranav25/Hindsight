@@ -7,6 +7,8 @@ import { compile, DEFAULT_SEED, record, type Recording } from '../../core/index'
 import type { RunDescription } from './protocol'
 
 const descriptions = new WeakMap<Recording, RunDescription | null>()
+/** The recording each description was made from (on the thread that made it). */
+const described = new WeakMap<RunDescription, Recording>()
 const keys = new WeakMap<RunDescription, string>()
 
 /**
@@ -20,8 +22,20 @@ export function describeRun(recording: Recording): RunDescription | null {
   if (description === undefined) {
     description = describe(recording)
     descriptions.set(recording, description)
+    if (description !== null) described.set(description, recording)
   }
   return description
+}
+
+/**
+ * The recording `run` describes: the one it was made from when this thread made it (the
+ * main-thread fallback), else recorded again; null when that fails.
+ */
+export function recordingOf(run: RunDescription): Recording | null {
+  const known = described.get(run)
+  if (known !== undefined) return known
+  const made = recreateRun(run)
+  return made.ok ? made.recording : null
 }
 
 /** What a recording of the core's `Recording` class keeps of how it was made. */

@@ -31,6 +31,7 @@ import {
   type SweepRunSummary,
   type SweepSummary,
 } from './protocol'
+import { insightJob } from '../insight/compute'
 
 /** The longest value text a causal link shows. */
 const LINK_VALUE_CHARS = 24
@@ -160,6 +161,10 @@ export function analysisJob(recording: Recording, request: AnalysisRequest): Job
         kind: 'sweep',
         sweep,
       }))
+    case 'profile':
+    case 'infer':
+    case 'runDiff':
+      return lazy(() => insightJob(recording, request))
   }
 }
 

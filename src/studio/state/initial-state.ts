@@ -1,7 +1,7 @@
 import { readJson } from '../lib/storage'
 import { INITIAL_BUG_FINDER } from './bug-finder'
 import { INITIAL_LAB } from './lab'
-import { DEFAULT_SETTINGS, isSettings, STORAGE_KEYS } from './defaults'
+import { DEFAULT_SETTINGS, isSettings, STORAGE_KEYS, withDefaults } from './defaults'
 import type { Example, KeyValueStorage, StudioState } from './types'
 
 export interface Startup {
@@ -42,7 +42,7 @@ export function initialState(
     breakpoints: new Set<number>(),
     watch: null,
     playing: false,
-    settings: readJson(storage, STORAGE_KEYS.settings, isSettings) ?? DEFAULT_SETTINGS,
+    settings: storedSettings(storage),
     hintDismissed: storage.read(STORAGE_KEYS.hintDismissed) === 'true',
     notice: lastRunUnfinished(storage) ? { text: UNFINISHED_RUN_NOTICE, tone: 'error' } : null,
     originMark: null,
@@ -50,5 +50,11 @@ export function initialState(
     whatIf: null,
     bugFinder: INITIAL_BUG_FINDER,
     lab: INITIAL_LAB,
+    editRun: null,
   }
+}
+
+function storedSettings(storage: KeyValueStorage) {
+  const stored = readJson(storage, STORAGE_KEYS.settings, isSettings)
+  return stored === null ? DEFAULT_SETTINGS : withDefaults(stored)
 }

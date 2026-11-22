@@ -192,14 +192,26 @@ export function focusContextOf(target: FocusTarget | null, root?: ModalRoot): Fo
 // --- editor cursor registry -----------------------------------------------------------------
 
 let editorCursorLine: number | null = null
+const cursorListeners = new Set<() => void>()
 
 /** The editor publishes its cursor's 1-based line here (null when it has no cursor). */
 export function setEditorCursorLine(line: number | null): void {
-  editorCursorLine = line !== null && Number.isInteger(line) && line >= 1 ? line : null
+  const next = line !== null && Number.isInteger(line) && line >= 1 ? line : null
+  if (next === editorCursorLine) return
+  editorCursorLine = next
+  for (const listener of [...cursorListeners]) listener()
 }
 
 export function getEditorCursorLine(): number | null {
   return editorCursorLine
+}
+
+/** Calls `listener` whenever the cursor line changes; returns the unsubscribe function. */
+export function subscribeEditorCursorLine(listener: () => void): () => void {
+  cursorListeners.add(listener)
+  return () => {
+    cursorListeners.delete(listener)
+  }
 }
 
 // --- labels ---------------------------------------------------------------------------------

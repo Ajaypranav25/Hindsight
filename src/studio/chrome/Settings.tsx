@@ -12,11 +12,16 @@ const THEMES: readonly { value: ThemeSetting; label: string }[] = [
   { value: 'dark', label: 'Dark' },
 ]
 
-type ToggleKey = 'justMyCode' | 'autoRun' | 'instructionLevel'
+type ToggleKey = 'justMyCode' | 'autoRun' | 'keepPlace' | 'instructionLevel'
 
 const TOGGLES: readonly { key: ToggleKey; label: string; note: string }[] = [
   { key: 'justMyCode', label: 'Just my code', note: 'Skip library functions when stepping' },
   { key: 'autoRun', label: 'Auto-run', note: 'Record again shortly after each edit' },
+  {
+    key: 'keepPlace',
+    label: 'Keep my place after edits',
+    note: 'The pen goes to the same moment of the new run',
+  },
   {
     key: 'instructionLevel',
     label: 'Instruction-level stepping',
