@@ -14,6 +14,7 @@
 import { compile, LineIndex, record, type Recording } from '../core/index'
 import { diagnoseTool } from './mcp-diagnose'
 import { diffTool } from './mcp-diff'
+import { exploreTool, scheduleArg } from './mcp-races'
 import { findBugTool } from './mcp-find-bug'
 import { traceFileTools } from './mcp-trace-file'
 import { guardResponse } from './mcp-guard'
@@ -51,7 +52,9 @@ const INSTRUCTIONS =
   'seek_state, query_provenance, query, why_not, slice, fork_whatif, get_divergence and solve ' +
   'answer narrower questions; profile shows where the steps went; infer_contracts suggests ' +
   'requires/ensures clauses from a trusted run, which find_bug then reads on a broken one; ' +
-  'export_trace and open_trace carry a run as a .sighttrace file. Steps are instruction ' +
+  'export_trace and open_trace carry a run as a .sighttrace file. For programs with tasks, ' +
+  'explore_schedules finds races (different results under different schedules) and run_trace ' +
+  'takes a schedule. Steps are instruction ' +
   'counts; the state at step T is the state before instruction T runs. Long results come in ' +
   'pages: each result says when it was cut and how to fetch more.'
 
@@ -73,6 +76,7 @@ export class McpServer implements ToolContext {
       findBugTool(this),
       profileTool(this),
       inferContractsTool(this),
+      exploreTool(this),
       ...traceFileTools(this),
     ]
   }
@@ -201,7 +205,7 @@ export class McpServer implements ToolContext {
         },
       }
     }
-    const recording = record(compiled.program, { maxSteps, seed })
+    const recording = record(compiled.program, { maxSteps, seed, schedule: scheduleArg(args) })
     return { ok: true, trace: this.keep(source, recording, null) }
   }
 

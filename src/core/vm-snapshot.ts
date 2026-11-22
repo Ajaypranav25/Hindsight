@@ -21,6 +21,7 @@ import {
   type FrozenRoots,
   type MachineScalars,
   isRef,
+  forEachRoot,
   forEachValue,
   freshSize,
   objectSize,
@@ -28,6 +29,7 @@ import {
 } from './vm-snapshot-frozen'
 import { deltaThawer } from './vm-snapshot-delta'
 import { type MachineRecord, Thawer, thaw, thawRoots } from './vm-snapshot-thaw'
+import { Request } from './vm-request'
 import type { MachineState } from './vm-state'
 
 export type { MachineRecord } from './vm-snapshot-thaw'
@@ -164,6 +166,12 @@ export function restoreSnapshot(m: MachineState, snapshot: MachineSnapshot): voi
   m.scanned = record.scanned
   m.status = record.status
   m.error = record.error
+  m.tasks = record.tasks
+  m.current = record.current
+  m.liveTasks = record.tasks === null ? 0 : record.tasks.filter((t) => t.status !== 'done').length
+  m.request = Request.none
+  m.preemptAt = record.preemptAt
+  m.schedState = record.schedState
   m.positions.clear()
   m.trackFrom(snapshot)
   m.live = thawer.live
@@ -179,6 +187,8 @@ function scalarsOf(m: MachineState): MachineScalars {
     scanned: m.scanned,
     status: m.status,
     error: m.error,
+    preemptAt: m.preemptAt,
+    schedState: m.schedState,
   }
 }
 
@@ -203,10 +213,7 @@ function compactTable(
       work.push(id)
     }
   }
-  roots.stack.forEach(mark)
-  for (const frame of roots.frames) mark(frame.closure)
-  roots.openCells.forEach(mark)
-  roots.globals.forEach(mark)
+  forEachRoot(roots, mark)
   while (work.length > 0) {
     const id = work.pop()!
     const object = table.get(id)

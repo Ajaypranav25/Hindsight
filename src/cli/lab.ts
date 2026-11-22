@@ -6,6 +6,8 @@
 import {
   backwardSlice,
   errorSlice,
+  SLICE_LENGTH_PROBLEM,
+  sliceProblem,
   LineIndex,
   type ProvenanceEvent,
   queryRecording,
@@ -187,7 +189,10 @@ export function slice(
   }
   const found = at === recording.length ? errorSlice(recording) : null
   const result = found ?? backwardSlice(recording, at)
-  if (result === null) return fail(io, style, 'this run is too long to analyze')
+  if (result === null) {
+    const problem = sliceProblem(recording) ?? SLICE_LENGTH_PROBLEM
+    return fail(io, style, problem.charAt(0).toLowerCase() + problem.slice(1))
+  }
   const ran = recording.lineHitCounts()
   const index = new LineIndex(loaded.source)
   const width = Math.max(3, String(index.lineCount).length)

@@ -11,7 +11,14 @@
 import type { RuntimeErrorInfo } from './api-types'
 import type { FunctionProto } from './bytecode'
 import { PVec } from './pvec'
-import type { ClosureObj, NativeObj, RangeObj, VMStatus } from './runtime-types'
+import type {
+  ClosureObj,
+  NativeObj,
+  RangeObj,
+  TaskObj,
+  TaskStatus,
+  VMStatus,
+} from './runtime-types'
 
 /** A reference to the mutable object with this id. */
 export class Ref {
@@ -27,7 +34,8 @@ export function isRef(value: unknown): value is Ref {
 }
 
 /** A value inside a snapshot: primitives and shared objects as they are, other objects by id. */
-export type Frozen = null | boolean | number | string | RangeObj | NativeObj | ClosureObj | Ref
+export type Frozen =
+  null | boolean | number | string | RangeObj | NativeObj | ClosureObj | TaskObj | Ref
 
 /** Contents of up to SMALL_SLOTS values in a plain array, larger ones in a persistent vector. */
 export type FrozenSlots = readonly Frozen[] | PVec<Frozen>
@@ -91,7 +99,20 @@ export class FrozenIterator {
   ) {}
 }
 
-export type FrozenObject = FrozenList | FrozenRecord | FrozenClosure | FrozenCell | FrozenIterator
+/** A channel's buffer is bounded by its capacity and copied whole. */
+export class FrozenChannel {
+  readonly kind = 'channel'
+  constructor(
+    readonly id: number,
+    readonly birth: number,
+    readonly capacity: number,
+    readonly items: readonly Frozen[],
+    readonly closed: boolean,
+  ) {}
+}
+
+export type FrozenObject =
+  FrozenList | FrozenRecord | FrozenClosure | FrozenCell | FrozenIterator | FrozenChannel
 
 export interface FrozenFrame {
   /** A `Ref` to a user closure, or a library closure itself. */
@@ -101,17 +122,62 @@ export interface FrozenFrame {
   readonly uid: number
 }
 
+export type FrozenWait =
+  | { readonly kind: 'send' | 'recv'; readonly channel: Ref }
+  | { readonly kind: 'join'; readonly task: number }
+
+/** One task (ARCHITECTURE §6.11). */
+export interface FrozenTask {
+  readonly id: number
+  readonly name: string
+  readonly status: TaskStatus
+  readonly wait: FrozenWait | null
+  readonly since: number
+  readonly result: Frozen
+  readonly object: TaskObj | null
+  /** Empty for the running task: its arrays are the roots' `stack`, `frames` and `openCells`. */
+  readonly stack: readonly Frozen[]
+  readonly frames: readonly FrozenFrame[]
+  readonly openCells: readonly Ref[]
+}
+
 /**
  * The roots of the machine: everything outside the heap that refers into it. Roots are copied in
- * full by every snapshot. A machine with several stacks would add them here and to the three walks
- * over roots: `Freezer.roots` (vm-snapshot-freeze.ts), `thawRoots` (vm-snapshot-thaw.ts) and the
- * root marking of `compactTable` (vm-snapshot.ts).
+ * full by every snapshot. The three walks over roots are `Freezer.roots` (vm-snapshot-freeze.ts),
+ * `thawRoots` (vm-snapshot-thaw.ts) and the root marking of `compactTable` (vm-snapshot.ts); each
+ * covers the running task's arrays (`stack`, `frames`, `openCells`) and every other task's.
  */
 export interface FrozenRoots {
   readonly stack: readonly Frozen[]
   readonly frames: readonly FrozenFrame[]
   readonly openCells: readonly Ref[]
   readonly globals: ReadonlyMap<string, Frozen>
+  /** Every task in id order once the program has tasks, else null. */
+  readonly tasks: readonly FrozenTask[] | null
+  /** Index of the running task in `tasks` (0 without tasks). */
+  readonly current: number
+}
+
+/** Calls `visit` with every root value: stacks, frames' closures, open cells, globals, tasks. */
+export function forEachRoot(roots: FrozenRoots, visit: (value: Frozen) => void): void {
+  visitStack(roots.stack, roots.frames, roots.openCells, visit)
+  roots.globals.forEach(visit)
+  for (const task of roots.tasks ?? []) {
+    visitStack(task.stack, task.frames, task.openCells, visit)
+    visit(task.result)
+    if (task.wait !== null && task.wait.kind !== 'join') visit(task.wait.channel)
+  }
+}
+
+function visitStack(
+  stack: readonly Frozen[],
+  frames: readonly FrozenFrame[],
+  openCells: readonly Ref[],
+  visit: (value: Frozen) => void,
+): void {
+  stack.forEach(visit)
+  for (const frame of frames) visit(frame.closure)
+  openCells.forEach(visit)
 }
 
 /** The scalar part of the machine record. */
@@ -124,10 +190,18 @@ export interface MachineScalars {
   readonly scanned: number
   readonly status: VMStatus
   readonly error: RuntimeErrorInfo | null
+  /** The random policy's next preemption (Infinity otherwise). */
+  readonly preemptAt: number
+  /** The scheduler's generator state. */
+  readonly schedState: number
 }
 
 export function rootsSize(roots: FrozenRoots): number {
-  return roots.stack.length + roots.frames.length + roots.openCells.length + roots.globals.size
+  let size = roots.stack.length + roots.frames.length + roots.openCells.length + roots.globals.size
+  for (const task of roots.tasks ?? []) {
+    size += 1 + task.stack.length + task.frames.length + task.openCells.length
+  }
+  return size
 }
 
 /** The values an object holds: one for the object itself plus one per item, entry or capture. */
@@ -142,6 +216,8 @@ export function objectSize(object: FrozenObject): number {
       return 2
     case 'iterator':
       return 1
+    case 'channel':
+      return 1 + object.items.length
   }
 }
 
@@ -185,6 +261,9 @@ export function forEachValue(object: FrozenObject, visit: (value: Frozen) => voi
       break
     case 'iterator':
       visit(object.source)
+      break
+    case 'channel':
+      for (const item of object.items) visit(item)
       break
   }
 }

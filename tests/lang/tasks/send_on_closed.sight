@@ -1,0 +1,4 @@
+// Sending on a closed channel is R029.
+let ch = channel(1)
+close(ch)
+send(ch, 1) // expect runtime error R029: cannot send on a closed channel

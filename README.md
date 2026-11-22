@@ -80,6 +80,32 @@ A broken `requires` is `R026 precondition failed: len(xs) > 0` with the argument
 broken `ensures` is `R027 postcondition failed: …` with the returned value. `requires`, `ensures`
 and `result` stay ordinary names everywhere else.
 
+Tasks and channels make concurrency something you can rewind. `spawn` starts a task, channels pass
+values between tasks (unbuffered ones are a rendezvous), `wait` joins a task and `yield` lets
+another run:
+
+```
+let jobs = channel(2)
+fn worker() {
+  var job = recv(jobs)
+  while job != nil {           // recv returns nil once the channel is closed and empty
+    print(job * job)
+    job = recv(jobs)
+  }
+}
+let w = spawn(worker)
+for i in 1..=3 { send(jobs, i) }
+close(jobs)
+wait(w)
+```
+
+Tasks are cooperative and deterministic: one instruction at a time on one machine, switching only
+when a task blocks, yields or ends. The default round-robin schedule is fully predictable; a
+**random** schedule (a seed and a quantum, chosen by the tool, never by `random()`) also preempts,
+so races show up, and the same seed always gives the same interleaving. When every task is
+waiting, the run stops with `R028 deadlock: every task is waiting` and a hint that says what each
+task waits for. See [SPEC §10.6](docs/SPEC.md).
+
 ## The studio
 
 |                                 |                                                                                                                                                                                                                                                                                                                                                                                                             |
@@ -107,6 +133,8 @@ and `result` stay ordinary names everywhere else.
 | **Keep my place**               | After an edit the pen goes to the same moment of the new run (the same call, the same time round its loop), not just the same step number. A setting turns it off.                                                                                                                                                                                                                                          |
 | **Profile**                     | Where the run spent its steps: a flame chart (hover for steps, calls and share; click to land on the first call of that path) and a table of functions and lines.                                                                                                                                                                                                                                           |
 | **Suggest contracts**           | With the cursor on a `fn` line (or from the call stack), Hindsight proposes `requires`/`ensures` clauses that held in every recorded call and checks them by recording the program with them; "Add to the function" writes the ones you keep into its header.                                                                                                                                               |
+| **Swim lanes**                  | A program with tasks gets one lane per task on the strip chart, each in its own color with its call depth, and hatched stretches where the task was waiting on a channel or another task. The call stack lists every task with what it is doing or waiting for.                                                                                                                                             |
+| **Schedules and deadlocks**     | Settings > Task schedule switches between round-robin and a random schedule with a seed; Next seed records the program again under another interleaving, so a lost update can be caught in the act and rewound. A deadlock is explained in the console: one line per task, saying what it waits for and where.                                                                                              |
 | **Off the main thread**         | Slices, queries, the Make-it-so search, repair previews and sweeps run in a Web Worker, which records the same run again from its description (program, seed, step limit, what-if edits) and sends back plain results; without workers they run on the page in small slices.                                                                                                                                |
 
 ![The heap graph after reversing a linked list, in the light theme](docs/images/heap.png)
@@ -152,6 +180,8 @@ npm run sight -- diff OLD NEW                 # where do two versions start to b
 npm run sight -- diff FILE --set n=10         # the same program with another input
 npm run sight -- profile FILE --lines         # where did the run spend its steps?
 npm run sight -- infer FILE                   # requires/ensures clauses that held in every call
+npm run sight -- races examples/21-bank-race.sight   # try 20 random schedules, name the race
+npm run sight -- run FILE --schedule random --schedule-seed 3   # one interleaving, reproducibly
 npm run sight -- mcp                          # the debugger as an MCP server for AI agents
 ```
 
@@ -285,6 +315,23 @@ The clauses say what the program did, not what it should do. That is the point: 
 version you trust and add them, and when a later change breaks something, `debug` (and the studio's
 bug finder) answers its own questions from them, an `ensures result == …` vouching for every call
 it covers.
+`races` records a program with tasks under many random schedules (`--runs`, `--seed`, `--quantum`),
+lists the different results, and explains the first two: where the schedules diverge, the shared
+places more than one task wrote before the output differed (the race candidates), and the calls
+where the difference starts. It exits 1 when the results differ.
+
+```
+20 schedules (random, quantum 10): 19 different results
+   2 runs  printed "alice 90, bob 110, total 200"  seeds 1, 9
+   1 run   printed "alice 150, bob 90, total 240"  seed 2
+   …
+race candidates (written by more than one task before that):
+  accounts.bob  task 2 (teller) 5×, task 3 (teller) 5× · lines 10, 11
+  accounts.alice  task 2 (teller) 5×, task 3 (teller) 5× · lines 10, 11
+```
+
+`run`, `replay` and `record` take `--schedule random [--schedule-seed S] [--quantum Q]`; trace files
+keep the schedule.
 
 ### Trace files
 
@@ -330,6 +377,7 @@ same. From a checkout without a linked build, use `"command": "npx", "args": ["t
 | `fork_whatif`, `get_divergence`, `solve`  | counterfactuals forwards and backwards                                                                                                                                                                                                   |
 | `why_not`, `slice`                        | why a line never ran; which lines can have caused a moment                                                                                                                                                                               |
 | `profile`, `infer_contracts`              | where a run spent its steps (functions, lines, folded stacks); likely `requires`/`ensures` clauses, checked by a re-run, to add to a trusted version                                                                                     |
+| `explore_schedules`                       | the race finder for programs with tasks: distinct results under random schedules, each kept as a trace, with the race candidates; `run_trace` takes a `schedule`                                                                         |
 | `export_trace`, `open_trace`              | a recorded run as a small `.sighttrace` file (base64) to attach to an issue, and back                                                                                                                                                    |
 
 Results are sized for a context window: long lists come in pages that say how to fetch the next,

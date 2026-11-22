@@ -179,7 +179,7 @@ export function originReason(origin: OriginGroup): string {
   return 'given the same inputs, it behaves differently while the calls it makes behave the same'
 }
 
-function originLines(diff: RunDiff, input: string | null, style: Style): string[] {
+export function originLines(diff: RunDiff, input: string | null, style: Style): string[] {
   const { origins } = diff
   if (origins.total === 0) {
     return [style.dim('no origin found: no call given the same inputs behaved differently')]

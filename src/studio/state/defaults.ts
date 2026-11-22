@@ -1,5 +1,6 @@
 import type { Recording } from '../../core/api-types'
-import type { PenPosition, Settings } from './types'
+import { DEFAULT_QUANTUM, DEFAULT_SCHEDULE_SEED, type ScheduleOptions } from '../../core/api-types'
+import type { PenPosition, Settings, StudioSchedule } from './types'
 
 export const STEP_BUDGETS = [500_000, 2_000_000, 10_000_000] as const
 
@@ -11,6 +12,41 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: 'system',
   playbackSpeed: 8,
   keepPlace: true,
+  schedule: { policy: 'round-robin', seed: DEFAULT_SCHEDULE_SEED, quantum: DEFAULT_QUANTUM },
+}
+
+/** The largest schedule seed and quantum the settings accept. */
+export const MAX_SCHEDULE_SEED = 0xffffffff
+export const MAX_SETTINGS_QUANTUM = 1000
+
+/** The core's schedule for the setting: undefined for round-robin (the default). */
+export function scheduleOptions(schedule: StudioSchedule): ScheduleOptions | undefined {
+  if (schedule.policy !== 'random') return undefined
+  return { policy: 'random', seed: schedule.seed, quantum: schedule.quantum }
+}
+
+function isSchedule(value: unknown): value is StudioSchedule {
+  if (typeof value !== 'object' || value === null) return false
+  const v = value as Record<string, unknown>
+  return (
+    (v.policy === 'round-robin' || v.policy === 'random') &&
+    Number.isInteger(v.seed) &&
+    (v.seed as number) >= 0 &&
+    (v.seed as number) <= MAX_SCHEDULE_SEED &&
+    Number.isInteger(v.quantum) &&
+    (v.quantum as number) >= 1 &&
+    (v.quantum as number) <= MAX_SETTINGS_QUANTUM
+  )
+}
+
+/**
+ * Stored settings with their defaults filled in: settings saved before a field existed keep the
+ * rest; null when a stored field is invalid.
+ */
+export function storedSettings(value: unknown): Settings | null {
+  if (typeof value !== 'object' || value === null) return null
+  const merged = { ...DEFAULT_SETTINGS, ...(value as object) }
+  return isSettings(merged) ? merged : null
 }
 
 export const AUTO_RUN_DELAY_MS = 600
@@ -36,7 +72,7 @@ export const STORAGE_KEYS = {
 
 /**
  * Accepts stored settings only when every field has the right type and a sane value. Settings
- * added later may be missing from older stored settings (`withDefaults` fills them in).
+ * added later may be missing from older stored settings (`storedSettings` fills them in first).
  */
 export function isSettings(value: unknown): value is Settings {
   if (typeof value !== 'object' || value === null) return false
@@ -51,13 +87,9 @@ export function isSettings(value: unknown): value is Settings {
     typeof v.playbackSpeed === 'number' &&
     v.playbackSpeed >= 1 &&
     v.playbackSpeed <= 60 &&
-    (v.keepPlace === undefined || typeof v.keepPlace === 'boolean')
+    typeof v.keepPlace === 'boolean' &&
+    isSchedule(v.schedule)
   )
-}
-
-/** Stored settings with any later-added setting they lack set to its default. */
-export function withDefaults(settings: Settings): Settings {
-  return { ...DEFAULT_SETTINGS, ...settings }
 }
 
 /**

@@ -343,7 +343,8 @@ Stack effects are written `( before -- after )`, top of stack on the right.
 script frame is uid 1), the generator state (SPEC §10.3), `allocated` (units charged against the
 allocation budget, SPEC §10.5; it only grows), `scanned` (elements visited within single steps
 without allocating, reported by natives through `NativeContext.scan` and by `==` on containers; it
-only grows), `status`, `error`. `VM.work` is `time + allocated + scanned`: the cost of replaying the
+only grows), `status`, `error`, and the task state of §6.11 (`tasks`, `current`, the scheduler's
+generator and next preemption). `VM.work` is `time + allocated + scanned`: the cost of replaying the
 run so far, which the recorder's snapshot cadence measures distances in (§7.1.4). Besides the
 record, the machine keeps the write-barrier state of §6.8 (base snapshot, change log).
 
@@ -362,14 +363,16 @@ record, the machine keeps the write-barrier state of §6.8 (base snapshot, chang
 
 - `Call argc`: callee at `stack[top − argc]`.
   - native: check arity (R005), run the native atomically within the same step, replace callee and
-    arguments with the result.
+    arguments with the result. A task native that blocked the running task leaves them in place
+    and the step ends with a task switch (§6.11).
   - closure: check arity (R005), then call depth (R016: fail when `frames.length − 1 >= 10000`,
     i.e. the top-level frame does not count) **before** mutating anything; push a frame
     `{base = top − argc, ip = 0, uid = nextFrameUid++}`; record a `declare` event for each parameter
     slot `1..arity` of the new frame.
   - anything else: R004.
 - `Return`: pop the result, close cells for slots `>= base`, drop the frame's region, push the
-  result. When the script frame returns, the run is `finished` with an empty stack and no frames.
+  result. When the script frame returns, the run is `finished` with an empty stack and no frames;
+  when a spawned task's first frame returns, that task is done (§6.11).
 
 ### 6.4 Natives (`natives.ts`)
 
@@ -452,8 +455,9 @@ O(changes), not O(heap):
   is copied whole); then a walk from the roots and from the changed parts, descending only into
   objects created since the base, copies every new object that is still reachable (an unchanged old
   object still holds exactly the references it held then). Roots (stack, frames, open cells,
-  globals) are copied in full; a machine with several stacks would add them to `FrozenRoots` and the
-  three walks over roots (freezing, thawing, compaction marking). The result becomes the new base.
+  globals, and every task's stack, frames, open cells, wait and result, §6.11) are copied in full;
+  `forEachRoot` (`vm-snapshot-frozen.ts`) lists them for compaction marking, and freezing and
+  thawing cover the same ones. The result becomes the new base.
 - **Every snapshot is complete on its own**: dropping any of them (thinning) never invalidates
   another. `restore(s)` rebuilds live objects from the roots through the table
   (`vm-snapshot-thaw.ts`, a work list, any nesting), can be repeated any number of times, and makes
@@ -527,6 +531,69 @@ Decisions made while building the runtime, recorded here so tools can rely on th
   2 ms per position instead of 13.5 ms (delta restores); for the mutated 50,000-item list 0.4 ms
   instead of 0.9 ms. The 50,000-field record gains nothing yet: records are refilled whole.
 
+### 6.11 Tasks and channels (`vm-tasks.ts`, `natives-tasks.ts`, `vm-request.ts`)
+
+Deterministic cooperative tasks (SPEC §10.6) on the one machine:
+
+- **Records.** `MachineState.tasks` is null until the first `spawn` (or `current_task()`), so a
+  program without tasks pays nothing. Then each `Task` (`runtime-types.ts`) holds an id (1 is the
+  main script), a name, its own `stack`, `frames` and `openCells`, a status (`runnable`, `blocked`,
+  `done`), its wait (`send`/`recv` on a channel, `join` on a task number), `since` (the step it
+  blocked at; waiters are served in that order), its result and its handle. The machine's `stack`,
+  `frames` and `openCells` are always the running task's arrays (`current`); a switch only
+  reassigns those three fields, so the dispatch loop has no per-instruction task checks.
+- **Values.** A `TaskObj` (`{type: 'task', id, task, name}`) is an immutable handle, shared by
+  snapshots like a range; the task's state lives in its record. A `ChannelObj` (`{type:
+'channel', id, capacity, items, closed}`) is mutable: every change of an existing channel goes
+  through the write barrier (`noteObject`), and snapshots copy its buffer whole.
+- **Cells across tasks.** An open cell aliases a slot of the stack of the task that created it, so a
+  closure passed to another task must reach that stack: `CellObj.stack` is the owning task's stack
+  array, and `GetUpvalue`/`SetUpvalue` (and tools, through `cellValue`) read `cell.stack`, never the
+  running task's stack. A restore sets it again for every open cell (each is in its owner's
+  `openCells`).
+- **Natives never call user code.** They reach the machine through `NativeContext.tasks`
+  (`TaskOps`, implemented by `MachineTasks`). `spawn` checks the function's arity (R005) and the
+  unfinished-task limit (R030), allocates the handle, and builds the new task's first frame
+  `{closure: f, ip: 0, base: 0}` with a stack `[f, ...args]`, recording `declare` events for its
+  parameters at the spawn step. An operation that cannot complete calls `block(wait)`: R028 when no
+  other task is runnable, else the running task is marked blocked and `MachineState.request` is set.
+- **Requests and switches.** `Request` (`vm-request.ts`): `block`, `yield`, `done` (a spawned task
+  returned) and `reslice`. After a native call that set one, the dispatch loop ends its slice (a
+  blocked call's frame keeps the `Call`'s ip); `execute` then settles it (`settleRequest` chooses the
+  next task) before returning, so every switch happens at the end of a step and the state at each
+  time already shows the task that runs next, whether the time was reached by `step()`, by
+  `runUntil` or by a seek (§7.1.5). `execute` runs the loop in slices bounded by the limit and by
+  `preemptAt`; when the time reaches `preemptAt` it preempts. The first spawn under the random policy
+  draws the first preemption mid-slice, hence `reslice`. Fused pairs (§6.10) never straddle a slice
+  limit, so they keep working across switches.
+- **Completion by the partner.** A blocked task's top frame stands on its `Call` with callee and
+  arguments on its stack. The task that unblocks it (a sender for a waiting receiver, a receiver for
+  a waiting sender, a finishing task for its joiners) completes the call for it: it replaces callee
+  and arguments with the result and advances that frame's ip past the `Call` (`completeCall`).
+  So each blocking call costs one step and completes once. Only senders waiting on a channel that
+  gets closed are woken to retry their `Call` (which then raises R029). A sender's value is read from
+  the top of its stack.
+- **Scheduler.** Round-robin takes the next runnable task in id order after the running one;
+  random draws from the other runnable tasks with `nextScheduleRandom` (mulberry32 over
+  `schedState`, separate from the program's `rngState`) and sets `preemptAt = boundary + 1 +
+floor(r · quantum)` after every switch decision. `policy` and `quantum` are VM options
+  (`VMOptions.schedule`), constant per VM; `schedState` and `preemptAt` are part of the state and of
+  snapshots (`MachineScalars`). Every VM that replays a run (seeker, extension, fork) gets the
+  recording's schedule (`RecordingCore.taskSchedule`).
+- **Ends.** When the main task's frame returns the run is finished; the outcome lists unfinished
+  tasks (`Outcome.unfinishedTasks`, `tasks-info.ts`). When a spawned task's frame returns, the task
+  is done, its joiners are completed with the result, and the loop switches; if then no task is
+  runnable, R028 is raised at that return with the frame pushed back so the error reports there.
+  Deadlock hints (`deadlockHint`) list the blocking task first (`here`), then every other waiting
+  task with the line of the call it waits on in its innermost user frame.
+- **Snapshots.** `FrozenRoots.tasks` holds a `FrozenTask` per task (the running task's arrays are the
+  roots' own `stack`, `frames`, `openCells`, so its entry leaves them empty), and `current` its
+  index; `FrozenChannel` is a table object. The three root walks cover every task (§6.8). A restore
+  rebuilds the task list, `current`, the unfinished count and the cells' stacks, and clears any
+  request.
+- **Limits.** R016 counts each task's frames (`frames` is the running task's). At most 10,000
+  unfinished tasks (R030). Allocation, memory and steps are machine-wide.
+
 ## 7. Time travel
 
 ### 7.1 Recorder (`recorder*.ts`) — implements `Recording` (`api-types.ts`)
@@ -580,6 +647,16 @@ Decisions made while building the runtime, recorded here so tools can rely on th
    Repeated calls return independent, identical continuations.
 9. **Arguments**: every method that takes a time requires an integer in `[0, N]` and throws
    `InternalError` otherwise (the studio clamps first).
+10. **Tasks** (SPEC §10.6): the depth column holds the depth in the running task, and a fourth
+    column, the running task's id (`StepColumns.taskIds`), is created at the first step that runs
+    with tasks (filled with 1 for the steps before), so programs without tasks store and pay
+    nothing. `taskSeries()` returns it (null without tasks), `taskAt(t)` reads it (at N: the task
+    that failed or would run next, 1 when finished). A what-if fork copies the column only when its
+    shared past ran another task, so a fork that never spawns has none either; `hasTasks` keeps an
+    extension's shared columns from changing what the original recording reports. Every switch
+    between tasks is logged once (`StepColumns.switchTimes`/`switchStates`: the first step after
+    it and whether the task left runnable, blocked or done; a second continuation over logged
+    times adds nothing); `taskSwitches()` lists them with the tasks before and after.
 
 ### 7.2 Navigator (`navigator*.ts`)
 
@@ -604,6 +681,11 @@ Candidate times range over `0..N−1`; `N` (forward) and `0` (backward) are only
   next invocation.
 - `lineHits(line)` lists every `t < N` with `S(t) ∧ U(t) ∧ L(t) = line`; `lineHitCounts()`
   aggregates them. Linear scans over typed arrays are fast enough; precompute where cheap.
+- **Tasks.** Depths are per task, so step into, over and out only consider the steps of the task
+  running at `t` (`T(t') = T(t)` joins every predicate), unless `NavOptions.allTasks` is set. When
+  that task has no qualifying step, forwards goes to the step after its last step and backwards
+  to the step before its first (when those lie beyond `t`), else `N` / `0`: stepping out of a
+  task's function leaves the task where it ended. `continue` and line hits stop in any task.
 
 ### 7.3 Provenance (`provenance*.ts`)
 
@@ -654,6 +736,12 @@ Builds a `StateView` from the VM positioned at time `t`:
 - `ValueView.preview` comes from the bounded `preview` (~48 characters).
 - At `t == N`: frames are empty when finished; for errors, step limits and aborts, frames show the
   paused state, and `error` is set for errors.
+- **Tasks** (SPEC §10.6): `frames` are the running task's (the one that executes step `t`); `tasks`
+  (present once the program has tasks) lists every task in id order with status, wait, result
+  (done tasks), `current`, and each frame's uid, name, proto, library flag, span and line (the call
+  a caller or a blocked task waits on). The heap walk visits the running task's frames, then every
+  other task's in id order, then finished tasks' results, so a result stays inspectable when no
+  handle is kept.
 
 ### 7.5 What-if forks (`fork.ts`, `compare.ts`, `literal.ts`)
 
@@ -672,10 +760,16 @@ user input.
 3. **Seek barrier.** The edited state is snapshotted at `time` and pinned, so thinning keeps it.
    Every seek at or after `time` starts from it, and a VM positioned before `time` never runs on
    across it (that would replay the parent's unedited future).
-4. **New future.** Recording continues from `time` with the parent's seed and step limit (or
-   `options.maxSteps`). `recording.whatIf` holds the parent's length, the fork step, the edit, and
+4. **New future.** Recording continues from `time` with the parent's seed, schedule (§6.11) and
+   step limit (or `options.maxSteps`). `recording.whatIf` holds the parent's length, the fork step, the edit, and
    every edit in the timeline: a fork of a fork keeps its parent's edits at or before its own step
    (later ones belonged to the future it replaced).
+
+With tasks, an edit may target a local of any task's live frames (not only the running one's),
+and an open cell's edit goes to the slot of its own task's stack (`fork-edit.ts`); stacks are
+snapshot roots, so the edited state's snapshot holds it. The new future keeps the parent's schedule:
+under the random policy the scheduler's generator and next preemption come from the restored state,
+so the edit can change only what the program itself does after it.
 
 `compareRecordings(a, b)` compares two runs of one program: the first step where they behave
 differently (location, events or output; the what-if edit events themselves are skipped) and a
@@ -692,6 +786,20 @@ code is wrong. It is built only on the public `Recording` API.
   depth exceeds the previous step's and ends at the last step at that depth; its children are the
   calls one level deeper inside it, in execution order. One pass over `depthSeries()` builds the
   shape on first use; details are built only for the calls asked about, and cached.
+- **Call tree with tasks** (`calls-index-tasks.ts`): each task's steps are read as a depth series
+  of their own, so a call's subtree only holds its own task's calls. Each spawned task's function
+  call (the task's first step) is a child of the root, next to the main task's top-level calls in
+  order of first steps; its `depth` counts one more than its frame depth, so depth 0 still means
+  the root and `depth` is the depth in the tree. Calls are numbered in pre-order (no longer entry
+  order), `callAt(t)` is the innermost call of the task running at `t`, and nodes carry `task` and
+  `after`: the first time after the call in its own task (the caller's next step, or just after a
+  task's final `Return`); `timeAfter(call)` is the time after a call for every consumer (details,
+  effects, assertions, diffs, the studio), since `exit + 1` may belong to another task. A task's
+  function call returns its task's result (`StateView.tasks`). Calls of a task still waiting when
+  the run ended are `unfinished`; on an error, `raised` applies to the failing task's calls. Call
+  effects only read events of steps their own task ran (`eventsBetween(…, task)`); the oracle's
+  assertion scan follows the call's task; divide and query treats another task's calls as outside
+  every call but the root.
 - **Call details**: name, line span, the arguments (the callee's parameter locals at its first step)
   and the result: the caller's top operand temp (`FrameView.temps`) just after the return. The
   outcome is `returned`, `raised` (the run's error is inside the call) or `unfinished` (cut off by
@@ -763,8 +871,9 @@ code is wrong. It is built only on the public `Recording` API.
 
 ### 7.7 Events by time (`events.ts`)
 
-`eventsBetween(recording, from, to, limit?)` returns the events with `from <= time < to` in time
-order (the first `limit`, default 10,000, with the total). `Recording.history` answers "what
+`eventsBetween(recording, from, to, limit?, task?)` returns the events with `from <= time < to` in
+time order (the first `limit`, default 10,000, with the total); with `task`, only those of steps
+that task ran. `Recording.history` answers "what
 happened to this target"; this answers "what happened during these steps".
 
 ### 7.8 Dynamic dependence and slices (`dependence*.ts`, `slice.ts`)
@@ -790,6 +899,11 @@ source lines they ran on; `errorSlice` slices the instruction a failed run stopp
 R027 the `Check`, which depends on its clause's value, so the slice holds what the clause read);
 `upstreamWrites` lists the declarations and writes performed by steps of a slice, with names.
 
+**Tasks.** The shadow follows one call stack and does not see values handed over by channels or
+completed blocking calls, so `dependenceOf` returns null for recordings with tasks rather than
+wrong edges; `sliceProblem(recording)` gives the reason a slice is missing (`SLICE_TASKS_PROBLEM`
+or `SLICE_LENGTH_PROBLEM`), and the CLI, MCP tools and studio show it.
+
 ### 7.9 The query language (`query.ts`, `query-eval.ts`)
 
 `queryRecording(recording, text, { limit })` jumps to moments by what was true then:
@@ -809,7 +923,9 @@ value at a moment (a name out of scope) neither starts nor ends a stretch on its
 continues if the condition holds again and ends at that moment if not. `changed` follows objects by
 id, so a record is found whatever it is called where it is written. `calls` judges a call just
 before its `Return` runs (parameters as they are then, `ret` the value on top of the stack); a call
-that did not return has no `ret`.
+that did not return has no `ret`. With tasks, the state at a step is the running task's, so
+conditions read that task's frames and `calls` judges every call in its own task (the call tree,
+§7.6).
 
 ### 7.10 Negative provenance (`why-not.ts`)
 
@@ -825,7 +941,7 @@ source text, so shadowing is not resolved. Contracts: a line in a function whose
 failed at its entry is `cut-short` ("average was called, but at step 90 the precondition
 `len(xs) > 0` of average (line 2) failed (the caller passed xs = []), so its body never ran"); a run
 cut short by R026/R027 names the failed clause; a contract clause's own line is located like a
-body line.
+body line. With tasks, the decision is the next step of the guard's own task at its depth.
 
 ### 7.11 The inverse what-if (`inverse.ts`)
 
@@ -838,7 +954,8 @@ bisection takes over once two values bracket the goal; whole numbers stay whole,
 solution is replaced by the roundest value that still works. Goals with nothing to measure (a
 crash, a text) are probed with nearby values. The search is a generator of fork requests
 (`inverseSearch`) with a sync driver and an async one (`solveInverseAsync`, sliced forks, abort
-signal); it stops at 300 forks, 24 candidates or 3 solutions.
+signal); it stops at 300 forks, 24 candidates or 3 solutions. Programs with tasks have no slices
+(§7.8), so the search refuses them with a `problem`.
 
 ### 7.12 Repair previews (`repair.ts`)
 
@@ -851,13 +968,15 @@ again and every call judged wrong must be made again and return something else
 run must finish, and the function changed is `crashCulprit(recording)`: the innermost frame of the
 program's own code at the error, or for a failed precondition (R026, which blames the caller,
 SPEC §7.16) the next one out, possibly the top-level code. Contract clauses are never mutated. A passing mutant is a preview, not a proof: it reports what the wrong calls return
-now so the intended fix can be told from one that is merely different.
+now so the intended fix can be told from one that is merely different. Mutants run under the
+original's seed and task schedule (SPEC §10.6).
 
 ### 7.13 Sweeps and heap differences (`sweep.ts`, `heap-diff.ts`)
 
 `parseSweepValues` reads `1..20` (both ends included, also written `1..=20`), `0..100 step 10` or a
 comma list of literals, at most 64 values; `sweep`/`sweepAsync` fork the run once per value at one
-step and report each run with its comparison and deepest call depth. `diffHeaps(a, b)` lists the
+step and report each run with its comparison and deepest call depth (forks keep the task
+schedule). `diffHeaps(a, b)` lists the
 references (from variables into the heap and between objects) that only one of two states has.
 
 ### 7.14 Differential execution (`run-diff*.ts`, `run-input.ts`)
@@ -937,8 +1056,10 @@ writes an uncompressed payload otherwise; `encodeTraceFileSync(bundle, gzip?)` a
 `decodeTraceFileSync(bytes, gunzip?)` take a codec instead (the CLI passes `node:zlib`).
 
 **Bundle** (`TraceBundle`): `format: 'hindsight-trace'`, `version: 1`, `hindsightVersion`, `title`
-(an example title or file name, or null), `source`, `seed`, `maxSteps` (the real run's step
-limit), `edits` (the what-if chain, oldest first, as `TimedEdit` fork requests, each on the run the
+(an example title or file name, or null), `source`, `seed`, `schedule` (optional: present only
+for the random policy, as `{policy: 'random', quantum, seed}`; absent means round-robin, which is
+what every file written before tasks existed means, so the format stays version 1), `maxSteps`
+(the real run's step limit), `edits` (the what-if chain, oldest first, as `TimedEdit` fork requests, each on the run the
 previous one made), `forkMaxSteps`, `time` (the pen, in `0..length` of the final run), `outcome`
 (a summary: `finished`, `step-limit`, `aborted`, or `error` with code, message and 1-based line),
 `length`, `output` (the final run's lines), `fingerprint` and `checkpoints`.
@@ -951,7 +1072,7 @@ the outcome, written as
 differing checkpoint window, narrowed to one step when the stride is 1.
 
 **Opening.** `replayTrace(deps, bundle)` (and `replayTraceAsync`, in slices, abortable) compiles
-the source, records it with the saved seed and step limit, re-applies the edits with `fork` (under
+the source, records it with the saved seed, schedule and step limit, re-applies the edits with `fork` (under
 `forkMaxSteps`) and verifies the final run: `{verified: true}`, or `{verified: false, message,
 firstDifference}` when another Hindsight version replays differently or an edit can no longer be
 applied. It takes `compile`/`record` as dependencies (as `repairSearch` does) so the studio passes
@@ -1032,13 +1153,37 @@ version the contract oracle (§7.6) answers the bug finder's questions from them
 `ensures result == ...` clause answers every call it covers). `inferContractsWith(tools, tree,
 options)` takes `compile` and `record` as dependencies; `index.ts` binds the core's.
 
+### 7.18 The race finder (`races.ts`)
+
+`exploreSchedules(program, { runs?, seed?, quantum?, programSeed?, maxSteps? })` records a program
+with tasks (SPEC §10.6) under `runs` random schedules (default 20, at most 500; schedule seeds
+`seed`, `seed + 1`, …, default 1; quantum default 10; the program's own `random()` seed is the
+same for every run) and groups the runs by behavior: the outcome (an error by code, message and
+place) and the output. Groups come commonest first and keep the recording of their first seed. When
+there are two or more, the first two are compared:
+
+- **where**: the first step at which their schedules ran another task or instruction (the trace
+  columns), and the first output line that differs (none when only the outcomes differ);
+- **why**: `diffRuns` (§7.14) between their recordings: calls aligned per task by the call tree
+  (§7.6), with the origins of the difference;
+- **race candidates** (`raceCandidates(recording, from, until)`): the places written by more than
+  one task in the first run between the divergence and that output (else the end), read from the
+  event log with each event's step mapped to its task: globals, locals (a captured variable
+  written through an open cell counts as its owner's local), record fields, list elements, and a
+  whole list for pushes, inserts, removes and pops. Each comes with its writers (task, name, writes)
+  and lines, most writers first, at most 20; a field or element is named after the global or local
+  that held the object when it was first written (`account.total`), else `#id`.
+
+`usesTasks` is false when no run spawned (every schedule is then the same run). The work is
+bounded by the run count and each run's step limit (default 1,000,000).
+
 ## 8. Public API (`src/core/index.ts`)
 
 ```ts
 lex(source): LexResult                                   // for editors
 parse(source): ParseResult
 compile(source): CompileResult                           // stages per SPEC §11.2
-run(program, { maxSteps?, seed?, onOutput? }): RunResult // fast; hooks only for output
+run(program, { maxSteps?, seed?, onOutput?, schedule? }): RunResult // fast; hooks only for output
 record(program, RecordOptions): Recording
 recordAsync(program, AsyncRecordOptions): Promise<Recording>
 disassemble(program): string
@@ -1064,6 +1209,10 @@ mapMoment(a, b, t, { lines? }): MappedMoment, lineMap(before, after) // §7.14 t
 profile(recording, { justMyCode?, lines? }): Profile, foldedText, inclusiveSteps // §7.16
 inferContracts(recording, tree, InferOptions): InferResult // §7.17, checked by a re-run
 withContracts(source, picks), insertContracts, clauseTexts // §7.17 writing clauses in
+exploreSchedules(program, ExploreOptions): ScheduleExploration, raceCandidates // §7.18
+taskWaitText(wait, name?), normalSchedule(schedule)      // SPEC §10.6: wait sentences, canonical schedules
+timeAfter(call): number                                   // §7.6: the time after a call, per task
+sliceProblem(recording): string | null                    // §7.8: why a slice is missing
 encodeTraceFile, encodeTraceFileSync, decodeTraceFile,    // §7.15 trace files
   decodeTraceFileSync, validateBundle, traceBundle, fingerprintRecording,
   openTraceFile, openTraceFileSync, openTraceBundle, openTraceBundleAsync,
@@ -1071,7 +1220,10 @@ encodeTraceFile, encodeTraceFileSync, decodeTraceFile,    // §7.15 trace files
 show, repr, LineIndex, and all types from api-types.ts / diagnostics.ts / span.ts / tokens.ts
 ```
 
-`Recording.fork` and `forkAsync` (§7.5) are methods of every recording.
+`Recording.fork` and `forkAsync` (§7.5) are methods of every recording. `RunOptions` and
+`RecordOptions` take `schedule: { policy: 'round-robin' | 'random', quantum?, seed? }` (SPEC
+§10.6); recordings answer `taskSeries()`, `taskAt(t)` and `taskSwitches()` (§7.1), state views
+list `tasks` (§7.4), and `NavOptions.allTasks` lets steps cross tasks (§7.2).
 
 `compile` runs the stages of SPEC §11.2 and returns only the first failing stage's diagnostics
 (sorted, de-duplicated). It never throws for user input. `run` and `record` agree on outcomes.
@@ -1114,7 +1266,9 @@ it with provenance when a `v*` tag matching the package version is pushed.
 | `infer FILE [--fn NAME] [--write] [--max-steps N] [--seed S]` | contract inference (§7.17): per `fn` (or only `NAME`), its calls and different inputs, then the suggested `requires`/`ensures` clauses with their support and an example call, and whether they were checked by recording the program with them; `--write` adds every suggestion to the function headers in FILE (the only way the file is changed). Exit 1 when `--fn` names no `fn` or the file cannot be written |
 | `mcp` | the MCP server (§9.1) |
 | `record FILE [-o OUT.sighttrace] [--max-steps N] [--seed S]` | record and write a trace file (§7.15; default name: FILE with the `.sighttrace` extension), then print the steps, outcome, output lines and file size; refuses to overwrite FILE |
-| `run`, `replay`, `why`, `whynot`, `slice`, `query` with a `.sighttrace` in place of FILE | the file's program is recorded again with its seed, step limit and what-if edits (the what-if run is shown) and verified; a replay that differs prints `warning: …` on stderr and the command carries on; `replay` without `--at` uses the saved pen; `--max-steps`/`--seed` do not apply |
+| `run`, `replay`, `record` with `--schedule random [--schedule-seed S] [--quantum Q]` | run or record under the random task schedule (SPEC §10.6; schedule seed default 1, quantum default 10; `--schedule round-robin` is the default, and the other two options need `random`); `run` notes on stderr the tasks the main task left unfinished; `replay` lists every task with its status, wait and line |
+| `races FILE [--runs N] [--seed S] [--quantum Q] [--max-steps N]` | the race finder (§7.18): record under `N` random schedules (default 20, at most 500; seeds `S`, `S+1`, …, default 1), print each distinct result with its run count and seeds, then for the first two: the step where they diverge, the race candidates (place, writers, lines), the origins of the difference, and a `replay` command for the second; exit 0 when every schedule gives the same result, 1 when results differ, 2 for usage or compile trouble |
+| `run`, `replay`, `why`, `whynot`, `slice`, `query` with a `.sighttrace` in place of FILE | the file's program is recorded again with its seed, step limit and what-if edits (the what-if run is shown) and verified; a replay that differs prints `warning: …` on stderr and the command carries on; `replay` without `--at` uses the saved pen; `--max-steps`/`--seed` and the schedule options do not apply (the file brings its schedule) |
 
 Diagnostics print Rust-style with a code frame and caret underline (`error[E020]: …`, `--> file:3:9`,
 the source line, `^^^`, `= hint: …`), colored only when stdout and stderr are both terminals and
@@ -1141,28 +1295,33 @@ live beside it: `mcp-tools.ts` (one run), `mcp-query.ts`, `mcp-state.ts` (states
 problem with a call is a tool result with `isError`, never a protocol error; sources are limited
 to 200,000 characters and `max_steps` to 10,000,000. Tools that analyze a run take `trace_id` or
 `source` (recorded as a new trace, with `max_steps` and `seed`). Tool descriptions say what each
-tool is for and when to use it, and the `initialize` instructions suggest an order.
+tool is for and when to use it, and the `initialize` instructions suggest an order. Programs with
+tasks (`mcp-races.ts`): `run_trace` takes `schedule` (`{"policy": "random", "seed", "quantum"}`
+or `{"policy": "round-robin"}`); outcomes of runs that left tasks unfinished carry
+`unfinished_tasks` (task, name, status, wait); `seek_state` adds `tasks` (each task's status, wait,
+whether it is running, and its frames innermost first).
 
-| tool               | what it returns                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `run_trace`        | records `source` (or pages through `trace_id`'s output): trace id, steps, outcome, output lines with their steps; `output_offset`/`output_limit` (default the first 100 lines, at most 1,000), `output_total`, and `more_output` naming the next call                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `seek_state`       | the state at a step: location, frames innermost first with locals and captures, globals, output so far; `max_depth` (list/record nesting expanded, default 1, at most 8), `max_items` (per list or record, default 20, at most 200; `more` counts the rest), `frames` (`"all"`, `"top"` or N innermost), `include_globals`; `notes` say what was left out                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `query_provenance` | the write that produced a variable's value and the first 50 writes of its history                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `query`            | §7.9 in pages (`offset`, `limit`: default 50, at most 500; `next_offset` and `more` when cut); `summary: true` groups all matches (up to 100,000) by line and function (count, first and last step, min and max of numeric values) and collapses runs of consecutive matches on one line into rows such as `total: line 3 ×1,000, steps 21–9,013, values 1–500500`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `fork_whatif`      | forks at a step with a variable set (§7.5): a new trace id, the divergence and the output diff                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `get_divergence`   | a fork against its parent (or two traces of one program): divergence, output diff, the heap references that differ just after it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `why_not`          | §7.10 for a line                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `slice`            | §7.8: the slice's lines, the lines that ran, the lines ruled out                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `solve`            | §7.11 for an output line or `no_crash`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `diff_runs`        | §7.14 for `source_a`/`source_b`, `trace_a`/`trace_b`, or `source` (or `trace_id`) with `set` (`{"name", "value"}` or `"NAME=VALUE"`; a value is literal text, a string that is not a literal is taken as text, and JSON values are written as literals); both runs are kept as traces; a one-sentence `summary` names the first origin (or the changed input), then come the origins, calls only in A or B, renames and changed calls, each list cut to `limit` (default 20) with its total; with `expectations` (as for `suggest_repairs`) each one is judged in both runs, with a count of those fixed and broken, to confirm a fix                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `diagnose_failure` | one round trip. A crash: code, message, hint, line, column, the failing expression; the stack with spans and source lines; the statement running at the failing step and the values of the variables it reads (identifiers that are not field names or record keys; functions left out); the error slice as numbered source lines and the lines ruled out; the causal chain (`upstreamWrites` with names, values with their text, steps and lines; function declarations left out; the last 40); verified crash repairs (§7.12) with `mutants_checked`. A wrong output (`output_index` 0-based or `output_line` 1-based, and `expected`): the same view from the print, with inverse what-if candidates (§7.11). A step-limit run: the stack and the hottest lines. Every result ends with `next_steps` naming tools                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `suggest_repairs`  | §7.12. `mode: "crash"`, or `"examples"` with `expectations` (`{"call": "average([92, 88, 95])", "expected": "91.66…"}` or `{"function", "args", "returns"}`): each is matched against the recorded user calls by argument texts (both sides in canonical form, by running `repr` on the literal), judged right or wrong (`judged`; `unmatched` lists some recorded calls) and turned into repair examples for the one function judged wrong (or `function`); patches show the line before and after and what the wrong calls return now                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `verify_patch`     | an agent's own fix checked by the VM: the original (`trace_id` or `source`) and `patched_source` (the whole program) are both recorded (`max_steps`, `seed`) and compared. A patch that does not compile gives `compile_errors` (code, message, hint, line, column) and the verdict `does-not-compile`; otherwise both outcomes, `crash_fixed`, `contract_failures` (the assertion, precondition or postcondition each run failed), the `expectations` (as for `suggest_repairs`) judged in both runs as in `diff_runs`, and a `diff` summary of §7.14 (summary, origins, changed calls, calls only in a or b, output diff; lists cut to `limit`, default 10). The verdict weighs problems, a failed run (crash, contract, step limit) or an expectation not met: any new one is `regressed`, all gone with none new `fixed`, some gone `improved`, else `unchanged` (the reasons say whether the behavior differs with nothing to judge it); a patch whose program no longer contains the assertion or contract clause the original failed (whitespace aside: deleted or rewritten) keeps that as a remaining problem (`removedCheck`), so it is never `fixed`; `reasons` list regressions first, then fixes, then what remains. The patched run is kept as a trace. `diagnose_failure`, `suggest_repairs` and the `initialize` instructions point to it; the server never calls a model itself |
-| `find_bug`         | §7.6 as a stateless interview: each call rebuilds the finder, replays `answers` (`[{"question": id, "answer": "right"/"wrong"/"unsure"}]`) and returns the next question (id, call, arguments, result, side effects, lines, suspects remaining) or the verdict (function, lines, certainty, reason, code) with repair previews from the answers; `strategy` `divide` (default) or `top-down`; answers that were never asked are listed in `unused_answers`; `expectations` (as for `suggest_repairs`) answer the questions about the calls they match (`answered_from_expectations`) through the oracle below                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `export_trace`     | §7.15: a trace (a real run or a what-if, with its edit chain) as a `.sighttrace` file in base64, at `step` (default: the end), with its size and fingerprint                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `open_trace`       | §7.15: records a `.sighttrace` file (base64 in `trace_file`) again, re-applies its edits, checks the fingerprint and keeps the run as a new trace; returns what `run_trace` does plus `saved_step`, `verified` and the number of what-if edits                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `profile`          | §7.16: `steps`, `outcome`, the top `top` (default 20, at most 200) functions by inclusive steps (function, line, library, calls, inclusive, exclusive, share in percent, average, max, `first_step`) with `functions_total`, the top lines with their text and `lines_total`, and with `folded: true` the heaviest folded stacks; `just_my_code` (default true) folds library calls into their callers                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `infer_contracts`  | §7.17: per `fn` (or only `function`) its calls, `calls_read`, different inputs, existing clauses and the suggestions (kind, clause, template, `pins_result`, support, example call and `example_step`) or a note; `verified`, `withdrawn`, `problem`; `min_inputs` (default 3), `max_per_function` (default 6, at most 20), `include_source` returns the program with every suggestion written in; at most 40 functions are listed (`functions_total`). `seed` must be the trace's seed for the check to repeat the run                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| tool                | what it returns                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `run_trace`         | records `source` (or pages through `trace_id`'s output): trace id, steps, outcome, output lines with their steps; `output_offset`/`output_limit` (default the first 100 lines, at most 1,000), `output_total`, and `more_output` naming the next call                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `seek_state`        | the state at a step: location, frames innermost first with locals and captures, globals, output so far; `max_depth` (list/record nesting expanded, default 1, at most 8), `max_items` (per list or record, default 20, at most 200; `more` counts the rest), `frames` (`"all"`, `"top"` or N innermost), `include_globals`; `notes` say what was left out                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `query_provenance`  | the write that produced a variable's value and the first 50 writes of its history                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `query`             | §7.9 in pages (`offset`, `limit`: default 50, at most 500; `next_offset` and `more` when cut); `summary: true` groups all matches (up to 100,000) by line and function (count, first and last step, min and max of numeric values) and collapses runs of consecutive matches on one line into rows such as `total: line 3 ×1,000, steps 21–9,013, values 1–500500`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `fork_whatif`       | forks at a step with a variable set (§7.5): a new trace id, the divergence and the output diff                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `get_divergence`    | a fork against its parent (or two traces of one program): divergence, output diff, the heap references that differ just after it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `why_not`           | §7.10 for a line                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `slice`             | §7.8: the slice's lines, the lines that ran, the lines ruled out                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `solve`             | §7.11 for an output line or `no_crash`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `diff_runs`         | §7.14 for `source_a`/`source_b`, `trace_a`/`trace_b`, or `source` (or `trace_id`) with `set` (`{"name", "value"}` or `"NAME=VALUE"`; a value is literal text, a string that is not a literal is taken as text, and JSON values are written as literals); both runs are kept as traces; a one-sentence `summary` names the first origin (or the changed input), then come the origins, calls only in A or B, renames and changed calls, each list cut to `limit` (default 20) with its total; with `expectations` (as for `suggest_repairs`) each one is judged in both runs, with a count of those fixed and broken, to confirm a fix                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `diagnose_failure`  | one round trip. A crash: code, message, hint, line, column, the failing expression; the stack with spans and source lines; the statement running at the failing step and the values of the variables it reads (identifiers that are not field names or record keys; functions left out); the error slice as numbered source lines and the lines ruled out; the causal chain (`upstreamWrites` with names, values with their text, steps and lines; function declarations left out; the last 40); verified crash repairs (§7.12) with `mutants_checked`. A wrong output (`output_index` 0-based or `output_line` 1-based, and `expected`): the same view from the print, with inverse what-if candidates (§7.11). A step-limit run: the stack and the hottest lines. Every result ends with `next_steps` naming tools                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `suggest_repairs`   | §7.12. `mode: "crash"`, or `"examples"` with `expectations` (`{"call": "average([92, 88, 95])", "expected": "91.66…"}` or `{"function", "args", "returns"}`): each is matched against the recorded user calls by argument texts (both sides in canonical form, by running `repr` on the literal), judged right or wrong (`judged`; `unmatched` lists some recorded calls) and turned into repair examples for the one function judged wrong (or `function`); patches show the line before and after and what the wrong calls return now                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `verify_patch`      | an agent's own fix checked by the VM: the original (`trace_id` or `source`) and `patched_source` (the whole program) are both recorded (`max_steps`, `seed`) and compared. A patch that does not compile gives `compile_errors` (code, message, hint, line, column) and the verdict `does-not-compile`; otherwise both outcomes, `crash_fixed`, `contract_failures` (the assertion, precondition or postcondition each run failed), the `expectations` (as for `suggest_repairs`) judged in both runs as in `diff_runs`, and a `diff` summary of §7.14 (summary, origins, changed calls, calls only in a or b, output diff; lists cut to `limit`, default 10). The verdict weighs problems, a failed run (crash, contract, step limit) or an expectation not met: any new one is `regressed`, all gone with none new `fixed`, some gone `improved`, else `unchanged` (the reasons say whether the behavior differs with nothing to judge it); a patch whose program no longer contains the assertion or contract clause the original failed (whitespace aside: deleted or rewritten) keeps that as a remaining problem (`removedCheck`), so it is never `fixed`; `reasons` list regressions first, then fixes, then what remains. The patched run is kept as a trace. `diagnose_failure`, `suggest_repairs` and the `initialize` instructions point to it; the server never calls a model itself |
+| `find_bug`          | §7.6 as a stateless interview: each call rebuilds the finder, replays `answers` (`[{"question": id, "answer": "right"/"wrong"/"unsure"}]`) and returns the next question (id, call, arguments, result, side effects, lines, suspects remaining) or the verdict (function, lines, certainty, reason, code) with repair previews from the answers; `strategy` `divide` (default) or `top-down`; answers that were never asked are listed in `unused_answers`; `expectations` (as for `suggest_repairs`) answer the questions about the calls they match (`answered_from_expectations`) through the oracle below                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `explore_schedules` | §7.18 for `source` or `trace_id`'s program: `runs` (default 20, at most 200), `seed` (the first schedule seed), `quantum`, `max_steps`, `program_seed`; each distinct result with its run count, seeds, outcome, output and a kept `trace_id` (the five commonest); `divergence`: the two seeds and traces compared, the step where they diverge, the first differing output index, the race candidates (name, writers with task, name and writes, lines) and the first origins of the difference; `note` when the program never started a task                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `export_trace`      | §7.15: a trace (a real run or a what-if, with its edit chain) as a `.sighttrace` file in base64, at `step` (default: the end), with its size and fingerprint                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `open_trace`        | §7.15: records a `.sighttrace` file (base64 in `trace_file`) again, re-applies its edits, checks the fingerprint and keeps the run as a new trace; returns what `run_trace` does plus `saved_step`, `verified` and the number of what-if edits                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `profile`           | §7.16: `steps`, `outcome`, the top `top` (default 20, at most 200) functions by inclusive steps (function, line, library, calls, inclusive, exclusive, share in percent, average, max, `first_step`) with `functions_total`, the top lines with their text and `lines_total`, and with `folded: true` the heaviest folded stacks; `just_my_code` (default true) folds library calls into their callers                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `infer_contracts`   | §7.17: per `fn` (or only `function`) its calls, `calls_read`, different inputs, existing clauses and the suggestions (kind, clause, template, `pins_result`, support, example call and `example_step`) or a note; `verified`, `withdrawn`, `problem`; `min_inputs` (default 3), `max_per_function` (default 6, at most 20), `include_source` returns the program with every suggestion written in; at most 40 functions are listed (`functions_total`). `seed` must be the trace's seed for the check to repeat the run                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 A question id is the function name and an FNV-1a digest of the call's memo key (`average#3f2a91c0`;
 `name@entry` for calls without a key), so ids are stable across calls and identical calls share
@@ -1306,18 +1465,26 @@ the fast run's.
 
 **Lines.** A diagnostic's or runtime error's line is the line of its span start (SPEC §10.4, §11.1).
 
+**Tasks.** `tests/lang/tasks/` runs under the default round-robin schedule, which is deterministic,
+so expected output is annotated like any other program's and deadlocks as runtime errors (R028).
+
 ### 10.3 Time-travel properties (`tests/timetravel.test.ts`, fast-check)
 
 For corpus and generated programs: `stateAt(t)` equals the state reached by a fresh VM run to `t`;
 seeking in random orders gives identical views; forward navigation results are `> t` (or `N`) and
 backward `< t` (or 0); step over skips sibling calls; `origin` never returns an event at or after
-`before`; `restore(snapshot())` then `k` steps equals `k` steps on the original.
+`before`; `restore(snapshot())` then `k` steps equals `k` steps on the original. The brute-force
+navigator the steps are compared against follows the running task (§7.2), and
+`src/core/tasks-recording.test.ts` checks that random-order seeks in multi-task recordings under a
+random schedule equal a fresh run to `t` under the same schedule.
 
 ### 10.4 End-to-end (`e2e/`)
 
 Playwright against the dev server with the local Chrome (`channel: 'chrome'`): load, run an example,
 step forwards and backwards, scrub the timeline, click output to jump, jump to a variable's origin,
-toggle breakpoints, compile errors, sharing links.
+toggle breakpoints, compile errors, sharing links; for programs with tasks
+(`studio-tasks.spec.ts`), the swim lanes (lane colors read off the canvas), the deadlock message
+and task list, and the schedule picker recording again under seeds 1 and 2.
 
 ## 11. Studio (`src/studio`)
 
@@ -1374,7 +1541,11 @@ tabbed panels); the page may scroll vertically, never horizontally.
   next run"); inline value hints for the selected frame's live locals at the end of their
   declaration lines; hovering an identifier shows its value at the current time.
 - **Call stack**: innermost frame first; library frames dimmed (collapsed with just-my-code);
-  clicking a frame selects it (variables and editor follow).
+  clicking a frame selects it (variables and editor follow). For a program with tasks (SPEC §10.6)
+  the frames are the running task's, and a **Tasks** list follows (`TaskList.tsx`): every task's
+  number, name and status (running, ready, what it waits for, or done with its result) and, for
+  the others, their frames with lines; it stays at the end of a finished run, naming the tasks the
+  main task left unfinished.
 - **Variables**: locals of the selected frame, its captured variables, and globals. Values render as
   expandable trees (lists, records, functions; long lists page through `objectAt`). Values that
   changed since the previous step flash. Every row has **⟲ origin** (move the pen to
@@ -1387,7 +1558,8 @@ tabbed panels); the page may scroll vertically, never horizontally.
 - **Console**: one line per output event with its step number. Lines printed after the pen are
   ghosted; the line printed at the pen is marked. Clicking a line moves the pen to the moment it was
   printed. At the end of a failed run the error appears here with its hint and a link to the failing
-  moment. Hovering or focusing a line shows its tools, "What led to this?" and "Make this print…",
+  moment; a deadlock (R028) lists what every task waits for, one item per task, and a finished run
+  that left tasks unfinished says which and what they wait for. Hovering or focusing a line shows its tools, "What led to this?" and "Make this print…",
   over the line's right end; on phones and touch screens they sit under the line at the pen (a tap
   moves the pen there) or under a focused line.
 - **Console line menu**: a right-click, the ContextMenu key or Shift+F10 on a console line opens a
@@ -1404,6 +1576,16 @@ tabbed panels); the page may scroll vertically, never horizontally.
   step, line and function. Markers: output events (ticks on the top margin), breakpoint hits, watched
   writes, the error flag at the end. Rendering uses a per-pixel min/max envelope (precomputed
   mipmaps) so 2,000,000 steps draw in a few milliseconds.
+- **Swim lanes** (`lib/lanes.ts`, `timeline/chart-lanes.ts`): for a run with tasks the plot splits
+  into one band per task (at most 8; further tasks share the last, `+N more`), each labelled
+  `2 worker`, with the depth of that task's own steps in its own lane color (`--lane-1`…`--lane-6`,
+  light and dark) and its waiting stretches hatched (`--lane-wait`): from the switch at which the
+  task blocked to the switch back to it (`Recording.taskSwitches()`), so a stretch includes the
+  time after it was woken and before it ran again. Each lane has a min/max mipmap that starts at
+  blocks of 8 steps (finer levels are read from the depth and task series), about N/4 small
+  integers per lane: 1.4 million steps over four tasks build in about 45 ms and draw in about 6
+  ms. The pen's dot and watch marks sit in their task's lane, the readout says "Depth by task" and
+  the tooltip names the task. Channel hand-offs are not drawn as connectors.
 - **What if** (§7.5): every primitive value of a local, global, captured variable, list element or
   record field has a "What if" button (double-clicking the value works too) that edits it inline as
   a literal at the pen's step. Enter forks the run (`forkAsync`) and shows the new timeline. A
@@ -1524,7 +1706,10 @@ tabbed panels); the page may scroll vertically, never horizontally.
   (click to jump); "Step limit reached · Record 2M more" (calls `extendAsync`).
 - **Settings**: step budget (500 k / 2 M / 10 M), just-my-code, auto-run, keep my place after
   edits, instruction-level stepping (adds a step-instruction button, shows `opName` and operand
-  temps), theme. Stored settings saved before a setting existed load with its default.
+  temps), theme, and the **task schedule** (`ScheduleSetting.tsx`): round-robin, or random with
+  a seed, a quantum and "Next seed". With auto-run on, changing the schedule records the program
+  again at once, so another interleaving is one click away. Settings stored before a setting
+  existed load with its default (`storedSettings`).
 - **Sharing**: "Copy link" puts the program in the URL fragment (`#src=` + base64url of the UTF-8
   source, uncompressed; programs over 60,000 characters are not linked) with the pen's step
   (`&t=`), making a moment link: opening it records the program and puts the pen at that step, so a
@@ -1630,9 +1815,10 @@ also checks the answer's kind) with a request, an `AbortSignal` and, for sweeps,
 callback.
 
 - **Runs as data**: a `Recording` cannot cross a thread boundary, so a request carries a
-  `RunDescription` instead: `{source, seed, maxSteps, edits, length, outcome}`, where `edits` is
-  the what-if chain the recording was forked with (`Recording.whatIf.edits`). The worker compiles
-  and records the program again (`record` with the same seed and step limit) and repeats each fork
+  `RunDescription` instead: `{source, seed, schedule?, maxSteps, edits, length, outcome}`, where
+  `edits` is the what-if chain the recording was forked with (`Recording.whatIf.edits`) and
+  `schedule` the task schedule it ran under (absent for round-robin). The worker compiles and
+  records the program again (`record` with the same seed, schedule and step limit) and repeats each fork
   request in time order; recording is deterministic, so this is the same run step for step, which
   it checks against `length` and `outcome`. A run the user stopped (`aborted`) cannot be described
   and runs on the main thread. The worker keeps the last run it recorded, so several analyses of

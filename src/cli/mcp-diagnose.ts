@@ -10,6 +10,8 @@
 import {
   backwardSlice,
   errorSlice,
+  SLICE_LENGTH_PROBLEM,
+  sliceProblem,
   type FrameView,
   lex,
   LineIndex,
@@ -228,7 +230,8 @@ function statementJson(recording: Recording, source: string, state: StateView): 
 /** The slice as numbered source lines, and the writes in it (closest to the criterion last). */
 function sliceJson(recording: Recording, source: string, slice: Slice | null): JsonObject {
   if (slice === null) {
-    return { slice: null, causal_chain: [], causal_chain_note: 'This run is too long to analyze' }
+    const note = sliceProblem(recording) ?? SLICE_LENGTH_PROBLEM
+    return { slice: null, causal_chain: [], causal_chain_note: note }
   }
   const lines = [...slice.lines].sort((a, b) => a - b)
   const ran = [...recording.lineHitCounts().keys()].sort((a, b) => a - b)

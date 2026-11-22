@@ -1,0 +1,4 @@
+// A program without other tasks deadlocks as soon as it waits (R028).
+let ch = channel()
+print("before") // expect: before
+send(ch, 1) // expect runtime error R028: deadlock: every task is waiting // hint: task 1 (main) waits to send to channel #2 here

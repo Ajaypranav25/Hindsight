@@ -586,7 +586,7 @@ describe('emission recipes', () => {
   test('pipes become calls', () => {
     expect(codeOf('let v = [1] |> map(str) |> len')).toEqual([
       '0000  GetBuiltin 4  ; len  line 1',
-      '0002  GetBuiltin 57  ; map',
+      '0002  GetBuiltin 65  ; map',
       '0004  Const 0  ; 1',
       '0006  List 1',
       '0008  GetBuiltin 1  ; str',

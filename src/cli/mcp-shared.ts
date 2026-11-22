@@ -11,7 +11,9 @@ import {
   outcomeText,
   type ProvenanceEvent,
   type Recording,
+  type TaskWaitView,
   type TracedValue,
+  type UnfinishedTask,
   type ValueView,
   writeName,
 } from '../core/index'
@@ -179,10 +181,31 @@ export function tracedJson(value: TracedValue): Json {
 
 export function outcomeJson(recording: Recording): Json {
   const { outcome } = recording
+  if (outcome.kind === 'finished' && outcome.unfinishedTasks !== undefined) {
+    return { kind: 'finished', unfinished_tasks: unfinishedJson(outcome.unfinishedTasks) }
+  }
   if (outcome.kind !== 'error') return { kind: outcome.kind }
   const { error } = outcome
   const line = new LineIndex(recording.program.source).lineOf(error.span.start)
   return { kind: 'error', code: error.code, message: error.message, hint: error.hint ?? null, line }
+}
+
+/** What a blocked task waits for (SPEC §10.6), or null. */
+export function waitJson(wait: TaskWaitView | null): Json {
+  if (wait === null) return null
+  return wait.kind === 'join'
+    ? { waits_for: 'task', task: wait.task }
+    : { waits_for: wait.kind, channel: wait.channelId }
+}
+
+/** The tasks a finished run left unfinished, for outcomes. */
+function unfinishedJson(tasks: readonly UnfinishedTask[]): Json {
+  return tasks.map((task) => ({
+    task: task.id,
+    name: task.name,
+    status: task.status,
+    wait: waitJson(task.wait),
+  }))
 }
 
 /** The user-code line of the instruction at `time`, or null (library code, the end). */

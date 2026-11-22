@@ -34,6 +34,14 @@ export interface Settings {
   readonly playbackSpeed: number
   /** After an edit, move the pen to the same moment of the new run (not the same step number). */
   readonly keepPlace: boolean
+  /** How tasks interleave in the next run (SPEC §10.6); seed and quantum matter for `random`. */
+  readonly schedule: StudioSchedule
+}
+
+export interface StudioSchedule {
+  readonly policy: 'round-robin' | 'random'
+  readonly seed: number
+  readonly quantum: number
 }
 
 export type RunStatus =

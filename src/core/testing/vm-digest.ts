@@ -4,7 +4,7 @@
  * machine record, including the object counter and the generator. Taking the snapshot makes it
  * the machine's base for later snapshots (§6.8), which only exercises structural sharing more.
  */
-import type { HeapObject, Value, VM } from '../runtime-types'
+import type { HeapObject, Task, Value, VM } from '../runtime-types'
 import { MachineSnapshot } from '../vm-snapshot'
 
 export function digest(vm: VM): string {
@@ -21,6 +21,8 @@ export function digest(vm: VM): string {
     `frames=${record.frames.map((f) => `${f.uid}:${f.closure.proto.id}@${f.ip}+${f.base}`).join(',')}`,
     `cells=${record.openCells.map((c) => `${c.id}@${c.stackIndex}`).join(',')}`,
     `globals=${Array.from(record.globals, ([k, v]) => `${k}=${describe(v)}`).join(',')}`,
+    `sched=${record.preemptAt}/${record.schedState}`,
+    ...(record.tasks ?? []).map((task) => taskLine(task, task === record.current, describe)),
   ]
   return [...parts, ...objects].join('\n')
 }
@@ -82,5 +84,29 @@ function contents(object: HeapObject, work: Value[]): string {
       return `range ${object.start} ${object.end} ${object.step} ${object.inclusive}`
     case 'native':
       return `native ${object.name}`
+    case 'task':
+      return `task ${object.task} ${object.name}`
+    case 'channel':
+      for (const item of object.items) work.push(item)
+      return `channel ${object.capacity} [${object.items.map(atom).join(',')}] ${object.closed ? 'closed' : 'open'}`
   }
+}
+
+/** One task: status, wait, result and (for tasks other than the running one) its arrays. */
+function taskLine(task: Task, running: boolean, describe: (value: Value) => string): string {
+  const wait =
+    task.wait === null
+      ? '-'
+      : task.wait.kind === 'join'
+        ? `join ${task.wait.task}`
+        : `${task.wait.kind} ${describe(task.wait.channel)}`
+  const object = task.object === null ? '-' : describe(task.object)
+  const head = `task ${task.id} ${task.name} ${task.status} ${wait} since=${task.since} result=${describe(task.result)} object=${object}`
+  if (running) return `${head} running`
+  return [
+    head,
+    `  stack=${task.stack.map(describe).join(',')}`,
+    `  frames=${task.frames.map((f) => `${f.uid}:${f.closure.proto.id}@${f.ip}+${f.base}`).join(',')}`,
+    `  cells=${task.openCells.map((c) => `${c.id}@${c.stackIndex}`).join(',')}`,
+  ].join('\n')
 }

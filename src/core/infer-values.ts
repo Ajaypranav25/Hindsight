@@ -26,7 +26,7 @@ export interface PlainRecord {
 /** A function, range, builtin or iterator: only its type is known. */
 export interface PlainOther {
   readonly kind: 'other'
-  readonly type: 'function' | 'range' | 'iterator'
+  readonly type: 'function' | 'range' | 'iterator' | 'task' | 'channel'
 }
 
 export type Plain = null | boolean | number | string | PlainList | PlainRecord | PlainOther

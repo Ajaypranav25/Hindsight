@@ -1,0 +1,24 @@
+// An unbuffered channel hands each value from a sender to a receiver. A sender waits until a
+// receiver takes its value; a sender that finds a receiver waiting hands the value over and goes
+// on at once (SPEC §10.6).
+let ch = channel()
+fn producer() {
+  for i in 1..=3 {
+    print("send {i}")
+    send(ch, i)
+    print("sent {i}")
+  }
+}
+spawn(producer)
+// main waits first, so the producer finds it waiting and goes on until its second send.
+print(recv(ch)) // expect: send 1
+// expect: sent 1
+// expect: send 2
+// expect: 1
+// The producer waits in its second send: main takes the value without waiting.
+print(recv(ch)) // expect: 2
+print(recv(ch)) // expect: sent 2
+// expect: send 3
+// expect: sent 3
+// expect: 3
+print(ch) // expect: <channel #2 (0/0)>

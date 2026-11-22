@@ -118,6 +118,7 @@ describe('functions and ranges', () => {
       id: 3,
       open: true,
       stackIndex: 1,
+      stack: [],
       value: null,
       ownerFrameUid: 1,
       slot: 1,

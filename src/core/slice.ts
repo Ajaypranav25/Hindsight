@@ -6,7 +6,7 @@
  */
 import type { ProvenanceEvent, Recording } from './api-types'
 import { type FunctionProto, instructionLength, Op } from './bytecode'
-import { dependenceOf } from './dependence'
+import { dependenceOf, MAX_DEPENDENCE_STEPS } from './dependence'
 import { eventsBetween } from './events'
 import { replayAccess } from './recorder'
 
@@ -21,14 +21,29 @@ export interface Slice {
   readonly lines: ReadonlySet<number>
 }
 
-/** The slice of one step or several; null when the recording cannot be analyzed. */
+export const SLICE_TASKS_PROBLEM =
+  'Causes cannot be traced in programs with tasks yet (slices follow one call stack)'
+export const SLICE_LENGTH_PROBLEM = 'This run is too long to analyze'
+
+/**
+ * Why `recording` has no slices, or null when it has: programs with tasks are refused rather than
+ * answered wrongly, and very long runs are not analyzed (ARCHITECTURE §7.8).
+ */
+export function sliceProblem(recording: Recording): string | null {
+  if (recording.taskSeries() !== null) return SLICE_TASKS_PROBLEM
+  if (recording.length > MAX_DEPENDENCE_STEPS) return SLICE_LENGTH_PROBLEM
+  return null
+}
+
+/** The slice of one step or several; null when the recording cannot be analyzed (`sliceProblem`). */
 export function backwardSlice(
   recording: Recording,
   criteria: number | readonly number[],
 ): Slice | null {
-  const graph = dependenceOf(recording)
   const access = replayAccess(recording)
-  if (graph === null || access === null) return null
+  if (access === null) return null
+  const graph = dependenceOf(recording)
+  if (graph === null) return null
   const list = typeof criteria === 'number' ? [criteria] : [...criteria]
   const marks = graph.slice(list)
   const { steps, end, length } = access.core

@@ -9,6 +9,8 @@ import {
   diffHeaps,
   type EditValue,
   errorSlice,
+  SLICE_LENGTH_PROBLEM,
+  sliceProblem,
   type Recording,
   solveInverse,
   whyNot,
@@ -45,6 +47,7 @@ import {
   MAX_VALUE_ITEMS,
   stateJson,
 } from './mcp-state'
+import { SCHEDULE } from './mcp-races'
 import { visibleVariable } from './whatif'
 
 export const DEFAULT_OUTPUT_LIMIT = 100
@@ -90,7 +93,14 @@ export function coreTools(context: ToolContext): Tool[] {
       description:
         'Start here. Compile and record a Hindsight program (source), or page through the output of a trace you already have (trace_id). Returns a trace_id for every other tool, the number of steps, the outcome (finished, error with code/message/line, step-limit) and output lines with the step that printed each (first 100 by default; output_total says how many there are). Compile errors come back with line and column. A crash? Call diagnose_failure next.',
       inputSchema: schema(
-        { source: SOURCE, trace_id: TRACE_ID, max_steps: MAX_STEPS, seed: SEED, ...OUTPUT_PAGING },
+        {
+          source: SOURCE,
+          trace_id: TRACE_ID,
+          max_steps: MAX_STEPS,
+          seed: SEED,
+          schedule: SCHEDULE,
+          ...OUTPUT_PAGING,
+        },
         [],
       ),
       run: (args) => {
@@ -305,7 +315,7 @@ function slice(context: ToolContext, args: Args): Json {
     step === recording.length
       ? (errorSlice(recording) ?? backwardSlice(recording, step))
       : backwardSlice(recording, step)
-  if (found === null) throw new ToolError('This run is too long to analyze')
+  if (found === null) throw new ToolError(sliceProblem(recording) ?? SLICE_LENGTH_PROBLEM)
   const ran = [...recording.lineHitCounts().keys()].sort((a, b) => a - b)
   const lines = [...found.lines].sort((a, b) => a - b)
   return {

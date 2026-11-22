@@ -78,6 +78,10 @@ function heapTypeName(value: HeapObject): TypeName {
       return 'function'
     case 'range':
       return 'range'
+    case 'task':
+      return 'task'
+    case 'channel':
+      return 'channel'
     default:
       throw new InternalError(`${value.type} objects are not language values`)
   }

@@ -668,3 +668,48 @@
   background: var(--whatif-soft);
   color: var(--whatif);
 }
+
+/* ---- tasks (programs that spawn) ------------------------------------------------------- */
+
+.pn-tasks {
+  border-top: 1px solid var(--rule);
+}
+
+.pn-tasks-title {
+  margin: 0;
+  padding: var(--space-2) var(--space-3) var(--space-1);
+}
+
+.pn-task-id {
+  flex: none;
+  min-width: 2ch;
+  font: var(--text-xs) / 1.4 var(--font-mono);
+  color: var(--ink-faint);
+}
+
+.pn-task-status {
+  overflow: hidden;
+  font: var(--text-xs) / 1.4 var(--font-ui);
+  color: var(--ink-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pn-task--running .pn-task-status {
+  color: var(--pen);
+}
+
+.pn-task--blocked .pn-task-status {
+  color: var(--warn);
+}
+
+.pn-task--done {
+  color: var(--ink-faint);
+}
+
+.pn-deadlock {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-4);
+  font: var(--text-sm) / 1.45 var(--font-ui);
+  color: var(--ink-muted);
+}

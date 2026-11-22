@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import type { Location, Recording } from '../../core/api-types'
+import { compile, record } from '../../core/index'
 import { memoryStorage } from '../lib/storage'
 import { StudioProvider } from '../state/context'
 import { ManualScheduler } from '../state/scheduler'
@@ -203,6 +204,17 @@ describe('StripChart', () => {
     expect(document.querySelector('.tl-chart__tooltip')).toBeNull()
     fireEvent.pointerMove(slider, { clientX: 5000 })
     expect(document.querySelector('.tl-chart__tooltip')?.textContent).toContain('step 10')
+  })
+
+  test('a run with tasks reads as depth by task, and the tooltip names the task', async () => {
+    const compiled = compile('let ch = channel()\nspawn(fn() { send(ch, 1) })\nprint(recv(ch))')
+    if (!compiled.ok) throw new Error('does not compile')
+    const recording = record(compiled.program)
+    await setup(recording)
+    expect(screen.getByText('Depth by task')).toBeTruthy()
+    const slider = screen.getByRole('slider', { name: 'Time' })
+    fireEvent.pointerMove(slider, { clientX: 5000 })
+    expect(document.querySelector('.tl-chart__tooltip')?.textContent).toMatch(/task \d · /)
   })
 
   test('shows an empty state without a recording', async () => {

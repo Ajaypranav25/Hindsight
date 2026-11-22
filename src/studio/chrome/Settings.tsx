@@ -4,6 +4,7 @@ import { useStudio, useStudioActions } from '../state/context'
 import { STEP_BUDGETS } from '../state/defaults'
 import type { Settings as SettingsShape, ThemeSetting } from '../state/types'
 import { SettingsIcon } from './icons'
+import { ScheduleSetting } from './ScheduleSetting'
 import { usePopover } from './usePopover'
 
 const THEMES: readonly { value: ThemeSetting; label: string }[] = [
@@ -83,6 +84,7 @@ function SettingsPanel(props: { id: string }) {
           </label>
         ))}
       </Group>
+      <ScheduleSetting value={settings.schedule} onChange={(schedule) => update({ schedule })} />
       <Group legend="Theme">
         {THEMES.map((theme) => (
           <Choice

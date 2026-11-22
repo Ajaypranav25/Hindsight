@@ -1,0 +1,4 @@
+// Closing a channel twice is R029.
+let ch = channel()
+close(ch)
+close(ch) // expect runtime error R029: channel is already closed

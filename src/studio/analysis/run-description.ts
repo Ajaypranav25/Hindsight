@@ -3,7 +3,13 @@
  * was made, `recreateRun` records it again from that description. A what-if fork carries its whole chain of edits (`Recording.whatIf.edits`), and a
  * fork of a fork is reproduced by forking the real run once per edit in time order.
  */
-import { compile, DEFAULT_SEED, record, type Recording } from '../../core/index'
+import {
+  compile,
+  DEFAULT_SEED,
+  record,
+  type Recording,
+  type ScheduleOptions,
+} from '../../core/index'
 import type { RunDescription } from './protocol'
 
 const descriptions = new WeakMap<Recording, RunDescription | null>()
@@ -40,7 +46,11 @@ export function recordingOf(run: RunDescription): Recording | null {
 
 /** What a recording of the core's `Recording` class keeps of how it was made. */
 interface RecordedWith {
-  readonly core?: { readonly maxSteps?: unknown; readonly seed?: unknown }
+  readonly core?: {
+    readonly maxSteps?: unknown
+    readonly seed?: unknown
+    readonly taskSchedule?: ScheduleOptions
+  }
 }
 
 function describe(recording: Recording): RunDescription | null {
@@ -54,7 +64,16 @@ function describe(recording: Recording): RunDescription | null {
   const fallback =
     outcome.kind === 'step-limit' ? outcome.maxSteps : Math.max(length + 1, lastEdit + 1)
   const maxSteps = typeof made?.maxSteps === 'number' ? made.maxSteps : fallback
-  return { source: recording.program.source, seed, maxSteps, edits, length, outcome: outcome.kind }
+  const description: RunDescription = {
+    source: recording.program.source,
+    seed,
+    maxSteps,
+    edits,
+    length,
+    outcome: outcome.kind,
+  }
+  const schedule = made?.taskSchedule
+  return schedule === undefined ? description : { ...description, schedule }
 }
 
 /** A string that is equal for equal descriptions (cached per description). */
@@ -75,7 +94,11 @@ export type Recreated =
 export function recreateRun(run: RunDescription): Recreated {
   const compiled = compile(run.source)
   if (!compiled.ok) return { ok: false, error: 'The program does not compile.' }
-  let recording = record(compiled.program, { maxSteps: run.maxSteps, seed: run.seed })
+  let recording = record(compiled.program, {
+    maxSteps: run.maxSteps,
+    seed: run.seed,
+    schedule: run.schedule,
+  })
   for (const { time, edit } of run.edits) {
     const fork = recording.fork(time, edit, { maxSteps: run.maxSteps })
     if (!fork.ok)

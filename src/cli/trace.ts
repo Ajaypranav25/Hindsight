@@ -13,6 +13,7 @@ import {
   type Outcome,
   record,
   type Recording,
+  type ScheduleOptions,
   traceBundle,
 } from '../core/index'
 import type { Command } from './args'
@@ -41,7 +42,11 @@ function fail(io: CliIO, style: Style, message: string): null {
 /** The loaded trace's run, or a new recording of the loaded program. */
 export function recordingFor(
   loaded: Loaded,
-  options: { readonly maxSteps: number; readonly seed: number },
+  options: {
+    readonly maxSteps: number
+    readonly seed: number
+    readonly schedule?: ScheduleOptions
+  },
 ): Recording {
   return loaded.recording ?? record(loaded.program, options)
 }
@@ -104,7 +109,8 @@ export function recordTrace(
     fail(io, style, 'trace files cannot be written here')
     return 1
   }
-  const recording = record(loaded.program, { maxSteps: command.maxSteps, seed: command.seed })
+  const { maxSteps, seed, schedule } = command
+  const recording = record(loaded.program, { maxSteps, seed, schedule })
   const title = basename(loaded.file).replace(/\.sight$/i, '')
   const bundle = traceBundle({
     recording,

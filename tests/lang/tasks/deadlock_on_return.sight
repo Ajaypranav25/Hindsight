@@ -1,0 +1,7 @@
+// A task that finishes while every other task waits ends the program with R028 at its return.
+let ch = channel()
+fn worker() {
+  print("worker runs") // expect: worker runs
+} // expect runtime error R028: deadlock: every task is waiting // hint: task 1 (main) waits to receive from channel #2 on line 7
+spawn(worker)
+recv(ch)

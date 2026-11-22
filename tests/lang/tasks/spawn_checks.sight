@@ -1,0 +1,2 @@
+// spawn checks its function and the argument count (R019, R005).
+spawn(5) // expect runtime error R019: 'spawn' expects a function as argument 1, got a number

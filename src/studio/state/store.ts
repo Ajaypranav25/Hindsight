@@ -15,6 +15,7 @@ import {
   NOTICE_DURATION_MS,
   penTime,
   PERSIST_DELAY_MS,
+  scheduleOptions,
   STORAGE_KEYS,
 } from './defaults'
 import {
@@ -367,6 +368,7 @@ class Controller {
     })
     const recording = await this.deps.engine.recordAsync(compile.program, {
       maxSteps: settings.maxSteps,
+      schedule: scheduleOptions(settings.schedule),
       signal: token,
       onProgress: (progress) => this.reportProgress(token, progress),
     })
@@ -620,6 +622,9 @@ class Controller {
     if (this.get().playing && settings.playbackSpeed !== previous.playbackSpeed) {
       this.schedulePlay(settings.playbackSpeed)
     }
+    // Another interleaving is only worth seeing at once: run again under the new schedule.
+    const scheduleChanged = JSON.stringify(settings.schedule) !== JSON.stringify(previous.schedule)
+    if (scheduleChanged && this.get().recording !== null && settings.autoRun) void this.run()
   }
 }
 

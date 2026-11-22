@@ -1,0 +1,8 @@
+// A runtime error in any task stops the program at that task's operation.
+fn bad(x) {
+  return x + "!" // expect runtime error R001: cannot apply '+' to number and string
+}
+spawn(bad, 1)
+print("main first") // expect: main first
+yield()
+print("never")

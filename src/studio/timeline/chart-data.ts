@@ -3,6 +3,7 @@ import { useCallback, useMemo, useState } from 'react'
 import type { Recording } from '../../core/api-types'
 import { queryTimes } from '../../core/index'
 import { useStudio } from '../state/context'
+import { buildLaneModel, type LaneModel } from '../lib/lanes'
 import { buildMarkPyramid } from '../lib/mark-pyramid'
 import { activeSlice, liveQuery, liveSweep } from '../state/lab'
 import type { ChartLab } from './chart-lab'
@@ -21,6 +22,21 @@ export interface ChartData {
   readonly outputTimes: Float64Array
   readonly breakpointTimes: Float64Array
   readonly watchTimes: Float64Array
+  /** One swim lane per task, for a run with tasks (else null). */
+  readonly laneModel: LaneModel | null
+}
+
+/** The swim lanes of a run with tasks, or null (ARCHITECTURE §11.3). */
+export function laneModelOf(recording: Recording): LaneModel | null {
+  const tasks = recording.taskSeries()
+  if (tasks === null) return null
+  const views = recording.stateAt(recording.length).tasks ?? []
+  return buildLaneModel({
+    depths: recording.depthSeries(),
+    tasks,
+    switches: recording.taskSwitches(),
+    names: new Map(views.map((task) => [task.id, task.name])),
+  })
 }
 
 const NO_TIMES = new Float64Array(0)
@@ -48,9 +64,10 @@ export function useChartData(recording: Recording | null): ChartData {
     const at = Math.min(Math.max(0, watch.at), recording.length)
     return Float64Array.from(recording.history(watch.target, at).events, (event) => event.time)
   }, [recording, watch])
+  const laneModel = useMemo(() => (recording ? laneModelOf(recording) : null), [recording])
   return useMemo(
-    () => ({ env, outputTimes, breakpointTimes, watchTimes }),
-    [env, outputTimes, breakpointTimes, watchTimes],
+    () => ({ env, outputTimes, breakpointTimes, watchTimes, laneModel }),
+    [env, outputTimes, breakpointTimes, watchTimes, laneModel],
   )
 }
 

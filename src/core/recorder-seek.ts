@@ -3,6 +3,7 @@
  * latest snapshot at or before it and running on. A forward seek within reach runs on from the
  * current position without restoring. Recently built views are cached in a small LRU.
  */
+import type { ScheduleOptions } from './api-types'
 import type { Program } from './bytecode'
 import type { RuntimeDeps, VM } from './runtime-types'
 import type { SnapshotSchedule } from './recorder-session'
@@ -14,6 +15,7 @@ export class Seeker {
     private readonly program: Program,
     private readonly runtime: RuntimeDeps,
     private readonly seed: number,
+    private readonly taskSchedule: ScheduleOptions | undefined,
     private readonly schedule: SnapshotSchedule,
   ) {}
 
@@ -26,6 +28,7 @@ export class Seeker {
         builtins: this.runtime.builtins,
         libraryProtos: this.runtime.libraryProtos,
         seed: this.seed,
+        schedule: this.taskSchedule,
       })
       this.vm = vm
     }

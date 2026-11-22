@@ -1,0 +1,18 @@
+// recv on a closed, empty channel returns nil; buffered values are still delivered first; waiting
+// receivers get nil when the channel is closed (SPEC §10.6).
+let ch = channel(3)
+send(ch, 1)
+send(ch, 2)
+close(ch)
+print(ch) // expect: <channel #2 (2/3, closed)>
+print(recv(ch), recv(ch), recv(ch)) // expect: 1 2 nil
+let empty = channel()
+fn reader(name) {
+  print(name, recv(empty))
+}
+spawn(reader, "r1")
+spawn(reader, "r2")
+yield()
+close(empty)
+yield() // expect: r1 nil
+// expect: r2 nil

@@ -292,6 +292,8 @@ export function* repairSearch(
   const core = replayAccess(recording)?.core
   const limits: RecordOptions = {
     seed: core?.seed,
+    // Mutants interleave their tasks like the original run (SPEC §10.6).
+    schedule: core?.taskSchedule,
     // A mutant that loops for ever must stop soon.
     maxSteps: Math.max(recording.length * 4, recording.length + 50_000),
   }

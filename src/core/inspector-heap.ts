@@ -1,12 +1,22 @@
 /**
  * Value and object views, and the heap walk (ARCHITECTURE §7.4): breadth first from the roots
  * (globals in definition order, then each frame's stack region in slot order followed by its
- * closure's captures), children in `ObjectView` order, each id once, builtins never expanded.
- * Iterative throughout, so nesting depth is unlimited.
+ * closure's captures, for the running task and then every other task in id order, then finished
+ * tasks' results), children in `ObjectView` order, each id once, builtins never expanded. Iterative
+ * throughout, so nesting depth is unlimited.
  */
 import type { CaptureView, ObjectView, RefType, ValueView, WriteTarget } from './api-types'
 import { InternalError } from './diagnostics'
-import type { CellObj, ClosureObj, HeapObject, Value, VM } from './runtime-types'
+import type {
+  CellObj,
+  ClosureObj,
+  Frame,
+  HeapObject,
+  Task,
+  TaskObj,
+  Value,
+  VM,
+} from './runtime-types'
 import { preview } from './values'
 
 export const PREVIEW_LENGTH = 48
@@ -23,6 +33,8 @@ export function refType(object: HeapObject): RefType {
     case 'record':
     case 'range':
     case 'iterator':
+    case 'task':
+    case 'channel':
       return object.type
     case 'native':
       return 'builtin'
@@ -52,9 +64,14 @@ export function valueView(value: Value): ValueView {
   }
 }
 
-/** The current value of a cell: open cells alias their stack slot. */
-export function cellValue(vm: VM, cell: CellObj): Value {
-  return cell.open ? (vm.stack[cell.stackIndex] as Value) : cell.value
+/** The current value of a cell: open cells alias a slot of their task's stack. */
+export function cellValue(_vm: VM, cell: CellObj): Value {
+  return cell.open ? (cell.stack[cell.stackIndex] as Value) : cell.value
+}
+
+/** The machine's record of the task a handle names (null when the VM has no such task). */
+export function taskOf(vm: VM, handle: TaskObj): Readonly<Task> | null {
+  return vm.tasks?.[handle.task - 1] ?? null
 }
 
 /** An open cell is reported as its owner's local slot, a closed one as the cell (§6.7). */
@@ -120,6 +137,30 @@ export function objectView(vm: VM, object: HeapObject, page: PageRange = FIRST_P
         source: valueView(object.source),
         position: object.position,
       }
+    case 'task': {
+      const task = taskOf(vm, object)
+      const status = task?.status ?? 'done'
+      return {
+        type: 'task',
+        id: object.id,
+        task: object.task,
+        name: object.name,
+        status,
+        result: task !== null && status === 'done' ? valueView(task.result) : null,
+      }
+    }
+    case 'channel': {
+      const { offset, end } = pageBounds(page, object.items.length)
+      return {
+        type: 'channel',
+        id: object.id,
+        capacity: object.capacity,
+        closed: object.closed,
+        offset,
+        items: object.items.slice(offset, end).map(valueView),
+        length: object.items.length,
+      }
+    }
     default:
       throw new InternalError(`a ${object.type} is not a value`)
   }
@@ -149,11 +190,25 @@ function recordView(id: number, fields: ReadonlyMap<string, Value>, page: PageRa
 /** Calls `visit` for every root value in root order. */
 function forEachRoot(vm: VM, visit: (value: Value) => void): void {
   for (const value of vm.globals.values()) visit(value)
-  const frames = vm.frames
+  forEachFrameValue(vm, vm.stack, vm.frames, visit)
+  for (const task of vm.tasks ?? []) {
+    if (task.id !== vm.taskId) forEachFrameValue(vm, task.stack, task.frames, visit)
+  }
+  // A finished task's result stays inspectable (StateView.tasks) even when no handle is kept.
+  for (const task of vm.tasks ?? []) if (task.status === 'done') visit(task.result)
+}
+
+/** Each frame's stack region in slot order, then its closure's captures, outermost first. */
+function forEachFrameValue(
+  vm: VM,
+  stack: readonly Value[],
+  frames: readonly Frame[],
+  visit: (value: Value) => void,
+): void {
   for (let i = 0; i < frames.length; i++) {
     const frame = frames[i]!
-    const regionEnd = i + 1 < frames.length ? frames[i + 1]!.base : vm.stack.length
-    for (let index = frame.base; index < regionEnd; index++) visit(vm.stack[index] as Value)
+    const regionEnd = i + 1 < frames.length ? frames[i + 1]!.base : stack.length
+    for (let index = frame.base; index < regionEnd; index++) visit(stack[index] as Value)
     for (const cell of frame.closure.upvalues) visit(cellValue(vm, cell))
   }
 }
@@ -173,6 +228,14 @@ function forEachChild(vm: VM, object: HeapObject, visit: (value: Value) => void)
       break
     case 'iterator':
       visit(object.source)
+      break
+    case 'task': {
+      const task = taskOf(vm, object)
+      if (task !== null && task.status === 'done') visit(task.result)
+      break
+    }
+    case 'channel':
+      for (const item of object.items) visit(item)
       break
     default:
       break

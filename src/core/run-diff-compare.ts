@@ -8,6 +8,7 @@
  */
 import type { OutputEvent, Recording, ValueView } from './api-types'
 import { globalsReadBy } from './call-details'
+import { timeAfter } from './call-after'
 import type { CallNode, CallTree } from './calls'
 import { deepText, KEY_TEXT_LIMIT, keyText, valueText } from './call-values'
 
@@ -40,7 +41,7 @@ const OUTPUT_TEXT_LIMIT = 2048
 /** The signature of `call` in `tree`'s recording. */
 export function signatureOf(tree: CallTree, call: CallNode): CallSignature {
   const { recording } = tree
-  const after = call.outcome === 'returned' ? call.exit + 1 : recording.length
+  const after = call.outcome === 'returned' ? timeAfter(call) : recording.length
   if (call.depth === 0) {
     const outcome = recording.outcome
     return {

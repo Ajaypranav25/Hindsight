@@ -150,6 +150,14 @@ class DeepRenderer {
         return true
       case 'iterator':
         return false
+      case 'task':
+        this.out += `<task ${object.task}: ${object.name}>`
+        return true
+      case 'channel':
+        // A channel's contents change over time: never identical to another value.
+        if (this.mode === 'key') return false
+        this.out += `<channel #${object.id} (${object.length}/${object.capacity}${object.closed ? ', closed' : ''})>`
+        return true
     }
   }
 

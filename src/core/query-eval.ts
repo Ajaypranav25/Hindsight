@@ -56,7 +56,7 @@ export function resolveName(vm: VM, name: string): Resolved | null {
     if (cell !== undefined) {
       return cell.open
         ? {
-            value: vm.stack[cell.stackIndex] ?? null,
+            value: cell.stack[cell.stackIndex] ?? null,
             target: { kind: 'local', frameUid: cell.ownerFrameUid, slot: cell.slot },
           }
         : { value: cell.value, target: { kind: 'cell', cellId: cell.id } }

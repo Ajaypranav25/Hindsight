@@ -1,0 +1,9 @@
+// A sender waiting on a channel that gets closed retries its send, which fails (R029).
+let ch = channel()
+fn sender() {
+  send(ch, 1) // expect runtime error R029: cannot send on a closed channel
+}
+spawn(sender)
+yield()
+close(ch)
+yield()

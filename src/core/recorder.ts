@@ -22,8 +22,10 @@ import {
   type ProvenanceEvent,
   type RecordOptions,
   type Recording,
+  type ScheduleOptions,
   type StateView,
   type StepKind,
+  type TaskSwitch,
   type WhatIfInfo,
   type WriteTarget,
 } from './api-types'
@@ -40,6 +42,7 @@ import { runSliced } from './recorder-async'
 import { LruCache, Seeker } from './recorder-seek'
 import { type RecordingCore, RecordingSession, SnapshotSchedule } from './recorder-session'
 import type { RuntimeDeps, VM } from './runtime-types'
+import { normalSchedule } from './tasks-info'
 import { AllocTimes, EventColumns, StepColumns } from './trace-columns'
 import { TraceSink } from './trace-sink'
 
@@ -69,11 +72,17 @@ function stepLimit(value: number | undefined, fallback: number): number {
   return Math.floor(limit)
 }
 
-function newVM(program: Program, runtime: RuntimeDeps, seed: number): VM {
+function newVM(
+  program: Program,
+  runtime: RuntimeDeps,
+  seed: number,
+  taskSchedule: ScheduleOptions | undefined,
+): VM {
   return runtime.createVM(program, {
     builtins: runtime.builtins,
     libraryProtos: runtime.libraryProtos,
     seed,
+    schedule: taskSchedule,
   })
 }
 
@@ -89,12 +98,14 @@ export function startSession(
   const events = new EventColumns()
   const allocs = new AllocTimes()
   const sink = new TraceSink(events, allocs, [], 0)
-  const vm = newVM(program, runtime, seed)
+  const taskSchedule = normalSchedule(options.schedule)
+  const vm = newVM(program, runtime, seed, taskSchedule)
   vm.hooks = sink
   return new RecordingSession({
     program,
     runtime,
     seed,
+    taskSchedule,
     heapLimit: options.heapLimit ?? DEFAULT_HEAP_LIMIT,
     steps: new StepColumns(),
     events,
@@ -120,13 +131,14 @@ function extensionSession(
   }
   const extra = stepLimit(extraSteps, 0)
   const sink = new TraceSink(core.events, core.allocs, core.outputs.slice(), core.eventCount)
-  const vm = newVM(core.program, core.runtime, core.seed)
+  const vm = newVM(core.program, core.runtime, core.seed, core.taskSchedule)
   vm.restore(snapshot)
   vm.hooks = sink
   return new RecordingSession({
     program: core.program,
     runtime: core.runtime,
     seed: core.seed,
+    taskSchedule: core.taskSchedule,
     heapLimit: options.heapLimit ?? core.heapLimit,
     steps: core.steps,
     events: core.events,
@@ -140,6 +152,8 @@ function extensionSession(
   })
 }
 
+const SWITCH_STATES = ['runnable', 'blocked', 'done'] as const
+
 class RecordedRun implements Recording {
   readonly program: Program
   readonly length: number
@@ -149,6 +163,7 @@ class RecordedRun implements Recording {
   private readonly seeker: Seeker
   private readonly views = new LruCache<number, StateView>(VIEW_CACHE_SIZE)
   private navIndex: NavIndex | null = null
+  private switches: readonly TaskSwitch[] | null = null
   private provenanceIndex: ProvenanceIndex | null = null
 
   constructor(
@@ -160,7 +175,13 @@ class RecordedRun implements Recording {
     this.outcome = core.outcome
     this.outputs = core.outputs
     this.table = new ProtoTable(core.program, core.runtime.libraryProtos)
-    this.seeker = new Seeker(core.program, core.runtime, core.seed, core.schedule)
+    this.seeker = new Seeker(
+      core.program,
+      core.runtime,
+      core.seed,
+      core.taskSchedule,
+      core.schedule,
+    )
   }
 
   locationAt(t: number): Location | null {
@@ -178,6 +199,36 @@ class RecordedRun implements Recording {
 
   depthSeries(): Int32Array {
     return this.core.steps.depths.subarray(0, this.length)
+  }
+
+  taskSeries(): Int32Array | null {
+    const { steps, hasTasks } = this.core
+    return hasTasks && steps.taskIds !== null ? steps.taskIds.subarray(0, this.length) : null
+  }
+
+  taskAt(t: number): number {
+    this.check(t)
+    if (t < this.length) return this.core.hasTasks ? (this.core.steps.taskIds?.[t] ?? 1) : 1
+    return this.core.end?.task ?? 1
+  }
+
+  taskSwitches(): readonly TaskSwitch[] {
+    if (this.switches === null) {
+      const { steps, hasTasks } = this.core
+      const count = hasTasks ? steps.switchCount(this.length) : 0
+      const switches: TaskSwitch[] = []
+      for (let i = 0; i < count; i++) {
+        const time = steps.switchTimes[i]!
+        switches.push({
+          time,
+          from: this.taskAt(time - 1),
+          to: this.taskAt(time),
+          state: SWITCH_STATES[steps.switchStates[i]!] ?? 'runnable',
+        })
+      }
+      this.switches = switches
+    }
+    return this.switches
   }
 
   stateAt(t: number): StateView {
@@ -226,7 +277,8 @@ class RecordedRun implements Recording {
 
   step(t: number, kind: StepKind, direction: Direction, options?: NavOptions): number {
     this.check(t)
-    return navigateStep(this.nav(), t, kind, direction, options?.justMyCode ?? false)
+    const jmc = options?.justMyCode ?? false
+    return navigateStep(this.nav(), t, kind, direction, jmc, options?.allTasks ?? false)
   }
 
   continue(
@@ -289,7 +341,8 @@ class RecordedRun implements Recording {
 
   /** A replay VM positioner of its own, for scans that must not disturb `stateAt` (tools only). */
   newSeeker(): Seeker {
-    return new Seeker(this.core.program, this.core.runtime, this.core.seed, this.core.schedule)
+    const { program, runtime, seed, taskSchedule, schedule } = this.core
+    return new Seeker(program, runtime, seed, taskSchedule, schedule)
   }
 
   get protoTable(): ProtoTable {
@@ -312,6 +365,8 @@ class RecordedRun implements Recording {
         steps.protoIds,
         steps.ips,
         this.table,
+        this.taskSeries(),
+        this.core.end?.task ?? 1,
       )
     }
     return this.navIndex

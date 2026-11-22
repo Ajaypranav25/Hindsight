@@ -357,9 +357,11 @@ expression, including `_.x = 1` and `_[0] = 1`, is E027.
 | `"record"`   | mutable maps from string keys to values; insertion-ordered; reference semantics |
 | `"function"` | user functions, lambdas, and builtins                                           |
 | `"range"`    | immutable arithmetic progressions (§7.6)                                        |
+| `"task"`     | handles of tasks started by `spawn` (§10.6); reference semantics                |
+| `"channel"`  | channels between tasks (§10.6); mutable; reference semantics                    |
 
 The **article type** of a value, used in messages, is `nil` for nil and `a bool`, `a number`,
-`a string`, `a list`, `a record`, `a function`, `a range` for the rest.
+`a string`, `a list`, `a record`, `a function`, `a range`, `a task`, `a channel` for the rest.
 
 ### 4.2 Truthiness
 
@@ -381,6 +383,9 @@ Two conversions are used throughout: `show` (for `print`, `str`, `join`, interpo
 - functions → `<fn NAME>` (NAME per §7.12) and `<fn>` for unnamed functions. Every **builtin** —
   natives and library functions alike — shows as `<builtin NAME>`.
 - ranges → `A..B` or `A..=B` (bounds via `show`); a range with step ≠ 1 → `range(A, B, STEP)`.
+- tasks → `<task N: NAME>` (N the task number, NAME its function's display name, `main` for the
+  main task); channels → `<channel #ID (LEN/CAP)>`, or `<channel #ID (LEN/CAP, closed)>` once
+  closed (ID the object id, LEN the values buffered now, CAP the capacity). Neither shows contents.
 - **Cycles.** While a list or record is being printed, a reference to that same object nested inside
   it prints as `[...]` or `{...}`. Shared references that are not cyclic print in full each time:
   `let a = [1]` then `print([a, a])` prints `[[1], [1]]`; `var xs = [1]`, `push(xs, xs)`, `print(xs)`
@@ -540,7 +545,7 @@ object before index before assigned value.
 - lists: same length and items pairwise equal;
 - records: same key set and equal values per key (order ignored);
 - ranges: same start, end, step and inclusivity;
-- functions: the same function object.
+- functions, tasks and channels: the same object.
 - If a comparison `(a, b)` is already in progress further up, it counts as equal (cyclic structures
   compare without looping). Nesting depth is unlimited, as in §4.3.
 
@@ -786,6 +791,14 @@ fixed by `src/core/builtin-names.ts`.
 | `seed(n)`                                     | 1     | 1: `a number`                                                                                                                                                                                                                               | `nil`; resets the generator (§10.3)                                                                                                     |
 | `steps()`                                     | 0     | —                                                                                                                                                                                                                                           | the number of steps executed before this call (§10.1); absolute values depend on code generation                                        |
 | `PI`, `INF`                                   | value | —                                                                                                                                                                                                                                           | the constants π and `Infinity` (numbers, not functions)                                                                                 |
+| `spawn(f, ...args)`                           | 1+    | 1: `a function`; a native is **R019** `'spawn' cannot run the builtin 'NAME' as a task`; arity of `f` as for a call (**R005**); more than 10,000 unfinished tasks: **R030**                                                                 | a new task that will call `f(...args)` on its own stack (§10.6); the caller goes on                                                     |
+| `channel(capacity?)`                          | 0–1   | 1: `a non-negative integer` (at most 2^24)                                                                                                                                                                                                  | a new open channel; capacity 0 (the default) is an unbuffered rendezvous                                                                |
+| `send(ch, v)`                                 | 2     | 1: `a channel`; a closed channel: **R029** `cannot send on a closed channel`                                                                                                                                                                | `nil`; may block (§10.6)                                                                                                                |
+| `recv(ch)`                                    | 1     | 1: `a channel`                                                                                                                                                                                                                              | the oldest value sent; `nil` when the channel is closed and empty; may block (§10.6)                                                    |
+| `close(ch)`                                   | 1     | 1: `a channel`; already closed: **R029** `channel is already closed`                                                                                                                                                                        | `nil`; waiting receivers get `nil`, waiting senders fail (§10.6)                                                                        |
+| `wait(t)`                                     | 1     | 1: `a task`; the calling task itself: **R019** `'wait' cannot wait for the task that calls it`                                                                                                                                              | the task's result (what its function returned); blocks until the task is done                                                           |
+| `yield()`                                     | 0     | —                                                                                                                                                                                                                                           | `nil`; lets the next runnable task run (§10.6)                                                                                          |
+| `current_task()`                              | 0     | —                                                                                                                                                                                                                                           | the running task's handle (`<task 1: main>` in the main task)                                                                           |
 
 ### 9.3 Library functions
 
@@ -851,6 +864,9 @@ source of randomness is the VM's generator, whose state is part of the VM state:
 
 - `random_int(lo, hi)` is `lo + floor(random() * (hi - lo + 1))`, using exactly one draw.
 
+Programs with tasks also depend on the schedule (§10.6), which is chosen by the host; the same
+program, seed and schedule produce the same run.
+
 There is no clock, input or I/O besides `print`. The absolute values returned by `steps()` and the
 last digits of `sin`, `cos`, `log`, `atan2` and non-integer `**` results are implementation-defined;
 conformance tests must not print them.
@@ -877,6 +893,7 @@ An error's **line** is the line where its span starts. The span is that of the f
 | R013, R024 from a spread                                   | the `...e` element                                                                        |
 | R025 from an operator, an interpolation or a literal       | that expression                                                                           |
 | R026, R027                                                 | the failing clause's expression (after `requires` / `ensures`)                            |
+| R028 when a task's function returns                        | the `return` or the end of the function body that finished the task (§10.6)               |
 
 ### 10.5 Limits
 
@@ -898,6 +915,58 @@ An error's **line** is the line where its span starts. The span is that of the f
   replays fail at the same step.
 - **Steps**: chosen by the host (the studio defaults to 2,000,000). Reaching the limit is not an
   error; the run ends with outcome _step limit_ and can be resumed by tools that support it.
+- **Tasks**: at most 10,000 tasks may be unfinished at once (**R030**). The call limit counts each
+  task's own calls; memory and steps are shared by all tasks.
+
+### 10.6 Tasks and channels
+
+Hindsight has deterministic, cooperative **tasks**: several call stacks that take turns on the one
+machine, one instruction (step, §10.1) at a time. There is no new syntax; tasks are made and used
+through the natives of §9.2.
+
+- **Tasks.** The main script is task 1, named `main`. `spawn(f, ...args)` creates the next task
+  (2, 3, … in spawn order) whose stack starts with the call `f(...args)`, and returns its handle;
+  the new task's name is `f`'s display name (§7.12). The spawning task goes on: spawning is not a
+  switch point. A task is _runnable_, _blocked_ (waiting for something) or _done_ (its function
+  returned; its result is what `wait` returns).
+- **The program ends when the main task ends**, whatever the other tasks are doing; tools report
+  the tasks left unfinished. A runtime error in any task ends the program; its location and stack
+  are that task's.
+- **Channels.** `channel(capacity)` holds up to `capacity` values in a queue. `send(ch, v)` hands
+  `v` to the receiver that has waited longest if there is one, else queues it if there is room,
+  else blocks until a receiver takes it. `recv(ch)` takes the oldest queued value (a sender waiting
+  for room then moves its value into the queue), else takes the value of the sender that has
+  waited longest, else returns `nil` if the channel is closed, else blocks until a value comes. So
+  an unbuffered channel (capacity 0) is a rendezvous: a sender waits until a receiver takes its
+  value, and a sender or receiver that finds its partner already waiting completes at once and
+  goes on. `close(ch)` makes waiting receivers return `nil`; waiting senders then fail with R029,
+  as does any later `send`. Values already queued are still received after `close`.
+- **Waiting for a task.** `wait(t)` returns `t`'s result at once if it is done, else blocks until it
+  is. A failed task has already ended the program.
+- **Blocking.** A call that blocks is one step: the task stops there, and the task that unblocks it
+  completes the call for it (so its result appears in the waiting task at that other task's step);
+  the waiting task then goes on after the call without spending another step. Waiters are served in
+  the order they blocked.
+- **Switch points.** Only these move execution to another task: a blocking call, `yield()`, the end
+  of a task's function and, under the random policy, preemption. A switch happens between steps, so
+  the state at a time (§10.1) already belongs to the task that executes the next step.
+- **Schedules.** The host chooses the policy:
+  - _round-robin_ (the default): at a switch point, the next runnable task in task-number order runs
+    (cyclically after the running one, which comes last). Nothing is preempted, so a task that
+    never blocks or yields keeps running.
+  - _random_ with a _quantum_ `q` (default 10) and a _schedule seed_ (default 1): after a switch,
+    the running task is preempted after `1 + floor(r · q)` steps; at every switch point and every
+    preemption, the next task is drawn uniformly from the other runnable tasks (the running task
+    goes on when no other can). The draws `r` come from a mulberry32 generator (§10.3) seeded with
+    the schedule seed, separate from the program's generator, so `random()` is unaffected. The first
+    preemption is drawn when the first task is spawned; a program that never spawns runs exactly as
+    under round-robin.
+- **Deadlock.** When the running task blocks, or a task's function returns, and no task is runnable
+  while some are blocked, the program fails with **R028** `deadlock: every task is waiting`. The hint
+  names each waiting task and what it waits for: `task 2 (worker) waits to send to channel #5 here`
+  for the task that blocked at this step, then the others in task-number order, each with the line
+  of the call it waits on (`… on line 7`), separated by `; `. A deadlock at a task's return names no
+  task as `here`.
 
 ---
 
@@ -995,6 +1064,9 @@ has no warnings.
 | R025 | `result too large` / `memory limit exceeded` (§10.5)                                                                                                                                                           |                                                                                                          |
 | R026 | `precondition failed: TEXT` (TEXT: the clause's source, §7.16)                                                                                                                                                 | `the caller passed P = R, …` / `the caller passed no arguments`; R truncated                             |
 | R027 | `postcondition failed: TEXT` (TEXT: the clause's source, §7.16)                                                                                                                                                | `'NAME' returned R` / `lambda returned R`; R truncated                                                   |
+| R028 | `deadlock: every task is waiting` (§10.6)                                                                                                                                                                      | every waiting task and what it waits for (§10.6)                                                         |
+| R029 | `cannot send on a closed channel` / `channel is already closed`                                                                                                                                                |                                                                                                          |
+| R030 | `too many tasks: more than 10000 are unfinished`                                                                                                                                                               |                                                                                                          |
 
 (There is no R003 or R023.)
 

@@ -26,17 +26,64 @@ function grow<T extends Int32Array | Uint8Array | Float64Array>(array: T, needed
 // ---------------------------------------------------------------------------------------------
 // The per-step trace
 
-/** Location of the instruction about to execute at each step: proto id, ip and depth. */
+/**
+ * Location of the instruction about to execute at each step: proto id, ip and depth (in the
+ * running task), plus the running task's id once the program has tasks (ARCHITECTURE §7.1).
+ */
 export class StepColumns {
   protoIds = new Int32Array(INITIAL_CAPACITY)
   ips = new Int32Array(INITIAL_CAPACITY)
   depths = new Int32Array(INITIAL_CAPACITY)
+  /**
+   * The running task per step; null until a step runs with tasks, so programs without tasks pay
+   * nothing. Created with every earlier step marked as the main task's (only it ran before).
+   */
+  taskIds: Int32Array | null = null
+  /**
+   * Task switches in time order: the time of the first step after the switch, and what the task
+   * switched away from does then (0 runnable: it yielded or was preempted; 1 blocked; 2 done).
+   */
+  switchTimes: number[] = []
+  switchStates: number[] = []
 
   set(t: number, protoId: number, ip: number, depth: number): void {
     if (t >= this.protoIds.length) this.ensure(t + 1)
     this.protoIds[t] = protoId
     this.ips[t] = ip
     this.depths[t] = depth
+  }
+
+  /** Records the running task of step `t` (after `set`). */
+  setTask(t: number, task: number): void {
+    if (this.taskIds === null) {
+      this.taskIds = new Int32Array(this.protoIds.length)
+      this.taskIds.fill(1, 0, t)
+    }
+    this.taskIds[t] = task
+  }
+
+  /**
+   * Logs a switch before step `time`. A continuation that runs again over logged times (a second
+   * extension of one recording) logs nothing new: its switches are the same.
+   */
+  addSwitch(time: number, state: number): void {
+    const times = this.switchTimes
+    if (times.length > 0 && times[times.length - 1]! >= time) return
+    times.push(time)
+    this.switchStates.push(state)
+  }
+
+  /** The number of switches at times `<= length`. */
+  switchCount(length: number): number {
+    const times = this.switchTimes
+    let low = 0
+    let high = times.length
+    while (low < high) {
+      const middle = (low + high) >> 1
+      if (times[middle]! <= length) low = middle + 1
+      else high = middle
+    }
+    return low
   }
 
   /** A copy of steps `0..length`: a what-if fork's shared past (ARCHITECTURE §7.5). */
@@ -46,6 +93,16 @@ export class StepColumns {
     copy.protoIds.set(this.protoIds.subarray(0, length))
     copy.ips.set(this.ips.subarray(0, length))
     copy.depths.set(this.depths.subarray(0, length))
+    // The past keeps its tasks only when another task ran in it; else the fork starts the column
+    // when it first runs with tasks, so a fork that never spawns stays without one.
+    const tasks = this.taskIds?.subarray(0, length)
+    if (tasks !== undefined && tasks.some((task) => task !== 1)) {
+      copy.taskIds = new Int32Array(copy.protoIds.length)
+      copy.taskIds.set(tasks)
+      const switches = this.switchCount(length)
+      copy.switchTimes = this.switchTimes.slice(0, switches)
+      copy.switchStates = this.switchStates.slice(0, switches)
+    }
     return copy
   }
 
@@ -53,6 +110,7 @@ export class StepColumns {
     this.protoIds = grow(this.protoIds, needed)
     this.ips = grow(this.ips, needed)
     this.depths = grow(this.depths, needed)
+    if (this.taskIds !== null) this.taskIds = grow(this.taskIds, needed)
   }
 }
 
