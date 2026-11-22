@@ -10,6 +10,7 @@ export const DEFAULT_SETTINGS: Settings = {
   instructionLevel: false,
   theme: 'system',
   playbackSpeed: 8,
+  keepPlace: true,
 }
 
 export const AUTO_RUN_DELAY_MS = 600
@@ -33,7 +34,10 @@ export const STORAGE_KEYS = {
   runInProgress: 'hindsight:run-in-progress',
 } as const
 
-/** Accepts stored settings only when every field has the right type and a sane value. */
+/**
+ * Accepts stored settings only when every field has the right type and a sane value. Settings
+ * added later may be missing from older stored settings (`withDefaults` fills them in).
+ */
 export function isSettings(value: unknown): value is Settings {
   if (typeof value !== 'object' || value === null) return false
   const v = value as Record<string, unknown>
@@ -46,8 +50,14 @@ export function isSettings(value: unknown): value is Settings {
     (v.theme === 'system' || v.theme === 'light' || v.theme === 'dark') &&
     typeof v.playbackSpeed === 'number' &&
     v.playbackSpeed >= 1 &&
-    v.playbackSpeed <= 60
+    v.playbackSpeed <= 60 &&
+    (v.keepPlace === undefined || typeof v.keepPlace === 'boolean')
   )
+}
+
+/** Stored settings with any later-added setting they lack set to its default. */
+export function withDefaults(settings: Settings): Settings {
+  return { ...DEFAULT_SETTINGS, ...settings }
 }
 
 /**

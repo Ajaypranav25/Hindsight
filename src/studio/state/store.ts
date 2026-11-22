@@ -29,6 +29,7 @@ import {
   keepPreviousSource,
   type KeepResult,
 } from './previous-source'
+import { editRunOf, keptPlace, type KeptPlace } from './keep-place'
 import { KEPT_AFTER_TRACE_NOTICE, TraceFlow } from './trace'
 import { WhatIfFlow } from './what-if'
 import type {
@@ -373,33 +374,38 @@ class Controller {
     this.stopPlay()
     const previous = this.get()
     const pending = this.pendingTime
-    const time =
-      pending === null ? this.placePen(recording) : Math.max(0, Math.min(pending, recording.length))
+    const edited = pending === null && this.penStrategy === 'keep'
+    const placed: KeptPlace =
+      pending !== null
+        ? { time: Math.max(0, Math.min(pending, recording.length)), place: null }
+        : this.placePen(recording)
     this.pendingTime = null
     this.penStrategy = 'keep'
     this.set({
       recording,
       recordedSource: source,
       status: this.completedStatus(),
-      time,
+      time: placed.time,
       selectedFrameUid: null,
       watch: previous.recordedSource === source ? previous.watch : null,
       originMark: null,
+      editRun: edited ? editRunOf(previous.recording, recording, placed.place) : null,
     })
     this.clearRunMarkAfterDisplay()
   }
 
-  private placePen(recording: Recording): number {
-    if (this.penStrategy === 'keep') return this.keptTime(recording.length)
+  /**
+   * After an edit, the pen keeps its place (the same moment of the new run, or with that setting
+   * off the same step; at the end if it was at the end); else where the example asks for it.
+   */
+  private placePen(recording: Recording): KeptPlace {
+    const { recording: previous, time, settings } = this.get()
+    if (this.penStrategy === 'keep') {
+      if (previous === null) return { time: recording.length, place: null }
+      return keptPlace(this.deps.engine, previous, time, recording, settings.keepPlace)
+    }
     const example = this.deps.examples.find((candidate) => candidate.id === this.get().exampleId)
-    return penTime(recording, example?.pen ?? 'peak')
-  }
-
-  /** After an edit, keep the pen where it was (or at the end if it was at the end). */
-  private keptTime(length: number): number {
-    const { recording, time } = this.get()
-    if (!recording || time >= recording.length) return length
-    return Math.min(time, length)
+    return { time: penTime(recording, example?.pen ?? 'peak'), place: null }
   }
 
   private async extend(): Promise<void> {
