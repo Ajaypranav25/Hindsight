@@ -82,20 +82,28 @@ and `result` stay ordinary names everywhere else.
 
 ## The studio
 
-|                                 |                                                                                                                                                                                                                                           |
-| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Strip chart**                 | The whole run is traced like a chart recorder: x is time, height is call depth. Drag the pen anywhere; zoom and pan with the wheel. Output, breakpoint hits and watched writes appear as markers.                                         |
-| **Two-way stepping**            | Step into, over and out, forwards and backwards. Continue to a breakpoint, or back to the previous one. Step over is based on the actual call, not just the depth, so `sq(2) + sq(3)` behaves.                                            |
-| **⟲ Where did this come from?** | Every variable, list element and record field has an origin button. It jumps to the step that produced the value and marks the line that set it.                                                                                          |
-| **History**                     | Every change to a binding, as a list and a sparkline, plotted on the strip chart. Loop variables keep one history across iterations.                                                                                                      |
-| **Time-aware console**          | Output printed after the pen is ghosted. Click any line to land on the moment it was printed.                                                                                                                                             |
-| **Heat gutter**                 | How often each line ran, on a log scale. Click to jump to the next time it runs.                                                                                                                                                          |
-| **Heap graph**                  | Lists, records and closures reachable from the selected frame, with stable positions as you scrub, so a reversed linked list visibly rewires its arrows.                                                                                  |
-| **Just my code**                | Library functions (`map`, `filter`, `sort_by`, …) are written in Hindsight and recorded too; just-my-code skips them unless you want to look inside.                                                                                      |
-| **What if?**                    | Change any variable, list element or record field at the pen: the run forks there, the strip chart shows where the new future diverges (with the real run as a ghost behind it), and changed output is marked. Fork again to stack edits. |
-| **Bug finder**                  | Answer right / wrong / not sure about recorded calls (`average(xs = [88, 83, 79])` returned `54`) until Hindsight names the function whose own code is wrong. Identical calls are asked about only once.                                  |
-| **Self-answering bug finder**   | Contracts and assertions answer the questions they can, each with its reason (`right: the assertion on line 13`, `wrong: its postcondition on line 29 failed`); Undo takes one back. With enough of them the verdict needs no questions.  |
-| **Moment links**                | Copy a link that carries the program and the pen's step: it opens on the very moment you were looking at, so a bug report lands on the bug.                                                                                               |
+|                                 |                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Strip chart**                 | The whole run is traced like a chart recorder: x is time, height is call depth. Drag the pen anywhere; zoom and pan with the wheel. Output, breakpoint hits and watched writes appear as markers.                                                                                                                                                                                                           |
+| **Two-way stepping**            | Step into, over and out, forwards and backwards. Continue to a breakpoint, or back to the previous one. Step over is based on the actual call, not just the depth, so `sq(2) + sq(3)` behaves.                                                                                                                                                                                                              |
+| **⟲ Where did this come from?** | Every variable, list element and record field has an origin button. It jumps to the step that produced the value and marks the line that set it.                                                                                                                                                                                                                                                            |
+| **History**                     | Every change to a binding, as a list and a sparkline, plotted on the strip chart. Loop variables keep one history across iterations.                                                                                                                                                                                                                                                                        |
+| **Time-aware console**          | Output printed after the pen is ghosted. Click any line to land on the moment it was printed.                                                                                                                                                                                                                                                                                                               |
+| **Heat gutter**                 | How often each line ran, on a log scale. Click to jump to the next time it runs.                                                                                                                                                                                                                                                                                                                            |
+| **Heap graph**                  | Lists, records and closures reachable from the selected frame, with stable positions as you scrub, so a reversed linked list visibly rewires its arrows.                                                                                                                                                                                                                                                    |
+| **Just my code**                | Library functions (`map`, `filter`, `sort_by`, …) are written in Hindsight and recorded too; just-my-code skips them unless you want to look inside.                                                                                                                                                                                                                                                        |
+| **What if?**                    | Change any variable, list element or record field at the pen: the run forks there, the strip chart shows where the new future diverges (with the real run as a ghost behind it), and changed output is marked. Fork again to stack edits.                                                                                                                                                                   |
+| **Bug finder**                  | Answer right / wrong / not sure about recorded calls (`average(xs = [88, 83, 79])` returned `54`) until Hindsight names the function whose own code is wrong. Identical calls are asked about only once.                                                                                                                                                                                                    |
+| **Self-answering bug finder**   | Contracts and assertions answer the questions they can, each with its reason (`right: the assertion on line 13`, `wrong: its postcondition on line 29 failed`); Undo takes one back. With enough of them the verdict needs no questions.                                                                                                                                                                    |
+| **Moment links**                | Copy a link that carries the program and the pen's step: it opens on the very moment you were looking at, so a bug report lands on the bug.                                                                                                                                                                                                                                                                 |
+| **Query bar**                   | Type `changed(order.paid)`, `calls(fib) where ret > 20` or `when depth > 2` above the strip chart and every match lights up on the timeline; Previous / Next / List walk through them. Examples offers one query per form, written with your program's names.                                                                                                                                               |
+| **Lines that led here**         | After a crash the lines that had no part in it are dimmed. "What led here?" (the pen's step) and "What led to this?" (any console line) do the same for any moment: a causal bar marks every line in the backward slice, an arrowhead the line where the traced step ran, the strip chart shades the slice's steps, and a chip lists the causal chain (`total = 72 · step 410 · line 8`), each link a jump. |
+| **Why didn't this run?**        | Click the hollow heat mark of a line that never ran (or press Shift+F9): an explanation opens right under the line in the editor — "`if total > 80` was false at step 412 because `total` was 72, set at step 410" — with Go to the decision / Go to where it was set, and a badge on the guard's line.                                                                                                     |
+| **Make it so**                  | Ask a console line to print something else ("Make this print…") or a crash not to happen: Hindsight searches the past for one earlier value that does it and offers "Try it", which forks the run with that value. "Try one-token fixes" previews small repairs that make a crashing run finish.                                                                                                            |
+| **Console line menu**           | Right-click a console line (or press Shift+F10 or the ContextMenu key on it) for Make this print…, What led to this?, Go to this moment and Copy line.                                                                                                                                                                                                                                                      |
+| **Sweeps**                      | Type `1..20` instead of one value in a what-if: the run forks once per value, every run is drawn as a ghost trace on the strip chart and listed with its steps, depth, outcome and output change; a row opens that run.                                                                                                                                                                                     |
+| **Heap ghost edges**            | During a what-if the heap graph draws the references only the what-if has solid and the ones only the real run has dashed.                                                                                                                                                                                                                                                                                  |
+| **Off the main thread**         | Slices, queries, the Make-it-so search, repair previews and sweeps run in a Web Worker, which records the same run again from its description (program, seed, step limit, what-if edits) and sends back plain results; without workers they run on the page in small slices.                                                                                                                                |
 
 ![The heap graph after reversing a linked list, in the light theme](docs/images/heap.png)
 
@@ -105,12 +113,21 @@ and `result` stay ordinary names everywhere else.
 
 Keyboard: **F11** / **Shift+F11** step into forward/back, **F10** / **Shift+F10** step over,
 **F7** / **Shift+F7** step out, **F8** / **Shift+F8** continue, **F9** breakpoint, **Space** play,
-**Home** / **End** jump to the ends, **Ctrl+Enter** run.
+**Home** / **End** jump to the ends, **Ctrl+Enter** run, **Shift+F9** why didn't the cursor line run.
+On a console line, **Shift+F10** opens its menu instead of stepping back over.
 
 ## The command line
 
-Run it through npm as below, or build it once with `npm run build:cli && npm link` to get a
-`hindsight` command.
+Install the `hindsight` command from npm (Node 22.12 or later; the package has no dependencies), or
+run it without installing through `npx`:
+
+```sh
+npm i -g hindsight-lang
+hindsight run examples/03-fibonacci.sight
+npx hindsight-lang run examples/03-fibonacci.sight   # the same, without a global install
+```
+
+From a checkout, run it through npm as below, or build it once with `npm run build:cli && npm link`.
 
 ```sh
 npm run sight -- run examples/03-fibonacci.sight
@@ -226,6 +243,24 @@ the change starts in:
   ✓ average (lines 6–8): given the same inputs, it behaves differently while the calls it makes behave the same
 ```
 
+### Trace files
+
+A moment link stops working once a program passes 60,000 characters. A `.sighttrace` file holds the
+same moment for any size: the program, its seed and step limit, the what-if edits and the pen, plus
+a fingerprint of the run. It is small because it never stores the trace: the VM is deterministic,
+so opening the file records the run again and checks the fingerprint. If another Hindsight version
+replays it differently, you are told where the runs first differ.
+
+```sh
+hindsight record examples/02-bug-hunt.sight          # writes examples/02-bug-hunt.sighttrace
+hindsight replay examples/02-bug-hunt.sighttrace     # the state at the saved step
+hindsight slice examples/02-bug-hunt.sighttrace      # run, replay, why, whynot, slice, query accept one
+```
+
+In the studio, the button next to **Copy link** downloads the run on display as a trace (what-if
+edits included) and opens one; you can also drop a `.sighttrace` file on the editor. The pen lands
+on the saved step with the what-if edits applied again.
+
 ### MCP server
 
 `hindsight mcp` speaks the Model Context Protocol over stdio, so an AI agent can stop guessing
@@ -233,10 +268,11 @@ what a `.sight` program does and ask the recording instead: run it, look at any 
 value came from, fork a what-if, find the bug and check its fix:
 
 ```json
-{ "mcpServers": { "hindsight": { "command": "hindsight", "args": ["mcp"] } } }
+{ "mcpServers": { "hindsight": { "command": "npx", "args": ["-y", "hindsight-lang", "mcp"] } } }
 ```
 
-From a checkout without a linked build, use `"command": "npx", "args": ["tsx", "src/cli/main.ts",
+With a global install (`npm i -g hindsight-lang`), `"command": "hindsight", "args": ["mcp"]` does the
+same. From a checkout without a linked build, use `"command": "npx", "args": ["tsx", "src/cli/main.ts",
 "mcp"]` with the repository as the working directory.
 
 | tool                                      | for                                                                                                                                                          |
@@ -249,6 +285,7 @@ From a checkout without a linked build, use `"command": "npx", "args": ["tsx", "
 | `seek_state`, `query_provenance`, `query` | the state at a step (with depth, item and frame budgets), where a value came from, moments by condition (in pages, or summarized)                            |
 | `fork_whatif`, `get_divergence`, `solve`  | counterfactuals forwards and backwards                                                                                                                       |
 | `why_not`, `slice`                        | why a line never ran; which lines can have caused a moment                                                                                                   |
+| `export_trace`, `open_trace`              | a recorded run as a small `.sighttrace` file (base64) to attach to an issue, and back                                                                        |
 
 Results are sized for a context window: long lists come in pages that say how to fetch the next,
 `query` can summarize a loop into one row (`total: line 3 ×1,000, steps 21–9,013, values 1–500500`),
@@ -263,6 +300,27 @@ history of 'total' (declared on line 8, average):
   step 38        write    total = 171  line 10
   ...
 ```
+
+## In VS Code
+
+`editors/vscode` is a VS Code extension for `.sight` files. It highlights the language and records
+the program every time you save, then shows what the run did: compile and runtime problems,
+**ran N times** above each function, and **never ran — why not?** above code the run never reached
+(click it for the explanation, written after the line). **Hindsight: Lines That Led to the Crash**
+dims everything outside the crash's backward slice, **Hindsight: Run File** prints the output, and
+**Hindsight: Open in Studio** opens the program in the studio with the pen on the cursor's line.
+
+It is not on the Marketplace yet; build and install the `.vsix` from a checkout:
+
+```sh
+cd editors/vscode
+npm install
+npm run package                                   # hindsight-vscode-<version>.vsix
+code --install-extension hindsight-vscode-*.vsix
+```
+
+To work on it, open `editors/vscode` in VS Code and press F5 for an Extension Development Host.
+Details: [editors/vscode/README.md](editors/vscode/README.md).
 
 ## How it works
 
@@ -339,6 +397,7 @@ src/core/          the language: lexer, parser, compiler, VM, recorder, navigato
 src/studio/        the React + CodeMirror studio
 src/cli/           the hindsight command-line tool
 src/conformance/   the annotation checker shared by the test suite and `hindsight test`
+editors/vscode/    the VS Code extension (language support, run on save, lenses, why-not)
 tests/lang/        the conformance corpus
 examples/          the studio's gallery programs
 docs/              language specification and architecture

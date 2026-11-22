@@ -50,7 +50,6 @@
   pointer-events: auto;
 }
 
-.ed-why,
 .ed-slice {
   border: 1px solid var(--rule);
   border-radius: var(--radius-md);
@@ -58,31 +57,6 @@
   box-shadow: var(--shadow-pop);
   font: var(--text-sm) / 1.45 var(--font-ui);
   color: var(--ink);
-}
-
-.ed-why {
-  display: grid;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border-left: 2px solid var(--pen);
-}
-
-.ed-why:focus-visible {
-  outline: none;
-  box-shadow:
-    var(--shadow-pop),
-    0 0 0 2px var(--marker);
-}
-
-.ed-why-text {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
-.ed-why-tools {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
 }
 
 .ed-slice {
@@ -97,7 +71,184 @@
   display: none;
 }
 
+.ed-slice[role='group'] {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-1) var(--space-2);
+  border-left: 2px solid var(--marker);
+}
+
+.ed-slice-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .ed-slice-text {
   font-size: var(--text-xs);
   color: var(--ink-muted);
+}
+
+/* The causal chain: the writes the traced step was computed from, newest first. */
+.ed-chain {
+  display: grid;
+  gap: 1px;
+  max-height: 9.5rem;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.ed-chain-link,
+.ed-chain-more {
+  display: block;
+  width: 100%;
+  padding: 0 var(--space-1);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  font: var(--text-xs) / 1.6 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ed-chain-link {
+  cursor: pointer;
+}
+
+.ed-chain-link::before {
+  content: '←';
+  margin-right: var(--space-1);
+  color: var(--marker);
+}
+
+.ed-chain-link:hover {
+  background: var(--marker-soft);
+}
+
+button.ed-chain-more {
+  color: var(--marker);
+  cursor: pointer;
+}
+
+span.ed-chain-more {
+  color: var(--ink-faint);
+}
+
+.ed-chain-link:focus-visible,
+button.ed-chain-more:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--marker);
+}
+
+/* --- the lab gutter: causes, the effect and the deciding guard ---------------------------- */
+
+.ed-gutter-lab .cm-gutterElement {
+  width: 9px;
+  padding: 0;
+}
+
+.ed-lab-mark {
+  position: relative;
+  display: block;
+  width: 9px;
+  height: 100%;
+}
+
+/* A causal bar; bars on consecutive lines join into one thread. */
+.ed-lab-cause::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 3px;
+  background: var(--marker);
+  opacity: 0.75;
+}
+
+/* The effect: an arrowhead pointing at the line where the traced step ran. */
+.ed-lab-effect::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 2px;
+  margin-top: -5px;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 6px solid var(--pen);
+}
+
+/* The guard that decided: a hollow diamond badge. */
+.ed-lab-guard::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 1px;
+  width: 6px;
+  height: 6px;
+  margin-top: -4px;
+  border: 1.5px solid var(--pen);
+  background: var(--pen-soft);
+  transform: rotate(45deg);
+}
+
+/* --- why a line did not run: the inline explanation under it ------------------------------ */
+
+.ed-host .ed-why {
+  display: grid;
+  gap: var(--space-1);
+  margin: 2px var(--space-3) var(--space-2) 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--rule);
+  border-left: 2px solid var(--pen);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  background: var(--surface-raised);
+  font: var(--text-sm) / 1.5 var(--font-ui);
+  color: var(--ink);
+  white-space: normal;
+  cursor: default;
+}
+
+.ed-host .ed-why:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--marker);
+}
+
+.ed-why-label {
+  margin: 0;
+  font: 600 var(--text-xs) / 1.2 var(--font-display);
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  color: var(--pen);
+}
+
+.ed-why-text {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ed-why-code {
+  padding: 0 3px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  font: var(--text-sm) var(--font-mono);
+  font-variant-ligatures: none;
+}
+
+.ed-why-value {
+  font: 600 var(--text-sm) var(--font-mono);
+  color: var(--ink);
+}
+
+.ed-why-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
 }

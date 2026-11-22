@@ -1,7 +1,9 @@
 /**
- * The strip chart's query and sweep layers (ARCHITECTURE §11.3): the stretches and moments a
- * query matched, and the depth traces of a sweep's runs as ghosts from the fork step on.
+ * The strip chart's lab layers (ARCHITECTURE §11.3): the stretches and moments a query matched,
+ * the steps of a backward slice, and the depth traces of a sweep's runs as ghosts from the fork
+ * step on.
  */
+import { markedColumns, type MarkPyramid } from '../lib/mark-pyramid'
 import {
   NO_DATA,
   depthToY,
@@ -21,6 +23,8 @@ export interface ChartLab {
   readonly ghosts: readonly DepthEnvelope[]
   /** The sweep's fork step: the runs share everything before it. */
   readonly forkTime: number
+  /** The steps of the backward slice the editor shows, when there is one. */
+  readonly slice?: MarkPyramid | null
 }
 
 export interface LabLayout {
@@ -34,6 +38,8 @@ export interface LabLayout {
 const BAND_ALPHA = 0.16
 const MOMENT_ALPHA = 0.55
 const GHOST_ALPHA = 0.3
+const SLICE_BAND_ALPHA = 0.1
+const SLICE_RUG_ALPHA = 0.85
 
 /** The deepest call depth among the sweep's runs. */
 export function labMaxDepth(lab: ChartLab | null | undefined): number {
@@ -76,6 +82,46 @@ export function drawQueryMarks(
     ctx.closePath()
     ctx.fill()
   }
+  ctx.globalAlpha = alpha
+}
+
+/** Runs of consecutive marked columns as `[from, to)` pairs. */
+function columnRuns(columns: Uint8Array): [number, number][] {
+  const runs: [number, number][] = []
+  let c = 0
+  while (c < columns.length) {
+    if (columns[c] === 0) {
+      c++
+      continue
+    }
+    let end = c + 1
+    while (end < columns.length && columns[end] !== 0) end++
+    runs.push([c, end])
+    c = end
+  }
+  return runs
+}
+
+/**
+ * The steps of a backward slice: faint bands over the plot and a rug just under the baseline,
+ * one pixel column at a time (a million-step run draws in milliseconds).
+ */
+export function drawSliceMarks(
+  ctx: CanvasRenderingContext2D,
+  slice: MarkPyramid,
+  at: LabLayout,
+  color: string,
+): void {
+  const { view, w, px, top, scale } = at
+  const runs = columnRuns(markedColumns(slice, view, w))
+  if (runs.length === 0) return
+  const alpha = ctx.globalAlpha
+  ctx.fillStyle = color
+  ctx.globalAlpha = alpha * SLICE_BAND_ALPHA
+  for (const [from, to] of runs) ctx.fillRect(from, top, to - from, scale.baseline - top)
+  ctx.globalAlpha = alpha * SLICE_RUG_ALPHA
+  const rug = Math.max(2, Math.round(2 * px))
+  for (const [from, to] of runs) ctx.fillRect(from, scale.baseline + px, to - from, rug)
   ctx.globalAlpha = alpha
 }
 

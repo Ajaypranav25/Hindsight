@@ -1,4 +1,5 @@
 // Builds the studio as one self-contained page (dist/page/index.html) for publishing.
+import { fileURLToPath } from 'node:url'
 import { defineConfig, mergeConfig, type Plugin } from 'vite'
 import base from './vite.config'
 import { inlinePage } from './src/build/page-inline'
@@ -27,6 +28,17 @@ export default mergeConfig(
     plugins: [inlineIntoPage()],
     // The published page cannot receive #src= links, so "Copy link" copies the program instead.
     define: { 'import.meta.env.VITE_SHARE_MODE': JSON.stringify('source') },
+    // The analysis worker travels inside the page (a blob URL) instead of as a file of its own.
+    resolve: {
+      alias: [
+        {
+          find: './analysis-worker-factory',
+          replacement: fileURLToPath(
+            new URL('./src/studio/analysis/analysis-worker-factory.inline.ts', import.meta.url),
+          ),
+        },
+      ],
+    },
     build: {
       outDir: 'dist/page',
       sourcemap: false,

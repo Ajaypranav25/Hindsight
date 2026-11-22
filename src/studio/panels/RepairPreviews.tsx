@@ -6,17 +6,17 @@ import {
   repairExamples,
   type RepairRequest,
   type RepairResult,
-  repairSearch,
   verdict,
 } from '../../core/index'
+import { analyze } from '../analysis/service'
 import { liveSession } from '../state/bug-finder'
 import { useStudio, useStudioActions } from '../state/context'
-import { useGeneratorSearch } from '../state/use-search'
+import { useAsyncSearch } from '../state/use-search'
 
 /**
  * Repair previews (ARCHITECTURE §7.12, §11.3): one-token changes to the function the bug was
- * isolated to that agree with every answer given. The search runs in the background; nothing is
- * shown until it has found something.
+ * isolated to that agree with every answer given. The search runs in the analysis service (a
+ * worker where there is one); nothing is shown until it has found something.
  */
 export function RepairPreviews(props: {
   readonly recording: Recording
@@ -27,8 +27,15 @@ export function RepairPreviews(props: {
   readonly whenNone?: string
 }) {
   const { recording, request, basis, whenNone } = props
-  const search = useGeneratorSearch<RepairResult>(request, () => repairSearch(recording, request))
+  const job = useMemo(() => ({ recording, request }), [recording, request])
+  const search = useAsyncSearch<RepairResult>(job, async (signal) => {
+    const answer = await analyze(recording, { kind: 'repair', request }, signal)
+    return answer.result
+  })
   const { setSource } = useStudioActions()
+  if (search.status === 'failed') {
+    return <p className="pn-note">The search for one-token fixes could not be run.</p>
+  }
   if (search.status !== 'done') {
     return search.status === 'searching' ? (
       <p className="pn-note bf-repairs-status">Looking for a one-token fix…</p>

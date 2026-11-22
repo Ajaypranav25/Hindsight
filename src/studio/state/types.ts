@@ -161,6 +161,11 @@ export interface StudioActions {
    * link's `time` places the pen once it has been recorded.
    */
   openSharedSource(source: string, time?: number | null): void
+  /**
+   * Opens a `.sighttrace` file: its program replaces the editor's (keeping the user's own), is
+   * recorded again with its what-if edits, and the pen lands on the saved step.
+   */
+  openTraceFile(bytes: Uint8Array): Promise<void>
   /** Forks the shown run at the pen with `target` set to `value` (`name` labels the edit). */
   forkWhatIf(target: WriteTarget, value: EditValue, name: string): Promise<void>
   /** Leaves what-if mode: the real run comes back with its pen. */
@@ -196,7 +201,7 @@ export interface StudioActions {
     text: string,
   ): Promise<void>
   /** Opens run `index` of the sweep as a what-if. */
-  openSweepRun(index: number): void
+  openSweepRun(index: number): Promise<void>
   /** Drops the sweep (stopping it if it is still running). */
   closeSweep(): void
   /** Explains in the editor why `line` did not run (ARCHITECTURE §7.10). */
@@ -204,8 +209,11 @@ export interface StudioActions {
   closeWhyNot(): void
   /** Stores the slice computed for the editor. */
   setSlice(slice: SliceMark | null): void
-  /** "What led here?": traces the causes of step `time` (null: stop). */
-  sliceFrom(time: number | null): void
+  /**
+   * "What led here?": traces the causes of step `time` (null: stop); `label` names the step in the
+   * chip ("output line 3"), else it is called by its number.
+   */
+  sliceFrom(time: number | null, label?: string | null): void
   /** Turns the dimming of lines that did not lead to a runtime error on or off. */
   setDimming(dimming: boolean): void
 }

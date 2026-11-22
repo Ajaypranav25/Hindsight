@@ -1,0 +1,33 @@
+/* The Share menu's trace files (TraceMenu.tsx): a split button beside "Copy link". */
+
+.ch-share-group {
+  display: inline-flex;
+  align-items: stretch;
+}
+
+.ch-share-group > .ch-anchor:first-child .ch-share {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.ch-trace-trigger {
+  width: 1.75rem;
+  margin-left: -1px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.ch-trace-trigger[aria-expanded='true'] .ch-chevron {
+  transform: rotate(180deg);
+}
+
+.ch-trace-menu {
+  left: auto;
+  right: 0;
+  width: 22rem;
+}
+
+.ch-trace-menu .ch-menu-item:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}

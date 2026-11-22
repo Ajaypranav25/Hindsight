@@ -1,0 +1,23 @@
+{
+  "//": "Type-checks the extension, glue included, against the VS Code API and Node. Run `npm run typecheck` here after `npm install`; the root `npm run typecheck` covers the vscode-free modules without needing these types.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "useDefineForClassFields": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["vscode", "node"]
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts"]
+}

@@ -32,6 +32,8 @@ export interface EditorOverlay {
   readonly keepLines?: ReadonlySet<number> | null
   /** The line of the guard that kept another line from running, while that is explained. */
   readonly guardLine?: number | null
+  /** The line where the traced step of a slice ran (the effect). */
+  readonly effectLine?: number | null
 }
 
 export const EMPTY_OVERLAY: EditorOverlay = {

@@ -1,6 +1,6 @@
 # Hindsight Architecture
 
-Version 0.3. **Normative for internal contracts.** `docs/SPEC.md` defines the language; this document
+Version 0.4. **Normative for internal contracts.** `docs/SPEC.md` defines the language; this document
 defines how the implementation is split into modules and the exact contracts between them. Contract
 types live in code and are the source of truth for shapes:
 
@@ -34,6 +34,7 @@ tests/lang/**.sight   the conformance corpus (§10.2)
 tests/*.test.ts       cross-module tests (corpus runner, time-travel properties, API)
 e2e/                  Playwright tests for the studio
 examples/             gallery programs shown in the studio
+editors/vscode/       the VS Code extension (§12); its own package.json and node_modules
 ```
 
 Module dependency direction (no cycles):
@@ -893,6 +894,50 @@ Replacing the text instead of forking the run after the declaration (§7.5) lets
 or a record, not just a primitive, and keeps step numbers meaningful within each run; the whole
 initializer is replaced, so calls it made are not made with the new input.
 
+### 7.15 Trace files (`trace-file.ts`, `trace-format.ts`, `trace-validate.ts`, `trace-hash.ts`, `trace-open.ts`)
+
+A moment link carries the program and a step in the URL, which stops working past 60,000
+characters. A `.sighttrace` file carries the same moment without that limit, plus the what-if chain.
+It never stores the trace itself: the VM is deterministic, so a file holds what is needed to record
+the run again and a fingerprint to check that the new run is the saved one.
+
+**Layout.** The 8-byte magic `SIGHTTRC`, a little-endian u16 format version (1), a u8 of flags (bit
+0: the payload is gzip-compressed; other bits must be 0), then the payload: the bundle as UTF-8
+JSON. `encodeTraceFile` compresses with the host's `CompressionStream` when there is one (reached
+through `globalThis` with narrow local interfaces, so core stays free of DOM and Node types) and
+writes an uncompressed payload otherwise; `encodeTraceFileSync(bundle, gzip?)` and
+`decodeTraceFileSync(bytes, gunzip?)` take a codec instead (the CLI passes `node:zlib`).
+
+**Bundle** (`TraceBundle`): `format: 'hindsight-trace'`, `version: 1`, `hindsightVersion`, `title`
+(an example title or file name, or null), `source`, `seed`, `maxSteps` (the real run's step
+limit), `edits` (the what-if chain, oldest first, as `TimedEdit` fork requests, each on the run the
+previous one made), `forkMaxSteps`, `time` (the pen, in `0..length` of the final run), `outcome`
+(a summary: `finished`, `step-limit`, `aborted`, or `error` with code, message and 1-based line),
+`length`, `output` (the final run's lines), `fingerprint` and `checkpoints`.
+
+**Fingerprint** (`trace-hash.ts`). FNV-1a (64-bit, as two 32-bit halves) over the per-step trace
+columns (prototype id, ip, depth and the opcode at that ip) in step order, then the output texts and
+the outcome, written as
+`fnv1a64:<16 hex digits>`. The same pass records running hashes at every `stride`-th step (at most
+1,024 checkpoints), so a replay that differs is located: `firstDifference` names the first
+differing checkpoint window, narrowed to one step when the stride is 1.
+
+**Opening.** `replayTrace(deps, bundle)` (and `replayTraceAsync`, in slices, abortable) compiles
+the source, records it with the saved seed and step limit, re-applies the edits with `fork` (under
+`forkMaxSteps`) and verifies the final run: `{verified: true}`, or `{verified: false, message,
+firstDifference}` when another Hindsight version replays differently or an edit can no longer be
+applied. It takes `compile`/`record` as dependencies (as `repairSearch` does) so the studio passes
+its own engine; `openTraceBundle`, `openTraceFile(bytes, options)` and
+`openTraceFileSync(bytes, gunzip?)` in `index.ts` bind the core's. `traceBundle({recording, base,
+time, hindsightVersion, title})` describes a recording (the real run behind a what-if is `base`).
+
+**Untrusted input.** Files over 32 MB and payloads over 64 MB (after decompression, enforced while
+streaming) are refused; the header, UTF-8 (fatal decoding) and JSON are checked; `validateBundle`
+copies every field into a fresh object after checking its type and range (sources up to 200,000
+characters, step limits up to 10,000,000, at most 100 edits with literal values and plain names,
+integers in range, a well-formed fingerprint), so keys such as `__proto__` are never merged
+anywhere. Every failure is a `{ok: false, error}` result, never an exception.
+
 ## 8. Public API (`src/core/index.ts`)
 
 ```ts
@@ -921,6 +966,10 @@ repairSearch(recording, request, options), repairExamples, repairExample // §7.
 parseSweepValues, sweep, sweepAsync, heapEdges, diffHeaps // §7.13
 diffRuns(a, b, { maxNodes?, maxCompared?, limit? }): RunDiff // §7.14
 withInput(source, name, literal): InputResult             // §7.14
+encodeTraceFile, encodeTraceFileSync, decodeTraceFile,    // §7.15 trace files
+  decodeTraceFileSync, validateBundle, traceBundle, fingerprintRecording,
+  openTraceFile, openTraceFileSync, openTraceBundle, openTraceBundleAsync,
+  replayTrace, replayTraceAsync, verifyTrace, TRACE_FILE_EXTENSION, MAX_TRACE_*
 show, repr, LineIndex, and all types from api-types.ts / diagnostics.ts / span.ts / tokens.ts
 ```
 
@@ -932,6 +981,11 @@ show, repr, LineIndex, and all types from api-types.ts / diagnostics.ts / span.t
 ## 9. Command-line tool (`src/cli`)
 
 `hindsight <command>`; during development `npm run sight -- <command>`.
+
+The npm package `hindsight-lang` ships the bundle `dist/cli/hindsight.mjs` alone and has no runtime
+dependencies: `scripts/build-cli.mjs` fails if anything but a Node built-in is left unbundled, and the
+studio's libraries are devDependencies (Vite bundles them). `.github/workflows/release.yml` publishes
+it with provenance when a `v*` tag matching the package version is pushed.
 
 | command                               | behavior                                                                                                                                                                                                                                        |
 | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -957,6 +1011,8 @@ show, repr, LineIndex, and all types from api-types.ts / diagnostics.ts / span.t
 | `diff A B [--limit N] [--max-steps N] [--seed S]` | differential execution (§7.14): record both files and compare them call by call: both outcomes, the output diff, calls only in A or B, renames, changed calls and the origins (where the difference starts); `--limit` (default 50) caps each list; exit 0 when the runs behave the same, 1 when they differ, 2 for usage or compile trouble (like diff(1)) |
 | `diff FILE --set NAME=VALUE` | the same, B being FILE with the top-level `let`/`var` `NAME` initialized to the literal `VALUE` (§7.14) |
 | `mcp` | the MCP server (§9.1) |
+| `record FILE [-o OUT.sighttrace] [--max-steps N] [--seed S]` | record and write a trace file (§7.15; default name: FILE with the `.sighttrace` extension), then print the steps, outcome, output lines and file size; refuses to overwrite FILE |
+| `run`, `replay`, `why`, `whynot`, `slice`, `query` with a `.sighttrace` in place of FILE | the file's program is recorded again with its seed, step limit and what-if edits (the what-if run is shown) and verified; a replay that differs prints `warning: …` on stderr and the command carries on; `replay` without `--at` uses the saved pen; `--max-steps`/`--seed` do not apply |
 
 Diagnostics print Rust-style with a code frame and caret underline (`error[E020]: …`, `--> file:3:9`,
 the source line, `^^^`, `= hint: …`), colored only when stdout and stderr are both terminals and
@@ -999,6 +1055,8 @@ tool is for and when to use it, and the `initialize` instructions suggest an ord
 | `diagnose_failure` | one round trip. A crash: code, message, hint, line, column, the failing expression; the stack with spans and source lines; the statement running at the failing step and the values of the variables it reads (identifiers that are not field names or record keys; functions left out); the error slice as numbered source lines and the lines ruled out; the causal chain (`upstreamWrites` with names, values with their text, steps and lines; function declarations left out; the last 40); verified crash repairs (§7.12) with `mutants_checked`. A wrong output (`output_index` 0-based or `output_line` 1-based, and `expected`): the same view from the print, with inverse what-if candidates (§7.11). A step-limit run: the stack and the hottest lines. Every result ends with `next_steps` naming tools |
 | `suggest_repairs`  | §7.12. `mode: "crash"`, or `"examples"` with `expectations` (`{"call": "average([92, 88, 95])", "expected": "91.66…"}` or `{"function", "args", "returns"}`): each is matched against the recorded user calls by argument texts (both sides in canonical form, by running `repr` on the literal), judged right or wrong (`judged`; `unmatched` lists some recorded calls) and turned into repair examples for the one function judged wrong (or `function`); patches show the line before and after and what the wrong calls return now                                                                                                                                                                                                                                                                              |
 | `find_bug`         | §7.6 as a stateless interview: each call rebuilds the finder, replays `answers` (`[{"question": id, "answer": "right"/"wrong"/"unsure"}]`) and returns the next question (id, call, arguments, result, side effects, lines, suspects remaining) or the verdict (function, lines, certainty, reason, code) with repair previews from the answers; `strategy` `divide` (default) or `top-down`; answers that were never asked are listed in `unused_answers`; `expectations` (as for `suggest_repairs`) answer the questions about the calls they match (`answered_from_expectations`) through the oracle below                                                                                                                                                                                                        |
+| `export_trace`     | §7.15: a trace (a real run or a what-if, with its edit chain) as a `.sighttrace` file in base64, at `step` (default: the end), with its size and fingerprint                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `open_trace`       | §7.15: records a `.sighttrace` file (base64 in `trace_file`) again, re-applies its edits, checks the fingerprint and keeps the run as a new trace; returns what `run_trace` does plus `saved_step`, `verified` and the number of what-if edits                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 A question id is the function name and an FNV-1a digest of the call's memo key (`average#3f2a91c0`;
 `name@entry` for calls without a key), so ids are stable across calls and identical calls share
@@ -1025,7 +1083,9 @@ Every module has co-located tests. Coverage target: 80 %+ lines for `src/core`, 
 `src/cli`, and the non-visual parts of `src/studio`; `vitest.config.ts` fails the coverage run below
 the current overall levels, so they cannot drift down unnoticed. Wall-clock budgets live in
 `*.perf.test.ts` files, which `npm test` and coverage skip: `npm run test:perf` runs them one file
-at a time. Every corpus program and gallery example that compiles must also pass `verifyProgram`.
+at a time. Every corpus program and gallery example that compiles must also pass `verifyProgram`. The
+VS Code extension's vscode-free modules (`editors/vscode/src/*.test.ts`) run in the same suite and
+count toward coverage (§12).
 
 ### 10.2 Conformance corpus
 
@@ -1149,7 +1209,17 @@ tabbed panels); the page may scroll vertically, never horizontally.
 - **Console**: one line per output event with its step number. Lines printed after the pen are
   ghosted; the line printed at the pen is marked. Clicking a line moves the pen to the moment it was
   printed. At the end of a failed run the error appears here with its hint and a link to the failing
-  moment.
+  moment. Hovering or focusing a line shows its tools, "What led to this?" and "Make this print…",
+  over the line's right end; on phones and touch screens they sit under the line at the pen (a tap
+  moves the pen there) or under a focused line.
+- **Console line menu**: a right-click, the ContextMenu key or Shift+F10 on a console line opens a
+  small menu (`chrome/ContextMenu.tsx`, a WAI-ARIA `menu` in a portal, placed inside the viewport):
+  Make this print…, What led to this?, Go to this moment, Copy line. Focus moves to the first item;
+  the arrow keys, Home and End move; Escape and Tab close it and give focus back to the line; a
+  press elsewhere, a scroll or a resize close it. Shift+F10 is not step-over-back on an element
+  marked `data-context-menu`. Copy line writes to the clipboard inside the click and, when the
+  clipboard refuses, selects the line's text and says to press Ctrl+C (a status line under the
+  output). No browser dialogs.
 - **Strip chart**: canvas; x = time, y = depth (deeper calls rise like peaks). Graph-paper grid with
   labeled step ticks and a "1 div = N steps" chart-speed readout. Click or drag to move the pen; wheel
   zooms around the cursor; Shift+wheel or dragging the scale pans; double-click resets. Hover shows
@@ -1193,22 +1263,44 @@ tabbed panels); the page may scroll vertically, never horizontally.
 - **Make it so** (§7.11): every console line has "Make this print…", an inline field holding the
   line's text; Enter searches for an earlier value that makes the line read the edited text. A
   runtime error offers "Make this not happen" and "Try one-token fixes". Answers are sentences with
-  "Try it", which forks the run with that value like a manual what-if.
-- **Query bar** (§7.9): a field above the strip chart. Enter runs the query on the run on display:
-  stretches are shaded and moments marked on the chart, a summary sits beside the field, Previous
-  and Next move the pen to the nearest match, List opens the matches, Escape clears. Marks belong
-  to their recording.
+  "Try it", which forks the run with that value like a manual what-if (on the main thread; the
+  search itself runs in the analysis service, §11.7). A search the service cannot run says so.
+- **Query bar** (§7.9): a field above the strip chart. Enter runs the query on the run on display
+  (in the analysis service; a newer query or another run cancels it): stretches are shaded and
+  moments marked on the chart, a summary sits beside the field, Previous and Next move the pen to
+  the nearest match, List opens the matches, Escape clears. Marks belong to their recording. A
+  query that does not parse says why under the field (`aria-invalid`, `role="alert"`). "Examples"
+  opens a menu with one query per form written with the program's own names, read off the lexer's
+  tokens (`when depth > 2`, `changed(order.paid)`, `calls(fib) where ret > 20`); choosing one fills
+  the field and runs it, and the placeholder shows the same examples.
 - **Sweep** (§7.13): typing several values (`1..20`, `1, 5, 27`) in a what-if editor forks the run
   once per value. A banner above the chart lists the runs (value, steps, deepest depth, outcome,
   output change; the longest marked), the chart spans the longest run and draws every run as a
   ghost trace from the fork step; a row opens that run as an ordinary what-if, and "Back to the
-  real run" returns to the sweep.
+  real run" returns to the sweep. The forks run in the analysis service, which keeps only each
+  run's summary and depth series (the banner counts values as they finish); opening a row forks
+  that one run again on the main thread. Another run shown mid-sweep drops the half sweep.
 - **Why a line did not run** (§7.10): a statement that never ran has a hollow mark in the heat
-  gutter; clicking it (or Shift+F9 on the cursor line) shows the explanation in the editor with
-  "Go to the decision", and marks the guard's line.
+  gutter; clicking it (or Shift+F9 on the cursor line) opens the explanation as a CodeMirror block
+  widget directly under the line (`editor/why-not-widget.ts`, a `StateField` providing
+  `Decoration.widget({block: true})`), laid out from the `WhyNot`'s structured fields: the guard's
+  condition, its value at the decision step and the operands with where they were set ("`if total
+  > 80`was false at step 412 because`total` was 72, set at step 410 (line 2)"), with Go to the
+  > decision / Go to where it was set / Close. Focus moves into the widget; Escape closes it and
+  > returns focus to the editor; an edit closes it. The guard's line gets a diamond badge in the lab
+  > gutter.
 - **Lines that led here** (§7.8): after a runtime error (runs up to 1,000,000 steps) the lines
   outside the error's backward slice are dimmed, with a chip to show all lines; "What led here?"
-  does the same for the pen's step until the pen moves. The slice is computed after display.
+  (the pen's step) and "What led to this?" (a console line: the pen moves to it and the step that
+  printed it is traced; the chip calls it "output line 3") do the same for any step, until
+  dismissed, so the pen can explore the causes. The lab gutter (between the heat bars and the code)
+  draws a causal bar on every line of the slice and an arrowhead on the line where the traced step
+  ran (the effect); dimming stays. The strip chart shades the slice's steps and draws a rug under
+  the baseline, per pixel column from an OR-pyramid of the step marks (`lib/mark-pyramid.ts`, so a
+  million-step run draws in milliseconds). The chip lists the causal chain from `upstreamWrites`,
+  newest first (`total = 72 · step 410 · line 8`, each a jump to just after the write), four at a
+  time with "+N more". The slice is computed by the analysis service after display, never while
+  typing.
 - **Heap ghost edges** (§7.13): during a what-if, references only the what-if has are drawn solid
   in the ok colour and references only the real run has (at the same step) dashed in the error
   colour, with a legend and a text description.
@@ -1225,6 +1317,16 @@ tabbed panels); the page may scroll vertically, never horizontally.
   so the link is used once and later edits survive a reload; a link pasted into an open studio
   loads on `hashchange` like an example (it runs only when auto-run is on). The current source and
   settings persist in `localStorage` (every access wrapped in try/catch).
+- **Trace files**: the Share group's second button opens a menu with "Download trace" (the run on
+  display as a `.sighttrace` file, §7.15, named after the program's `// title:` header, else
+  `program.sighttrace`, with its what-if edits and the pen) and "Open trace…" (a file input); a
+  `.sighttrace` dropped on the editor opens too (capture-phase handlers on the editor root, ahead of
+  CodeMirror's text drop). Opening keeps the user's program as for a link, records the file's
+  program with `replayTraceAsync` (it supersedes a run in flight, and a newer run wins), re-applies
+  the what-if edits so the what-if banner shows the fork against the real run, puts the pen on the
+  saved step and says so in a notice; a fingerprint mismatch or an edit that no longer applies is an
+  error-tone notice, and a damaged file leaves the program untouched (`state/trace.ts`,
+  `lib/trace-download.ts`, `chrome/TraceMenu.tsx`, `editor/trace-drop.ts`).
 - **Previous program**: only one program is stored, so before a share link or an example replaces
   a program the user wrote, that program is kept as `hindsight:previous-source`. Text that arrived
   with a link or an example and has not been edited is not the user's (`hindsight:source-delivered`
@@ -1265,12 +1367,21 @@ src/studio/
   state/     store.ts (zustand: source, compile result, recording, time, selection, breakpoints,
              settings, watch target; actions) · session.ts (compile/record orchestration, abort,
              debounce) · selectors.ts
+             · lab.ts (query marks, sweeps, why-not, slices) · use-search.ts (a search per component)
   lib/       format.ts · timeline-math.ts (zoom, pan, ticks, envelopes) · heap-layout.ts ·
-             share.ts · storage.ts · shortcuts.ts      (pure, unit-tested)
-  editor/    Editor.tsx · language.ts · decorations.ts · gutters.ts · lint.ts · theme.ts
-  timeline/  StripChart.tsx · Transport.tsx · TapeCounter.tsx
-  panels/    CallStack.tsx · Variables.tsx · ValueTree.tsx · HeapGraph.tsx · Console.tsx · History.tsx
-  chrome/    Header.tsx · ExamplePicker.tsx · Settings.tsx · HelpDialog.tsx · Status.tsx
+             share.ts · storage.ts · shortcuts.ts · mark-pyramid.ts (per-pixel step marks) ·
+             clipboard.ts      (pure, unit-tested)
+  analysis/  the analysis service (§11.7): protocol.ts · run-description.ts · compute.ts ·
+             handler.ts (worker side) · client.ts (main side) · local.ts (main-thread fallback) ·
+             service.ts · analysis.worker.ts · analysis-worker-factory{,.inline}.ts
+  editor/    Editor.tsx · EditorLab.tsx (slice chip, causal chain) · language.ts · decorations.ts ·
+             gutters.ts · lab-gutter.ts · lab-lines.ts · why-not-widget.ts · lint.ts · theme.ts
+  timeline/  StripChart.tsx · Transport.tsx · TapeCounter.tsx · QueryBar.tsx · QueryExamples.tsx ·
+             query-examples.ts · SweepBanner.tsx · chart-lab.ts
+  panels/    CallStack.tsx · Variables.tsx · ValueTree.tsx · HeapGraph.tsx · Console.tsx ·
+             ConsoleLine.tsx · MakeItSo.tsx · RepairPreviews.tsx · History.tsx
+  chrome/    Header.tsx · ExamplePicker.tsx · Settings.tsx · HelpDialog.tsx · Status.tsx ·
+             ContextMenu.tsx
   styles/    tokens.css · base.css (+ one CSS file per component folder)
   examples.ts  (loads /examples/*.sight via import.meta.glob with `?raw`; reads `// title:` and
                `// summary:` header comments)
@@ -1284,3 +1395,78 @@ respect the page rules: a two-to-four-word `<title>` ("Hindsight Studio"), side 
 `max(16px, env(safe-area-inset-left/right, 0px))`, `height: 100%` instead of `100vh`, no horizontal
 page scroll at 400 px, no `alert`/`confirm`/`prompt`, clipboard writes inside click handlers with a
 select-the-text fallback, and storage access wrapped in try/catch.
+
+### 11.7 Analysis worker (`src/studio/analysis`)
+
+The heavy analyses run off the main thread: backward slices (dependence replay), queries, the
+inverse what-if (Make it so), repair previews (Try one-token fixes and the bug finder's verdict)
+and sweep forks. Components ask one page-wide service (`analysisService()`, or `analyze()`, which
+also checks the answer's kind) with a request, an `AbortSignal` and, for sweeps, a progress
+callback.
+
+- **Runs as data**: a `Recording` cannot cross a thread boundary, so a request carries a
+  `RunDescription` instead: `{source, seed, maxSteps, edits, length, outcome}`, where `edits` is
+  the what-if chain the recording was forked with (`Recording.whatIf.edits`). The worker compiles
+  and records the program again (`record` with the same seed and step limit) and repeats each fork
+  request in time order; recording is deterministic, so this is the same run step for step, which
+  it checks against `length` and `outcome`. A run the user stopped (`aborted`) cannot be described
+  and runs on the main thread. The worker keeps the last run it recorded, so several analyses of
+  one run record it once.
+- **Results are plain data**: slice summaries (lines, per-step marks, the causal chain, the effect
+  line), query outcomes, inverse and repair results, and sweep run summaries (length, outcome,
+  comparison, deepest depth and the depth series for the ghost trace). Typed arrays travel as
+  transferables. The main thread keeps its own recording for display and does the cheap follow-ups
+  itself: the single fork behind "Try it" and behind opening a sweep row.
+- **Protocol** (`protocol.ts`): `analyze {id, run, request}` and `cancel {id}` to the worker;
+  `ready`, `done {id, result}`, `progress {id, done}` (sweeps), `cancelled {id}` and
+  `failed {id, error}` back. The worker side (`handler.ts`, free of worker globals) runs one job at
+  a time; searches are generators that pause after every fork or mutant and look for cancels
+  between 40 ms slices.
+- **Client** (`client.ts`): two lanes, each with its own worker started on first use, for single
+  passes (slices, queries) and searches (solve, repairs, sweeps), so a long search never holds up a
+  slice; a lane sends one job at a time. Cancelling a queued job drops it; a search in flight is
+  told to stop; a pass nobody waits for is abandoned with its worker (terminate and respawn) when
+  other work arrives. The same job asked for again right after it was cancelled (React's
+  development double effects) carries on.
+- **Fallback** (`local.ts`): when `Worker` is missing (jsdom tests), a worker fails to start or
+  crashes, the run cannot be described or recorded again, or the worker reports `failed`, the job
+  runs on the main thread with the original code paths: single passes after a paint, searches in
+  12 ms slices (`solveInverseAsync`, `sweepAsync`, the repair generator).
+- **Bundling**: the normal build starts the worker with
+  `new Worker(new URL('./analysis.worker.ts', import.meta.url), {type: 'module'})`, which Vite
+  emits as its own chunk; the single-file page build (`vite.page.config.ts`) aliases
+  `analysis-worker-factory.ts` to an inline variant (`?worker&inline`, a blob URL), so the page
+  stays one self-contained file.
+
+## 12. VS Code extension (`editors/vscode`)
+
+A separate package (`hindsight-vscode`, engines `vscode ^1.90.0`, activation `onLanguage:sight`)
+that bundles the core; it is never published from CI.
+
+- **Declarative parts.** `language-configuration.json` (`//` and nesting `/* */` comments, brackets;
+  `{` auto-closes inside strings too, for interpolation) and `syntaxes/sight.tmLanguage.json`:
+  keywords exactly SPEC §2.4, builtins exactly `BUILTIN_NAMES`, `requires`/`ensures` as keywords
+  only between a `fn`'s parameter list and its body, strings with escapes and nested `{expr}`
+  interpolation. The grammar contribution maps `meta.embedded.line.sight` to token type `other`, so
+  quotes and brackets inside an interpolation behave as code. `src/manifest.test.ts` keeps these
+  files in step with the core (keywords, builtins) and with the code (command ids, setting bounds).
+- **vscode-free modules** (`src/analysis.ts`, `view.ts`, `run-scheduler.ts`, `studio-link.ts`):
+  `analyze` compiles and records with `recordAsync` (slices, an abort flag) and turns diagnostics
+  and the runtime error into 1-based problems; call counts come from one pass over the depth series
+  (a call begins where the depth rises, the call tree's rule, §7.6); never-ran lenses group the
+  consecutive statement lines with no `lineHits`; `crashSlice` uses `errorSlice`; studio links reuse
+  the studio's `shareFragment` (60,000-character limit). `RunScheduler` debounces saves per
+  document (300 ms) and aborts the run in flight when a newer one starts; a superseded run's result
+  is dropped. The root `npm run typecheck`, `lint` and `test` cover these modules.
+- **Glue** (`src/glue/`, the only code importing `vscode`; checked by `editors/vscode/tsconfig.json`
+  against `@types/vscode` and `@types/node` installed in `editors/vscode/node_modules`): each result
+  remembers the document version it recorded, and lenses and commands use it only while the
+  document still has that version (editing hides the lenses until the next save; "fresh" commands
+  re-run first). Open in Studio passes the URL to `env.openExternal` as a string, because a `Uri`
+  would percent-encode the fragment's `=` and `&`.
+- **Build.** `scripts/build.mjs` bundles `src/glue/extension.ts` with esbuild into
+  `dist/extension.js` (CommonJS, Node 20; only `vscode` and Node built-ins may stay external, else
+  the build fails). `scripts/smoke.mjs` loads that bundle against `scripts/fake-vscode.mjs` and
+  drives it (open, save, edit, close, every command). `npm run package` (vsce) writes the `.vsix`,
+  which is git-ignored. The CI job `vscode` runs `npm ci`, `typecheck`, `build` and `smoke` in
+  `editors/vscode`, which needs nothing from the root's dependencies.

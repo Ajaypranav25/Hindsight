@@ -180,6 +180,20 @@ describe('focusContextOf', () => {
     expect(focusContextOf(target('BUTTON', {}, ['[role="menu"]'])).inDialog).toBe(true)
   })
 
+  test('Shift+F10 opens the context menu of an element that has one, and steps back elsewhere', () => {
+    const onLine = focusContextOf(target('BUTTON', {}, ['[data-context-menu]']))
+    expect(onLine.contextMenu).toBe(true)
+    expect(commandForKey(key('F10', { shiftKey: true }), onLine)).toBeNull()
+    expect(commandForKey(key('F10'), onLine)).toEqual({
+      kind: 'step',
+      step: 'over',
+      direction: 'forward',
+    })
+    expect(commandForKey(key('F10', { shiftKey: true }), focusContextOf(target('BUTTON')))).toEqual(
+      { kind: 'step', step: 'over', direction: 'backward' },
+    )
+  })
+
   test('an open modal dialog switches shortcuts off wherever focus is', () => {
     const open = { querySelector: (s: string) => (s.includes('aria-modal') ? {} : null) }
     const closed = { querySelector: () => null }

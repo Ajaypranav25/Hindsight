@@ -29,6 +29,7 @@ import {
   keepPreviousSource,
   type KeepResult,
 } from './previous-source'
+import { KEPT_AFTER_TRACE_NOTICE, TraceFlow } from './trace'
 import { WhatIfFlow } from './what-if'
 import type {
   Engine,
@@ -135,6 +136,7 @@ class Controller {
   /** See ProgramOrigin: saving is held back until the user edits. */
   private persistBlocked: boolean
   private readonly whatIf: WhatIfFlow
+  private readonly trace: TraceFlow
 
   constructor(
     private readonly deps: StoreDeps,
@@ -154,6 +156,23 @@ class Controller {
       begin: (progress) => this.beginRecording(progress),
       finish: (token) => this.finishRecording(token),
       cancel: (token) => this.cancelRecording(token),
+      progress: (token, time) => this.reportProgress(token, time),
+      completedStatus: () => this.completedStatus(),
+      notify: (notice) => this.notify(notice),
+      stopPlay: () => this.stopPlay(),
+      displayed: () => this.clearRunMarkAfterDisplay(),
+    })
+    this.trace = new TraceFlow({
+      get,
+      set: (patch) => set(patch),
+      engine: deps.engine,
+      replace: (source) => {
+        // The trace's recording supersedes any run in flight, as a new run does.
+        if (this.current) this.current.aborted = true
+        return this.replaceKeepingPrevious(source, KEPT_AFTER_TRACE_NOTICE, false)
+      },
+      begin: (progress) => this.beginRecording(progress),
+      finish: (token) => this.finishRecording(token),
       progress: (token, time) => this.reportProgress(token, time),
       completedStatus: () => this.completedStatus(),
       notify: (notice) => this.notify(notice),
@@ -191,6 +210,7 @@ class Controller {
       clearNotice: () => this.set({ notice: null }),
       restorePreviousSource: () => this.restorePreviousSource(),
       openSharedSource: (source, time) => this.openSharedSource(source, time),
+      openTraceFile: (bytes) => this.trace.open(bytes),
       forkWhatIf: (target, value, name) => this.whatIf.fork(target, value, name),
       leaveWhatIf: () => this.leaveWhatIf(),
       ...bugFinderActions(this.get, this.set),
@@ -249,8 +269,9 @@ class Controller {
   /**
    * Replaces the program with delivered text, first keeping the user's own and saying so with
    * `notice`. When the copy cannot be stored, the new program is shown but not saved over it.
+   * Returns whether the user's program was kept.
    */
-  private replaceKeepingPrevious(source: string, notice: Notice, run: boolean): void {
+  private replaceKeepingPrevious(source: string, notice: Notice, run: boolean): boolean {
     const current = this.get().source
     const result = keepPreviousSource(this.deps.storage, this.deps.examples, {
       current,
@@ -259,9 +280,10 @@ class Controller {
     })
     if (result === 'failed') this.persistBlocked = true
     this.replaceProgram(source, { delivered: true, run })
-    if (result !== 'kept') return
+    if (result !== 'kept') return false
     this.set({ previousSource: current })
     this.notify(notice)
+    return true
   }
 
   private restorePreviousSource(): void {
