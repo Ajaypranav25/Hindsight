@@ -9,6 +9,7 @@ import {
   type CallTree,
   LineIndex,
   type Recording,
+  type Span,
   type ValueView,
 } from '../../core/index'
 import { deepText } from '../../core/call-values'
@@ -36,8 +37,8 @@ export function functionSource(recording: Recording, protoId: number): string | 
   while (start > 1 && first - start < MAX_DOC_LINES && isComment(index.lineText(start - 1))) {
     start -= 1
   }
-  const from = index.lineStart(start)
-  const text = source.slice(Math.min(from, proto.debug.span.start), proto.debug.span.end)
+  const from = start < first ? index.lineStart(start) : proto.debug.span.start
+  const text = source.slice(from, proto.debug.span.end)
   return text.length > MAX_FUNCTION_TEXT ? `${text.slice(0, MAX_FUNCTION_TEXT)}\n// … cut` : text
 }
 
@@ -46,14 +47,28 @@ function isComment(line: string): boolean {
   return text.startsWith('//') || text.startsWith('/*') || text.startsWith('*')
 }
 
-/** The user functions `call` called itself (not itself again), bounded in number and size. */
+/** The span of a function of the program, or null. */
+function spanOf(recording: Recording, protoId: number): Span | null {
+  const { program } = recording
+  return program.protos[protoId - program.firstProtoId]?.debug.span ?? null
+}
+
+/**
+ * The user functions `call` called itself, bounded in number and size: not itself again, and not
+ * the functions written inside it (its source already shows them).
+ */
 export function helperSources(tree: CallTree, call: CallNode): string[] {
   const seen = new Set<number>([call.protoId])
+  const outer = spanOf(tree.recording, call.protoId)
+  const inside = (protoId: number): boolean => {
+    const span = spanOf(tree.recording, protoId)
+    return outer !== null && span !== null && span.start >= outer.start && span.end <= outer.end
+  }
   const helpers: string[] = []
   let length = 0
   for (const child of tree.children(call, { justMyCode: true })) {
     if (helpers.length >= MAX_HELPERS) break
-    if (child.library || seen.has(child.protoId)) continue
+    if (child.library || seen.has(child.protoId) || inside(child.protoId)) continue
     seen.add(child.protoId)
     const text = functionSource(tree.recording, child.protoId)
     if (text === null || length + text.length > MAX_HELPER_TEXT) continue

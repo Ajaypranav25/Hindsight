@@ -141,7 +141,9 @@ describe('debug --llm', () => {
       `(left to you: ${MODEL} expected 250 but is not sure (confidence 0.50, below 0.80))`,
     )
     expect(out).toContain('(took back the automatic answer about average; it is yours to answer)')
-    expect(out).toMatch(/Question 1: average\(xs = \[88, 83, 79\]\) returned 125\n {2}average · lines/)
+    expect(out).toMatch(
+      /Question 1: average\(xs = \[88, 83, 79\]\) returned 125\n {2}average · lines/,
+    )
     expect(out).toContain('Found it: the bug is in average')
     expect(host.sent).toHaveLength(2)
   })
@@ -179,6 +181,34 @@ describe('debug --llm', () => {
     expect(rejected.out).toContain('0 of 2 candidates verified in 2 rounds')
     expect(rejected.out).not.toContain('Write a candidate')
     expect(rejected.io.written.size).toBe(0)
+  })
+
+  test('n at the choice writes nothing; a failed write is reported', async () => {
+    // Arrange
+    const replies = [predict('83.33333333333333'), predict('250'), rewrite(AVERAGE_FIX)]
+    const io = fakeIO({ 'avg.sight': AVERAGE }, false)
+    const failing: FakeIO = {
+      ...io,
+      writeBytes: () => {
+        throw new Error('read-only file system')
+      },
+    }
+
+    // Act
+    const skipped = await debug(replies, ['y', 'n'])
+    const code = await runAiDebug(
+      failing,
+      debugCommand(),
+      fakeHost(replies, ENV),
+      linesOf(['y', '1']),
+    )
+
+    // Assert
+    expect(skipped.code).toBe(0)
+    expect(skipped.io.written.size).toBe(0)
+    expect(skipped.out).not.toContain('Wrote')
+    expect(code).toBe(0)
+    expect(io.err.join('')).toContain("error: cannot write 'avg.sight': read-only file system")
   })
 
   test('asks again on an unclear answer to the offer or the choice, and reports a host that cannot write', async () => {
