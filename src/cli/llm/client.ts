@@ -15,6 +15,19 @@ export type JsonReply =
 
 const count = (n: number) => n.toLocaleString('en-US')
 
+/** A base URL fit to print: credentials written into it are masked. */
+export function shownUrl(baseUrl: string): string {
+  try {
+    const url = new URL(baseUrl)
+    if (url.username === '' && url.password === '') return baseUrl
+    url.username = '***'
+    url.password = ''
+    return url.toString().replace(/\/$/, '')
+  } catch {
+    return baseUrl
+  }
+}
+
 export class LlmClient {
   private calls = 0
   private failures = 0
@@ -39,7 +52,7 @@ export class LlmClient {
   notice(): string {
     const { provider, model, baseUrl, maxCalls } = this.config
     return (
-      `AI assistance: ${provider} model ${model} at ${baseUrl}. ` +
+      `AI assistance: ${provider} model ${model} at ${shownUrl(baseUrl)}. ` +
       `Function source and the values of calls are sent to it; at most ${count(maxCalls)} ${maxCalls === 1 ? 'request' : 'requests'}. ` +
       'The VM checks every answer it gives.'
     )

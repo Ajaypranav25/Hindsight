@@ -5,7 +5,7 @@ import {
   DEFAULT_ANTHROPIC_MODEL,
   FALLBACK_BETA,
 } from './anthropic'
-import { LlmClient } from './client'
+import { LlmClient, shownUrl } from './client'
 import { DEFAULT_TIMEOUT_MS, resolveLlmConfig } from './config'
 import { anthropicText, fakeHost } from './fake-host'
 import { MAX_RETRY_DELAY_MS, redact, RETRY_DELAY_MS } from './http'
@@ -400,5 +400,14 @@ describe('extractJson', () => {
     expect(extractJson('[1, 2]')).toBeNull()
     expect(extractJson('no json here')).toBeNull()
     expect(extractJson('{broken')).toBeNull()
+  })
+})
+
+describe('shownUrl', () => {
+  test('masks credentials written into a base URL and leaves others alone', () => {
+    // Arrange, Act, Assert
+    expect(shownUrl('http://user:secret@localhost:11434/v1')).toBe('http://***@localhost:11434/v1')
+    expect(shownUrl('http://localhost:11434/v1')).toBe('http://localhost:11434/v1')
+    expect(shownUrl('not a url')).toBe('not a url')
   })
 })
