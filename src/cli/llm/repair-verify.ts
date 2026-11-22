@@ -16,6 +16,7 @@ import {
   type CallNode,
   callTree,
   compile,
+  crashCulprit,
   diffRuns,
   LineIndex,
   type LineSpan,
@@ -69,10 +70,9 @@ export function repairTarget(recording: Recording, goal: RepairGoal): RepairTarg
   let protoId: number
   if (goal.kind === 'crash') {
     if (recording.outcome.kind !== 'error') return 'The run did not crash.'
-    const frame = recording
-      .stateAt(recording.length)
-      .frames.findLast((candidate) => !candidate.library)
-    if (frame === undefined) return 'The crash is not in code of the program itself.'
+    // A failed precondition blames the caller (SPEC §7.16).
+    const frame = crashCulprit(recording)
+    if (frame === null) return 'The crash is not in code of the program itself.'
     protoId = frame.protoId
   } else {
     protoId = goal.protoId

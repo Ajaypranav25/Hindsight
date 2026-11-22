@@ -845,7 +845,9 @@ and recorded from the start (a snapshot belongs to its program) under a step lim
 the original run, then checked: with `{kind: 'examples'}` every call judged right must do the same
 again and every call judged wrong must be made again and return something else
 (`repairExamples(tree, finderState)` turns an interview into examples); with `{kind: 'crash'}` the
-run must finish. A passing mutant is a preview, not a proof: it reports what the wrong calls return
+run must finish, and the function changed is `crashCulprit(recording)`: the innermost frame of the
+program's own code at the error, or for a failed precondition (R026, which blames the caller,
+SPEC §7.16) the next one out, possibly the top-level code. Contract clauses are never mutated. A passing mutant is a preview, not a proof: it reports what the wrong calls return
 now so the intended fix can be told from one that is merely different.
 
 ### 7.13 Sweeps and heap differences (`sweep.ts`, `heap-diff.ts`)
@@ -1048,7 +1050,7 @@ dependenceOf, backwardSlice, errorSlice, upstreamWrites  // §7.8
 parseQuery, queryRecording, runQuery, queryTimes         // §7.9
 whyNot(recording, line): WhyNot                          // §7.10
 solveInverse, solveInverseAsync, inverseSearch           // §7.11
-repairSearch(recording, request, options), repairExamples, repairExample // §7.12
+repairSearch(recording, request, options), repairExamples, repairExample, crashCulprit // §7.12
 parseSweepValues, sweep, sweepAsync, heapEdges, diffHeaps // §7.13
 diffRuns(a, b, { maxNodes?, maxCompared?, limit? }): RunDiff // §7.14
 withInput(source, name, literal): InputResult             // §7.14
@@ -1219,7 +1221,8 @@ was reached, the answer has the wrong shape, `expected` is null or not a value, 
 over 20,000 pairs).
 
 **LLM repair** (`repair.ts`, `repair-verify.ts`, `line-diff.ts`). The target is the innermost user
-function at the error (`repair --llm`) or the verdict's culprit (the debug offer); top-level code
+function at the error, or for a failed precondition (R026) its caller (`crashCulprit`, §7.12;
+`repair --llm`), or the verdict's culprit (the debug offer); top-level code
 is refused. The model gets the function with its line range and the evidence: for a crash the
 error and hint, the user stack and up to 40 lines of the error slice; after an interview the calls
 judged right (with their results) and wrong (with the expected value when the model predicted one

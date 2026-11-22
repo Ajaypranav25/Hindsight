@@ -99,6 +99,24 @@ describe('repairTarget and shapeProblem', () => {
     })
   })
 
+  test('a failed precondition targets the caller that broke it (SPEC 7.16)', () => {
+    // Arrange
+    const recording = recorded(`fn average(xs) requires len(xs) > 0 { sum(xs) / len(xs) }
+fn report(groups) { average(groups[1]) }
+print(report([[1], []]))
+`)
+    const fromTop = recorded(`fn f(n) requires n > 0 { n }
+print(f(0))
+`)
+
+    // Act
+    const target = repairTarget(recording, { kind: 'crash' })
+
+    // Assert
+    expect(target).toMatchObject({ name: 'report', lines: { start: 2, end: 2 } })
+    expect(repairTarget(fromTop, { kind: 'crash' })).toMatch(/top-level code/)
+  })
+
   test('explains when there is no crash or the fault is in the top-level code', () => {
     // Arrange
     const finished = recorded('print(1)\n')

@@ -88,7 +88,7 @@ export type {
   RepairResult,
   RepairSearch,
 } from './repair'
-export { repairExample, repairExamples } from './repair'
+export { crashCulprit, repairExample, repairExamples } from './repair'
 export * from './run-diff'
 export type { MapMomentOptions, MappedMoment, MomentPrecision } from './run-map'
 export { lineMap, mapMoment } from './run-map'

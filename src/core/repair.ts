@@ -10,7 +10,7 @@
  * A repair that passes is a *preview*, not a proof: it is consistent with the answers given so
  * far. The search is a generator so a page can run it between frames.
  */
-import type { CompileResult, RecordOptions, Recording } from './api-types'
+import type { CompileResult, FrameView, RecordOptions, Recording } from './api-types'
 import type * as ast from './ast'
 import type { Program } from './bytecode'
 import type { FinderState } from './bug-finder'
@@ -330,6 +330,18 @@ export function* repairSearch(
   return { repairs, tried, exhausted, problem: null }
 }
 
+/**
+ * The frame of the program's own code a crash is to blame on: the innermost one, except that a
+ * failed precondition (R026) blames the caller (SPEC §7.16), so it is the next one out (possibly
+ * the top-level code). Null when the run did not crash or no such frame exists.
+ */
+export function crashCulprit(recording: Recording): FrameView | null {
+  const { outcome } = recording
+  if (outcome.kind !== 'error') return null
+  const own = recording.stateAt(recording.length).frames.filter((frame) => !frame.library)
+  return own.at(outcome.error.code === 'R026' ? -2 : -1) ?? null
+}
+
 interface Plan {
   /** The function to change; null for the top-level code. */
   readonly within: Span | null
@@ -339,10 +351,12 @@ interface Plan {
 function plan(recording: Recording, request: RepairRequest): Plan | string {
   const { program } = recording
   if (request.kind === 'crash') {
-    if (recording.outcome.kind !== 'error') return 'The run did not crash.'
-    const frames = recording.stateAt(recording.length).frames
-    const frame = frames.findLast((candidate) => !candidate.library)
-    if (frame === undefined) return 'The crash is not in code of the program itself.'
+    const frame = crashCulprit(recording)
+    if (frame === null) {
+      return recording.outcome.kind === 'error'
+        ? 'The crash is not in code of the program itself.'
+        : 'The run did not crash.'
+    }
     return {
       within: spanOf(recording, frame.protoId),
       oracle: (mutant) => (mutant.outcome.kind === 'finished' ? ['the run finishes'] : null),
