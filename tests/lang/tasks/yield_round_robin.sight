@@ -1,0 +1,17 @@
+// yield() lets the next runnable task run; round-robin visits tasks in id order (SPEC §10.6).
+fn count(name, n) {
+  for i in 0..n {
+    print("{name}{i}")
+    yield()
+  }
+}
+let a = spawn(count, "a", 3)
+let b = spawn(count, "b", 2)
+yield() // expect: a0
+// expect: b0
+print("main") // expect: main
+wait(a) // expect: a1
+// expect: b1
+// expect: a2
+wait(b)
+print("done") // expect: done

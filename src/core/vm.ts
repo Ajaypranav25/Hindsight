@@ -9,6 +9,7 @@ import type {
   CellObj,
   Frame,
   HeapObject,
+  Task,
   Value,
   VM,
   VMHooks,
@@ -68,6 +69,14 @@ class MachineVM implements VM {
 
   get openCells(): readonly CellObj[] {
     return this.machine.openCells
+  }
+
+  get tasks(): readonly Readonly<Task>[] | null {
+    return this.machine.tasks
+  }
+
+  get taskId(): number {
+    return this.machine.current?.id ?? 1
   }
 
   protoById(id: number): FunctionProto {

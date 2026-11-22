@@ -1,0 +1,2 @@
+// wait expects a task (R019).
+wait(channel()) // expect runtime error R019: 'wait' expects a task as argument 1, got a channel

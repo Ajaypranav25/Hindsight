@@ -1,0 +1,10 @@
+// When the running task blocks and no task can run, the program fails with a deadlock (R028); the
+// hint names every waiting task: the one blocking here first, then the others in id order.
+let a = channel()
+let b = channel()
+fn left() {
+  recv(a) // expect runtime error R028: deadlock: every task is waiting // hint: task 2 (left) waits to receive from channel #2 here; task 1 (main) waits to receive from channel #3 on line 10
+  send(b, 1)
+}
+spawn(left)
+recv(b)

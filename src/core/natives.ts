@@ -11,6 +11,7 @@ import { LIST_NATIVES } from './natives-lists'
 import { MATH_NATIVES } from './natives-math'
 import { RECORD_NATIVES } from './natives-records'
 import { STRING_NATIVES } from './natives-strings'
+import { TASK_NATIVES } from './natives-tasks'
 import type { NativeObj, Value } from './runtime-types'
 
 const CONSTANTS: Readonly<Partial<Record<NativeName, number>>> = { PI: Math.PI, INF: Infinity }
@@ -21,6 +22,7 @@ const TABLE: NativeTable = {
   ...RECORD_NATIVES,
   ...STRING_NATIVES,
   ...MATH_NATIVES,
+  ...TASK_NATIVES,
 }
 
 export function createNatives(): Value[] {

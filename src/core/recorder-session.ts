@@ -3,10 +3,11 @@
  * snapshot when the cost-aware cadence says so, then execute the step. Shared by `record`,
  * `recordAsync`, `extend` and `extendAsync`; the async drivers run it in slices.
  */
-import type { Outcome, OutputEvent } from './api-types'
+import type { Outcome, OutputEvent, ScheduleOptions } from './api-types'
 import type { Program } from './bytecode'
 import { InternalError } from './diagnostics'
 import type { RuntimeDeps, VM, VMSnapshot } from './runtime-types'
+import { finishedOutcome } from './tasks-info'
 import type { AllocTimes, EventColumns, StepColumns } from './trace-columns'
 import type { TraceSink } from './trace-sink'
 
@@ -199,6 +200,8 @@ export interface RecordingCore {
   readonly program: Program
   readonly runtime: RuntimeDeps
   readonly seed: number
+  /** How tasks interleaved (absent: round-robin); every VM replaying this run uses it. */
+  readonly taskSchedule?: ScheduleOptions
   readonly heapLimit: number
   readonly steps: StepColumns
   readonly events: EventColumns
@@ -219,6 +222,7 @@ export interface SessionInit {
   readonly program: Program
   readonly runtime: RuntimeDeps
   readonly seed: number
+  readonly taskSchedule?: ScheduleOptions
   readonly heapLimit: number
   readonly steps: StepColumns
   readonly events: EventColumns
@@ -300,7 +304,7 @@ export class RecordingSession {
     let outcome: Outcome
     switch (kind) {
       case 'finished':
-        outcome = { kind: 'finished' }
+        outcome = finishedOutcome(vm)
         break
       case 'error': {
         const error = vm.error
@@ -330,6 +334,7 @@ export class RecordingSession {
       program: this.init.program,
       runtime: this.init.runtime,
       seed: this.init.seed,
+      taskSchedule: this.init.taskSchedule,
       heapLimit: this.init.heapLimit,
       steps,
       events: this.init.events,

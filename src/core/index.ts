@@ -41,6 +41,7 @@ import {
   type TraceReplayOptions,
 } from './trace-open'
 import type { RuntimeDeps, VM, VMHooks } from './runtime-types'
+import { finishedOutcome } from './tasks-info'
 import { createVM } from './vm'
 
 export * from './api-types'
@@ -157,6 +158,7 @@ export function run(program: Program, options: RunOptions = {}): RunResult {
     builtins: runtime.builtins,
     libraryProtos: runtime.libraryProtos,
     seed: options.seed ?? DEFAULT_SEED,
+    schedule: options.schedule,
   })
   const outputs: OutputEvent[] = []
   vm.hooks = outputHooks(outputs, options.onOutput)
@@ -173,7 +175,7 @@ function stepLimit(value: number | undefined): number {
 }
 
 function outcomeOf(vm: VM, maxSteps: number): Outcome {
-  if (vm.status === 'finished') return { kind: 'finished' }
+  if (vm.status === 'finished') return finishedOutcome(vm)
   if (vm.status === 'error') {
     if (vm.error === null) throw new InternalError('the VM failed without an error')
     return { kind: 'error', error: vm.error }

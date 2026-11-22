@@ -3,12 +3,17 @@
  * state, so natives allocate, mutate and record events exactly like the VM's own operations.
  */
 import type { RuntimeErrorCode } from './diagnostics'
-import type { ListObj, NativeContext, RangeObj, RecordObj, Value } from './runtime-types'
+import type { ListObj, NativeContext, RangeObj, RecordObj, TaskOps, Value } from './runtime-types'
 import { VMFailure } from './vm-errors'
 import type { MachineState } from './vm-state'
+import { MachineTasks } from './vm-tasks'
 
 export class MachineContext implements NativeContext {
-  constructor(private readonly machine: MachineState) {}
+  readonly tasks: TaskOps
+
+  constructor(private readonly machine: MachineState) {
+    this.tasks = new MachineTasks(machine)
+  }
 
   get time(): number {
     return this.machine.time

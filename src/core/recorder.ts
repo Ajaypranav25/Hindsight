@@ -22,6 +22,7 @@ import {
   type ProvenanceEvent,
   type RecordOptions,
   type Recording,
+  type ScheduleOptions,
   type StateView,
   type StepKind,
   type WhatIfInfo,
@@ -69,11 +70,17 @@ function stepLimit(value: number | undefined, fallback: number): number {
   return Math.floor(limit)
 }
 
-function newVM(program: Program, runtime: RuntimeDeps, seed: number): VM {
+function newVM(
+  program: Program,
+  runtime: RuntimeDeps,
+  seed: number,
+  taskSchedule: ScheduleOptions | undefined,
+): VM {
   return runtime.createVM(program, {
     builtins: runtime.builtins,
     libraryProtos: runtime.libraryProtos,
     seed,
+    schedule: taskSchedule,
   })
 }
 
@@ -89,12 +96,14 @@ export function startSession(
   const events = new EventColumns()
   const allocs = new AllocTimes()
   const sink = new TraceSink(events, allocs, [], 0)
-  const vm = newVM(program, runtime, seed)
+  const taskSchedule = options.schedule
+  const vm = newVM(program, runtime, seed, taskSchedule)
   vm.hooks = sink
   return new RecordingSession({
     program,
     runtime,
     seed,
+    taskSchedule,
     heapLimit: options.heapLimit ?? DEFAULT_HEAP_LIMIT,
     steps: new StepColumns(),
     events,
@@ -120,13 +129,14 @@ function extensionSession(
   }
   const extra = stepLimit(extraSteps, 0)
   const sink = new TraceSink(core.events, core.allocs, core.outputs.slice(), core.eventCount)
-  const vm = newVM(core.program, core.runtime, core.seed)
+  const vm = newVM(core.program, core.runtime, core.seed, core.taskSchedule)
   vm.restore(snapshot)
   vm.hooks = sink
   return new RecordingSession({
     program: core.program,
     runtime: core.runtime,
     seed: core.seed,
+    taskSchedule: core.taskSchedule,
     heapLimit: options.heapLimit ?? core.heapLimit,
     steps: core.steps,
     events: core.events,
@@ -160,7 +170,13 @@ class RecordedRun implements Recording {
     this.outcome = core.outcome
     this.outputs = core.outputs
     this.table = new ProtoTable(core.program, core.runtime.libraryProtos)
-    this.seeker = new Seeker(core.program, core.runtime, core.seed, core.schedule)
+    this.seeker = new Seeker(
+      core.program,
+      core.runtime,
+      core.seed,
+      core.taskSchedule,
+      core.schedule,
+    )
   }
 
   locationAt(t: number): Location | null {
@@ -289,7 +305,8 @@ class RecordedRun implements Recording {
 
   /** A replay VM positioner of its own, for scans that must not disturb `stateAt` (tools only). */
   newSeeker(): Seeker {
-    return new Seeker(this.core.program, this.core.runtime, this.core.seed, this.core.schedule)
+    const { program, runtime, seed, taskSchedule, schedule } = this.core
+    return new Seeker(program, runtime, seed, taskSchedule, schedule)
   }
 
   get protoTable(): ProtoTable {

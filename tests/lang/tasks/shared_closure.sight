@@ -1,0 +1,16 @@
+// Tasks share variables a closure captured, even a local of a function that is still running.
+fn run() {
+  var total = 0
+  let add = fn(n) {
+    for i in 0..n {
+      total = total + 1
+      yield()
+    }
+  }
+  let a = spawn(add, 3)
+  let b = spawn(add, 2)
+  wait(a)
+  wait(b)
+  return total
+}
+print(run()) // expect: 5

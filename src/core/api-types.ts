@@ -10,7 +10,51 @@ export const DEFAULT_MAX_STEPS = 2_000_000
 export const DEFAULT_SEED = 42
 
 export type TypeName =
-  'nil' | 'bool' | 'number' | 'string' | 'list' | 'record' | 'function' | 'range'
+  | 'nil'
+  | 'bool'
+  | 'number'
+  | 'string'
+  | 'list'
+  | 'record'
+  | 'function'
+  | 'range'
+  | 'task'
+  | 'channel'
+
+// ---------------------------------------------------------------------------------------------
+// Tasks (SPEC §10.6)
+
+export type SchedulePolicy = 'round-robin' | 'random'
+
+/** How tasks interleave. Same program + same seeds = same run. */
+export interface ScheduleOptions {
+  /**
+   * `round-robin` (the default): a task runs until it blocks, yields or finishes, then the next
+   * runnable task in id order runs. `random`: a task is also preempted after a pseudo-random
+   * number of instructions, and every choice of the next task is pseudo-random.
+   */
+  readonly policy: SchedulePolicy
+  /** `random`: the most instructions a task runs before it is preempted. Default 10. */
+  readonly quantum?: number
+  /** `random`: the scheduler generator's seed, separate from the program's. Default 1. */
+  readonly seed?: number
+}
+
+export const DEFAULT_QUANTUM = 10
+export const DEFAULT_SCHEDULE_SEED = 1
+
+/** What a blocked task waits for. */
+export type TaskWaitView =
+  | { readonly kind: 'send' | 'recv'; readonly channelId: number }
+  | { readonly kind: 'join'; readonly task: number }
+
+/** A task that had not finished when the main task did (the program ended anyway). */
+export interface UnfinishedTask {
+  readonly id: number
+  readonly name: string
+  readonly status: 'runnable' | 'blocked'
+  readonly wait: TaskWaitView | null
+}
 
 // ---------------------------------------------------------------------------------------------
 // Compiling and running
@@ -26,6 +70,8 @@ export interface RunOptions {
   readonly seed?: number
   /** Called synchronously for every `print`. */
   readonly onOutput?: (text: string) => void
+  /** How tasks interleave. Default round-robin. */
+  readonly schedule?: ScheduleOptions
 }
 
 export interface RunResult {
@@ -56,7 +102,11 @@ export interface RuntimeErrorInfo {
 }
 
 export type Outcome =
-  | { readonly kind: 'finished' }
+  | {
+      readonly kind: 'finished'
+      /** Tasks still runnable or blocked when the main task finished; absent when there are none. */
+      readonly unfinishedTasks?: readonly UnfinishedTask[]
+    }
   | { readonly kind: 'error'; readonly error: RuntimeErrorInfo }
   | { readonly kind: 'step-limit'; readonly maxSteps: number }
   | { readonly kind: 'aborted' }
@@ -92,7 +142,8 @@ export interface Location {
   readonly opName: string
 }
 
-export type RefType = 'list' | 'record' | 'function' | 'builtin' | 'range' | 'iterator'
+export type RefType =
+  'list' | 'record' | 'function' | 'builtin' | 'range' | 'iterator' | 'task' | 'channel'
 
 export type ValueView =
   | { readonly kind: 'nil' }
@@ -163,6 +214,26 @@ export type ObjectView =
       readonly source: ValueView
       readonly position: number
     }
+  | {
+      readonly type: 'task'
+      readonly id: number
+      /** The task number. */
+      readonly task: number
+      readonly name: string
+      readonly status: 'runnable' | 'blocked' | 'done'
+      /** The function's result once the task is done, else null. */
+      readonly result: ValueView | null
+    }
+  | {
+      readonly type: 'channel'
+      readonly id: number
+      readonly capacity: number
+      readonly closed: boolean
+      /** Buffered values, oldest first. */
+      readonly offset: number
+      readonly items: readonly ValueView[]
+      readonly length: number
+    }
 
 export interface LocalView {
   readonly name: string
@@ -217,6 +288,35 @@ export interface StateView {
   readonly outputCount: number
   /** Set only at time N when the run ended with an error. */
   readonly error: RuntimeErrorInfo | null
+  /**
+   * Every task in id order, when the program has tasks (absent otherwise). `frames` above are the
+   * current task's.
+   */
+  readonly tasks?: readonly TaskView[]
+}
+
+/** One task in a state (ARCHITECTURE §7.4). */
+export interface TaskView {
+  readonly id: number
+  readonly name: string
+  readonly status: 'runnable' | 'blocked' | 'done'
+  /** True for the task about to execute (at N: the one that ran last). */
+  readonly current: boolean
+  readonly wait: TaskWaitView | null
+  /** Outermost first: name, location and line of each frame (no locals; see `frames`). */
+  readonly frames: readonly TaskFrameView[]
+  /** The function's result once the task is done, else null. */
+  readonly result: ValueView | null
+}
+
+export interface TaskFrameView {
+  readonly uid: number
+  readonly name: string
+  readonly protoId: number
+  readonly library: boolean
+  /** The current instruction (for callers and blocked tasks: the call they wait on). */
+  readonly span: Span
+  readonly line: number
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -284,6 +384,8 @@ export interface RecordOptions {
   readonly snapshotBudget?: number
   /** Maximum objects in `StateView.heap`. Default 250. */
   readonly heapLimit?: number
+  /** How tasks interleave. Default round-robin. */
+  readonly schedule?: ScheduleOptions
 }
 
 export interface AsyncRecordOptions extends RecordOptions {

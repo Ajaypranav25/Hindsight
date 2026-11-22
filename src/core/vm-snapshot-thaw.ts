@@ -10,21 +10,28 @@ import { InternalError } from './diagnostics'
 import { PVec } from './pvec'
 import type {
   CellObj,
+  ChannelObj,
   ClosureObj,
   Frame,
   HeapObject,
   IteratorObj,
   ListObj,
   RecordObj,
+  Task,
+  TaskWait,
   Value,
 } from './runtime-types'
 import {
   type Frozen,
+  type FrozenFrame,
   type FrozenList,
   type FrozenObject,
   type FrozenRoots,
   type FrozenSlots,
+  type FrozenTask,
+  type FrozenWait,
   type MachineScalars,
+  type Ref,
   isRef,
   slotArray,
 } from './vm-snapshot-frozen'
@@ -35,7 +42,13 @@ export interface MachineRecord extends MachineScalars {
   readonly frames: Frame[]
   readonly openCells: CellObj[]
   readonly globals: Map<string, Value>
+  /** Every task, or null without tasks; the running one holds the arrays above. */
+  readonly tasks: Task[] | null
+  readonly current: Task | null
 }
+
+/** The stack a closed cell keeps: it is never read. */
+const NO_STACK: Value[] = []
 
 /** Fresh live objects for `roots` and everything they reach in `table`. */
 export function thaw(
@@ -54,17 +67,70 @@ export function thawRoots(
 ): MachineRecord {
   const value = thawer.value
   const stack = roots.stack.map(value)
-  const frames: Frame[] = roots.frames.map((frame) => ({
-    closure: value(frame.closure) as ClosureObj,
+  const frames = roots.frames.map((frame) => thawFrame(thawer, frame))
+  const openCells = thawCells(thawer, roots.openCells)
+  const globals = new Map<string, Value>()
+  for (const [name, frozen] of roots.globals) globals.set(name, value(frozen))
+  const frozenTasks = roots.tasks
+  const tasks =
+    frozenTasks === null
+      ? null
+      : frozenTasks.map((task, index) =>
+          index === roots.current
+            ? thawTask(thawer, task, stack, frames, openCells)
+            : thawTask(
+                thawer,
+                task,
+                task.stack.map(value),
+                task.frames.map((frame) => thawFrame(thawer, frame)),
+                thawCells(thawer, task.openCells),
+              ),
+        )
+  thawer.drain()
+  // An open cell aliases a slot of its task's stack, which is a new array now.
+  for (const cell of openCells) cell.stack = stack
+  for (const task of tasks ?? []) for (const cell of task.openCells) cell.stack = task.stack
+  const current = tasks === null ? null : tasks[roots.current]!
+  return { ...scalars, stack, frames, openCells, globals, tasks, current }
+}
+
+function thawFrame(thawer: Thawer, frame: FrozenFrame): Frame {
+  return {
+    closure: thawer.value(frame.closure) as ClosureObj,
     ip: frame.ip,
     base: frame.base,
     uid: frame.uid,
-  }))
-  const openCells = roots.openCells.map((cell) => thawer.object(cell.id) as CellObj)
-  const globals = new Map<string, Value>()
-  for (const [name, frozen] of roots.globals) globals.set(name, value(frozen))
-  thawer.drain()
-  return { ...scalars, stack, frames, openCells, globals }
+  }
+}
+
+function thawCells(thawer: Thawer, cells: readonly Ref[]): CellObj[] {
+  return cells.map((cell) => thawer.object(cell.id) as CellObj)
+}
+
+function thawTask(
+  thawer: Thawer,
+  task: FrozenTask,
+  stack: Value[],
+  frames: Frame[],
+  openCells: CellObj[],
+): Task {
+  return {
+    id: task.id,
+    name: task.name,
+    stack,
+    frames,
+    openCells,
+    status: task.status,
+    wait: task.wait === null ? null : thawWait(thawer, task.wait),
+    since: task.since,
+    result: thawer.value(task.result),
+    object: task.object,
+  }
+}
+
+function thawWait(thawer: Thawer, wait: FrozenWait): TaskWait {
+  if (wait.kind === 'join') return wait
+  return { kind: wait.kind, channel: thawer.object(wait.channel.id) as ChannelObj }
 }
 
 export class Thawer {
@@ -146,6 +212,7 @@ export class Thawer {
           id: frozen.id,
           open: frozen.open,
           stackIndex: frozen.stackIndex,
+          stack: NO_STACK,
           value: null,
           ownerFrameUid: frozen.ownerFrameUid,
           slot: frozen.slot,
@@ -159,6 +226,14 @@ export class Thawer {
           position: frozen.position,
           keys: frozen.keys,
         } satisfies IteratorObj
+      case 'channel':
+        return {
+          type: 'channel',
+          id: frozen.id,
+          capacity: frozen.capacity,
+          items: [],
+          closed: frozen.closed,
+        }
     }
   }
 
@@ -197,6 +272,13 @@ export class Thawer {
         iterator.source = this.value(frozen.source)
         iterator.position = frozen.position
         iterator.keys = frozen.keys
+        break
+      }
+      case 'channel': {
+        const channel = object as ChannelObj
+        channel.items.length = 0
+        for (const item of frozen.items) channel.items.push(this.value(item))
+        channel.closed = frozen.closed
         break
       }
     }

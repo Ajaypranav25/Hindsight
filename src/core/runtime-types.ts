@@ -3,7 +3,7 @@
  * (docs/ARCHITECTURE.md §6). The VM and natives mutate these objects internally; every other module
  * treats them as read-only.
  */
-import type { ListOp, RuntimeErrorInfo, WriteTarget } from './api-types'
+import type { ListOp, RuntimeErrorInfo, ScheduleOptions, WriteTarget } from './api-types'
 import type { FunctionProto, Program } from './bytecode'
 import type { RuntimeErrorCode } from './diagnostics'
 
@@ -14,7 +14,15 @@ import type { RuntimeErrorCode } from './diagnostics'
 export type Value = null | boolean | number | string | HeapObject
 
 export type HeapObject =
-  ListObj | RecordObj | ClosureObj | NativeObj | RangeObj | IteratorObj | CellObj
+  | ListObj
+  | RecordObj
+  | ClosureObj
+  | NativeObj
+  | RangeObj
+  | IteratorObj
+  | CellObj
+  | TaskObj
+  | ChannelObj
 
 export interface ListObj {
   readonly type: 'list'
@@ -72,16 +80,74 @@ export interface IteratorObj {
   readonly keys: readonly string[] | null
 }
 
-/** An upvalue. Open: it aliases `stack[stackIndex]`. Closed: it holds `value`. */
+/**
+ * An upvalue. Open: it aliases `stack[stackIndex]` of the task that created it (`stack`, which is
+ * that task's stack array, so a closure running in another task reads the right one). Closed: it
+ * holds `value`, and `stack` means nothing.
+ */
 export interface CellObj {
   readonly type: 'cell'
   readonly id: number
   open: boolean
   stackIndex: number
+  stack: Value[]
   value: Value
   /** The frame and slot the cell was created for (provenance aliasing, ARCHITECTURE §7.3). */
   readonly ownerFrameUid: number
   readonly slot: number
+}
+
+/**
+ * A task handle (SPEC §10.6): what `spawn` and `current_task` return. Immutable and shared between
+ * snapshots like a range; the task's state lives in the machine (`Task`).
+ */
+export interface TaskObj {
+  readonly type: 'task'
+  readonly id: number
+  /** The task number: 1 for the main script, then 2, 3, … in spawn order. */
+  readonly task: number
+  /** Display name of the function the task runs (`main` for the script). */
+  readonly name: string
+}
+
+/** A channel (SPEC §10.6). Capacity 0 is an unbuffered rendezvous. */
+export interface ChannelObj {
+  readonly type: 'channel'
+  readonly id: number
+  readonly capacity: number
+  /** Buffered values, oldest first (at most `capacity`). */
+  readonly items: Value[]
+  closed: boolean
+}
+
+export type TaskStatus = 'runnable' | 'blocked' | 'done'
+
+/** What a blocked task waits for. */
+export type TaskWait =
+  | { readonly kind: 'send'; readonly channel: ChannelObj }
+  | { readonly kind: 'recv'; readonly channel: ChannelObj }
+  /** `wait(t)`: the task number it waits for. */
+  | { readonly kind: 'join'; readonly task: number }
+
+/**
+ * One task of the machine (ARCHITECTURE §6.11). The machine's `stack`, `frames` and `openCells` are
+ * the current task's arrays. A blocked task's top frame stands on the `Call` that blocked, with the
+ * callee and arguments still on its stack.
+ */
+export interface Task {
+  readonly id: number
+  readonly name: string
+  stack: Value[]
+  frames: Frame[]
+  openCells: CellObj[]
+  status: TaskStatus
+  wait: TaskWait | null
+  /** The step at which the task last blocked (waiters are served in this order). */
+  since: number
+  /** The function's result once the task is done. */
+  result: Value
+  /** The handle, created by `spawn` (or by `current_task` for the main task). */
+  object: TaskObj | null
 }
 
 export interface Frame {
@@ -130,6 +196,29 @@ export interface NativeContext {
   seed(n: number): void
   /** Raises a runtime error at the current call. */
   fail(code: RuntimeErrorCode, message: string, hint?: string): never
+  /** Tasks and channels (SPEC §10.6); blocking operations ask the VM to switch tasks. */
+  readonly tasks: TaskOps
+}
+
+/**
+ * What task natives ask of the machine. None of them calls user code: `spawn` only prepares the new
+ * task's first frame, and an operation that must wait marks the current task blocked and leaves a
+ * request the VM's `Call` path handles after the native returns (ARCHITECTURE §6.11).
+ */
+export interface TaskOps {
+  /** Starts a task that calls `fn(...args)`; `fn` is a user or library function. */
+  spawn(fn: ClosureObj, args: readonly Value[]): TaskObj
+  channel(capacity: number): ChannelObj
+  /** Completes at once or blocks the current task. */
+  send(channel: ChannelObj, value: Value): void
+  /** The value received; when the task blocks instead, the return value is ignored. */
+  recv(channel: ChannelObj): Value
+  close(channel: ChannelObj): void
+  /** The task's result, or blocks until it is done. */
+  wait(task: TaskObj): Value
+  /** Lets another runnable task run. */
+  yieldTask(): void
+  current(): TaskObj
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -168,6 +257,8 @@ export interface VMOptions {
   readonly libraryProtos: readonly FunctionProto[]
   /** Default DEFAULT_SEED. */
   readonly seed?: number
+  /** How tasks interleave (SPEC §10.6). Default round-robin. */
+  readonly schedule?: ScheduleOptions
 }
 
 export interface VM {
@@ -184,6 +275,13 @@ export interface VM {
   readonly globals: ReadonlyMap<string, Value>
   /** Sorted by stack index. */
   readonly openCells: readonly CellObj[]
+  /**
+   * Every task in id order once the program spawned one (or asked for `current_task()`), else null.
+   * `stack`, `frames` and `openCells` above are the current task's.
+   */
+  readonly tasks: readonly Readonly<Task>[] | null
+  /** The task executing the next step: 1 (the main script) while `tasks` is null. */
+  readonly taskId: number
   protoById(id: number): FunctionProto
   /**
    * Executes exactly step `time` (requires status 'running'); `time` increases by 1 on success.

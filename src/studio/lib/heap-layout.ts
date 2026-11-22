@@ -256,6 +256,19 @@ function rawRows(object: ObjectView): { title: string; rows: RawRow[] } {
         title: 'iterator',
         rows: [plain(`at ${object.position}`), row('source', object.source)],
       }
+    case 'task': {
+      const rows = [plain(`${object.name} · ${object.status}`)]
+      if (object.result !== null) rows.push(row('result', object.result))
+      return { title: `task ${object.task}`, rows }
+    }
+    case 'channel': {
+      const shown = object.items.slice(0, MAX_LIST_CELLS)
+      const rows = shown.map((item, i) => row(String(object.offset + i), item))
+      if (object.length > shown.length) rows.push(moreRow(object.length - shown.length))
+      if (object.length === 0) rows.push(plain(object.closed ? 'empty · closed' : 'empty'))
+      const state = object.closed ? ' closed' : ''
+      return { title: `channel ${object.length}/${object.capacity}${state}`, rows }
+    }
   }
 }
 

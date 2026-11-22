@@ -144,6 +144,10 @@ function heapAtom(value: HeapObject): string {
       return '<iterator>'
     case 'cell':
       return '<cell>'
+    case 'task':
+      return `<task ${value.task}: ${value.name}>`
+    case 'channel':
+      return `<channel #${value.id} (${value.items.length}/${value.capacity}${value.closed ? ', closed' : ''})>`
     default:
       throw new InternalError(`${value.type} is not an atom`)
   }

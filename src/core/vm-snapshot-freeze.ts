@@ -14,26 +14,35 @@ import { InternalError } from './diagnostics'
 import { PVec, type PVecEditor } from './pvec'
 import type {
   CellObj,
+  ChannelObj,
   ClosureObj,
+  Frame,
   HeapObject,
   IteratorObj,
   ListObj,
   RecordObj,
+  Task,
+  TaskWait,
   Value,
 } from './runtime-types'
 import {
   type Frozen,
   FrozenCell,
+  FrozenChannel,
   FrozenClosure,
   FrozenIterator,
   FrozenList,
   type FrozenObject,
+  type FrozenFrame,
   FrozenRecord,
   type FrozenRoots,
   type FrozenSlots,
+  type FrozenTask,
+  type FrozenWait,
   Ref,
   SMALL_SLOTS,
   objectSize,
+  rootsSize,
   slotArray,
 } from './vm-snapshot-frozen'
 import type { MachineState } from './vm-state'
@@ -85,6 +94,7 @@ export class Freezer {
     switch (value.type) {
       case 'range':
       case 'native':
+      case 'task':
         return value
       case 'closure':
         if (value.id < 0) return value
@@ -124,26 +134,52 @@ export class Freezer {
     for (const [object, change] of changes) this.reissue(object, change)
   }
 
-  /** The frozen roots of the machine (always copied in full). */
+  /** The frozen roots of the machine (always copied in full), every task's included. */
   roots(): FrozenRoots {
     const m = this.m
     const freeze = this.freeze
     const globals = new Map<string, Frozen>()
     for (const [name, value] of m.globals) globals.set(name, freeze(value))
+    const tasks = m.tasks
     const roots: FrozenRoots = {
       stack: m.stack.map(freeze),
-      frames: m.frames.map((frame) => ({
-        closure: freeze(frame.closure),
-        ip: frame.ip,
-        base: frame.base,
-        uid: frame.uid,
-      })),
+      frames: m.frames.map(this.freezeFrame),
       openCells: m.openCells.map((cell) => freeze(cell) as Ref),
       globals,
+      tasks: tasks === null ? null : tasks.map((task) => this.freezeTask(task, task === m.current)),
+      current: m.current === null ? 0 : m.current.id - 1,
     }
-    this.copied +=
-      roots.stack.length + roots.frames.length + roots.openCells.length + roots.globals.size
+    this.copied += rootsSize(roots)
     return roots
+  }
+
+  private readonly freezeFrame = (frame: Frame): FrozenFrame => ({
+    closure: this.freeze(frame.closure),
+    ip: frame.ip,
+    base: frame.base,
+    uid: frame.uid,
+  })
+
+  /** A task; the running one's arrays are the roots' own, so they are left empty here. */
+  private freezeTask(task: Task, running: boolean): FrozenTask {
+    const freeze = this.freeze
+    return {
+      id: task.id,
+      name: task.name,
+      status: task.status,
+      wait: task.wait === null ? null : this.freezeWait(task.wait),
+      since: task.since,
+      result: freeze(task.result),
+      object: task.object,
+      stack: running ? [] : task.stack.map(freeze),
+      frames: running ? [] : task.frames.map(this.freezeFrame),
+      openCells: running ? [] : task.openCells.map((cell) => freeze(cell) as Ref),
+    }
+  }
+
+  private freezeWait(wait: TaskWait): FrozenWait {
+    if (wait.kind === 'join') return wait
+    return { kind: wait.kind, channel: this.freeze(wait.channel) as Ref }
   }
 
   /** Copies every queued new object, and the new objects they refer to. */
@@ -259,6 +295,8 @@ export class Freezer {
         return this.copyCell(object)
       case 'iterator':
         return this.copyIterator(object)
+      case 'channel':
+        return this.copyChannel(object)
       default:
         throw new InternalError(`cannot copy ${object.type}`)
     }
@@ -295,6 +333,12 @@ export class Freezer {
       cell.ownerFrameUid,
       cell.slot,
     )
+  }
+
+  private copyChannel(channel: ChannelObj): FrozenChannel {
+    this.copied += 1 + channel.items.length
+    const items = channel.items.map(this.freeze)
+    return new FrozenChannel(channel.id, this.serial, channel.capacity, items, channel.closed)
   }
 
   private copyIterator(iterator: IteratorObj): FrozenIterator {

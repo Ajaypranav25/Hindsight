@@ -1,0 +1,11 @@
+// wait(t) returns the task's result, at once when it is already done (SPEC §10.6).
+fn square(x) {
+  return x * x
+}
+let tasks = map([1, 2, 3], fn(x) { spawn(square, x) })
+print(map(tasks, wait)) // expect: [1, 4, 9]
+let done = spawn(fn() { "ok" })
+yield()
+print(wait(done)) // expect: ok
+print(current_task()) // expect: <task 1: main>
+print(wait(spawn(fn() { current_task() }))) // expect: <task 6: lambda>

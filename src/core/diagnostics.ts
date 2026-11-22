@@ -56,6 +56,9 @@ export type RuntimeErrorCode =
   | 'R025'
   | 'R026'
   | 'R027'
+  | 'R028'
+  | 'R029'
+  | 'R030'
 
 export type Severity = 'error' | 'warning'
 

@@ -343,7 +343,8 @@ Stack effects are written `( before -- after )`, top of stack on the right.
 script frame is uid 1), the generator state (SPEC §10.3), `allocated` (units charged against the
 allocation budget, SPEC §10.5; it only grows), `scanned` (elements visited within single steps
 without allocating, reported by natives through `NativeContext.scan` and by `==` on containers; it
-only grows), `status`, `error`. `VM.work` is `time + allocated + scanned`: the cost of replaying the
+only grows), `status`, `error`, and the task state of §6.11 (`tasks`, `current`, the scheduler's
+generator and next preemption). `VM.work` is `time + allocated + scanned`: the cost of replaying the
 run so far, which the recorder's snapshot cadence measures distances in (§7.1.4). Besides the
 record, the machine keeps the write-barrier state of §6.8 (base snapshot, change log).
 
@@ -362,14 +363,16 @@ record, the machine keeps the write-barrier state of §6.8 (base snapshot, chang
 
 - `Call argc`: callee at `stack[top − argc]`.
   - native: check arity (R005), run the native atomically within the same step, replace callee and
-    arguments with the result.
+    arguments with the result. A task native that blocked the running task leaves them in place
+    and the step ends with a task switch (§6.11).
   - closure: check arity (R005), then call depth (R016: fail when `frames.length − 1 >= 10000`,
     i.e. the top-level frame does not count) **before** mutating anything; push a frame
     `{base = top − argc, ip = 0, uid = nextFrameUid++}`; record a `declare` event for each parameter
     slot `1..arity` of the new frame.
   - anything else: R004.
 - `Return`: pop the result, close cells for slots `>= base`, drop the frame's region, push the
-  result. When the script frame returns, the run is `finished` with an empty stack and no frames.
+  result. When the script frame returns, the run is `finished` with an empty stack and no frames;
+  when a spawned task's first frame returns, that task is done (§6.11).
 
 ### 6.4 Natives (`natives.ts`)
 
@@ -452,8 +455,9 @@ O(changes), not O(heap):
   is copied whole); then a walk from the roots and from the changed parts, descending only into
   objects created since the base, copies every new object that is still reachable (an unchanged old
   object still holds exactly the references it held then). Roots (stack, frames, open cells,
-  globals) are copied in full; a machine with several stacks would add them to `FrozenRoots` and the
-  three walks over roots (freezing, thawing, compaction marking). The result becomes the new base.
+  globals, and every task's stack, frames, open cells, wait and result, §6.11) are copied in full;
+  `forEachRoot` (`vm-snapshot-frozen.ts`) lists them for compaction marking, and freezing and
+  thawing cover the same ones. The result becomes the new base.
 - **Every snapshot is complete on its own**: dropping any of them (thinning) never invalidates
   another. `restore(s)` rebuilds live objects from the roots through the table
   (`vm-snapshot-thaw.ts`, a work list, any nesting), can be repeated any number of times, and makes
@@ -526,6 +530,69 @@ Decisions made while building the runtime, recorded here so tools can rely on th
   records) seek in about 7 ms at random (was 14 ms), and scrubbing backwards through them costs about
   2 ms per position instead of 13.5 ms (delta restores); for the mutated 50,000-item list 0.4 ms
   instead of 0.9 ms. The 50,000-field record gains nothing yet: records are refilled whole.
+
+### 6.11 Tasks and channels (`vm-tasks.ts`, `natives-tasks.ts`, `vm-request.ts`)
+
+Deterministic cooperative tasks (SPEC §10.6) on the one machine:
+
+- **Records.** `MachineState.tasks` is null until the first `spawn` (or `current_task()`), so a
+  program without tasks pays nothing. Then each `Task` (`runtime-types.ts`) holds an id (1 is the
+  main script), a name, its own `stack`, `frames` and `openCells`, a status (`runnable`, `blocked`,
+  `done`), its wait (`send`/`recv` on a channel, `join` on a task number), `since` (the step it
+  blocked at; waiters are served in that order), its result and its handle. The machine's `stack`,
+  `frames` and `openCells` are always the running task's arrays (`current`); a switch only
+  reassigns those three fields, so the dispatch loop has no per-instruction task checks.
+- **Values.** A `TaskObj` (`{type: 'task', id, task, name}`) is an immutable handle, shared by
+  snapshots like a range; the task's state lives in its record. A `ChannelObj` (`{type:
+'channel', id, capacity, items, closed}`) is mutable: every change of an existing channel goes
+  through the write barrier (`noteObject`), and snapshots copy its buffer whole.
+- **Cells across tasks.** An open cell aliases a slot of the stack of the task that created it, so a
+  closure passed to another task must reach that stack: `CellObj.stack` is the owning task's stack
+  array, and `GetUpvalue`/`SetUpvalue` (and tools, through `cellValue`) read `cell.stack`, never the
+  running task's stack. A restore sets it again for every open cell (each is in its owner's
+  `openCells`).
+- **Natives never call user code.** They reach the machine through `NativeContext.tasks`
+  (`TaskOps`, implemented by `MachineTasks`). `spawn` checks the function's arity (R005) and the
+  unfinished-task limit (R030), allocates the handle, and builds the new task's first frame
+  `{closure: f, ip: 0, base: 0}` with a stack `[f, ...args]`, recording `declare` events for its
+  parameters at the spawn step. An operation that cannot complete calls `block(wait)`: R028 when no
+  other task is runnable, else the running task is marked blocked and `MachineState.request` is set.
+- **Requests and switches.** `Request` (`vm-request.ts`): `block`, `yield`, `done` (a spawned task
+  returned) and `reslice`. After a native call that set one, the dispatch loop ends its slice (a
+  blocked call's frame keeps the `Call`'s ip); `execute` then settles it (`settleRequest` chooses the
+  next task) before returning, so every switch happens at the end of a step and the state at each
+  time already shows the task that runs next, whether the time was reached by `step()`, by
+  `runUntil` or by a seek (§7.1.5). `execute` runs the loop in slices bounded by the limit and by
+  `preemptAt`; when the time reaches `preemptAt` it preempts. The first spawn under the random policy
+  draws the first preemption mid-slice, hence `reslice`. Fused pairs (§6.10) never straddle a slice
+  limit, so they keep working across switches.
+- **Completion by the partner.** A blocked task's top frame stands on its `Call` with callee and
+  arguments on its stack. The task that unblocks it (a sender for a waiting receiver, a receiver for
+  a waiting sender, a finishing task for its joiners) completes the call for it: it replaces callee
+  and arguments with the result and advances that frame's ip past the `Call` (`completeCall`).
+  So each blocking call costs one step and completes once. Only senders waiting on a channel that
+  gets closed are woken to retry their `Call` (which then raises R029). A sender's value is read from
+  the top of its stack.
+- **Scheduler.** Round-robin takes the next runnable task in id order after the running one;
+  random draws from the other runnable tasks with `nextScheduleRandom` (mulberry32 over
+  `schedState`, separate from the program's `rngState`) and sets `preemptAt = boundary + 1 +
+floor(r · quantum)` after every switch decision. `policy` and `quantum` are VM options
+  (`VMOptions.schedule`), constant per VM; `schedState` and `preemptAt` are part of the state and of
+  snapshots (`MachineScalars`). Every VM that replays a run (seeker, extension, fork) gets the
+  recording's schedule (`RecordingCore.taskSchedule`).
+- **Ends.** When the main task's frame returns the run is finished; the outcome lists unfinished
+  tasks (`Outcome.unfinishedTasks`, `tasks-info.ts`). When a spawned task's frame returns, the task
+  is done, its joiners are completed with the result, and the loop switches; if then no task is
+  runnable, R028 is raised at that return with the frame pushed back so the error reports there.
+  Deadlock hints (`deadlockHint`) list the blocking task first (`here`), then every other waiting
+  task with the line of the call it waits on in its innermost user frame.
+- **Snapshots.** `FrozenRoots.tasks` holds a `FrozenTask` per task (the running task's arrays are the
+  roots' own `stack`, `frames`, `openCells`, so its entry leaves them empty), and `current` its
+  index; `FrozenChannel` is a table object. The three root walks cover every task (§6.8). A restore
+  rebuilds the task list, `current`, the unfinished count and the cells' stacks, and clears any
+  request.
+- **Limits.** R016 counts each task's frames (`frames` is the running task's). At most 10,000
+  unfinished tasks (R030). Allocation, memory and steps are machine-wide.
 
 ## 7. Time travel
 
