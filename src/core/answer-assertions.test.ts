@@ -131,6 +131,24 @@ print(report(3))
     expect(again.outcome.kind).toBe('finished')
   })
 
+  test('leaves out calls that print or use the generator, which a replay would change', () => {
+    // Arrange: an inserted assert(roll() == …) would draw the first number and shift the rest.
+    const source = `fn roll() { random_int(1, 1000) }
+fn loud(x) { print(x)
+  x }
+fn report() { [roll(), roll(), loud(1)] }
+print(report())
+`
+
+    // Act
+    const { tree, state } = interview(source, ['wrong', 'right', 'right', 'right'])
+    const texts = answerAssertions(tree, state).map((entry) => entry.text)
+
+    // Assert
+    expect(state.judgments.filter((judgment) => judgment.answer === 'right')).toHaveLength(3)
+    expect(texts).toEqual([])
+  })
+
   test('automatic and remembered answers are not repeated as assertions', () => {
     // Arrange
     const source = `fn sq(n) ensures result == n * n { n * n }

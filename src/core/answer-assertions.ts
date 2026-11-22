@@ -10,6 +10,7 @@
  */
 import type { Recording, ValueView } from './api-types'
 import type * as ast from './ast'
+import { BUILTIN_NAMES } from './builtin-names'
 import { instructionLength, Op, type FunctionProto } from './bytecode'
 import type { FinderState } from './bug-finder'
 import { changeTexts } from './bug-finder-text'
@@ -19,6 +20,12 @@ import { parse } from './parser'
 import { isKeyword } from './tokens'
 
 /** The longest argument or result text an assertion is written with. */
+/**
+ * Builtins a replayed call must not use: printing adds output, and the generator would hand out
+ * different numbers (and shift every later one) where the assertion runs.
+ */
+const UNREPEATABLE: ReadonlySet<string> = new Set(['print', 'random', 'random_int', 'seed'])
+
 const MAX_TEXT = 200
 /** Lists and records nested deeper than this are not written out. */
 const MAX_NESTING = 8
@@ -96,7 +103,9 @@ function assertionFor(
   if (declared === undefined || declared.span.start !== proto.debug.span.start) return null
   if (!readsOnlyFunctions(recording, proto, topLevel)) return null
   const details = tree.details(call)
-  if (details.result === null || changeTexts(details).length > 0) return null
+  if (details.result === null || details.effectsTruncated || changeTexts(details).length > 0) {
+    return null
+  }
   const args: string[] = []
   for (const argument of details.args) {
     const text = sourceText(recording, call.entry, argument.value)
@@ -117,8 +126,8 @@ function mainProto(recording: Recording, protoId: number): FunctionProto | null 
 /** Whether every global the function's code reads held a function when the call began. */
 /**
  * Whether the call means the same wherever its assertion runs: the function captures nothing, and
- * neither its code, nor the functions created in it, nor any top-level function they name reads a
- * global other than a top-level `fn` (those are all defined before the assertions, which go after
+ * neither its code, nor the functions created in it, nor any top-level function they name prints,
+ * uses the generator or reads a global other than a top-level `fn` (those are all defined before the assertions, which go after
  * the last one, and never change). A global variable could be undefined there, or hold another
  * value than when the call was made.
  */
@@ -140,9 +149,13 @@ function readsOnlyFunctions(
       }
     }
     for (let ip = 0; ip < code.length; ip += instructionLength(code, ip, constants)) {
+      if (code[ip] === Op.GetBuiltin && UNREPEATABLE.has(BUILTIN_NAMES[code[ip + 1]!]!)) {
+        return false
+      }
       if (code[ip] !== Op.GetGlobal) continue
-      const declared = topLevel.get(constants[code[ip + 1]!] as string)
-      const callee = declared === undefined ? null : protoAt(recording, declared.span.start)
+      const name = constants[code[ip + 1]!] as string
+      const declared = topLevel.get(name)
+      const callee = declared === undefined ? null : declaredProto(recording, name, declared)
       if (callee === null) return false
       work.push(callee)
     }
@@ -150,10 +163,22 @@ function readsOnlyFunctions(
   return true
 }
 
-/** The program's own function that starts at `start`, if any. */
-function protoAt(recording: Recording, start: number): FunctionProto | null {
-  for (const proto of recording.program.protos) {
-    if (proto.debug.source === 'main' && proto.debug.span.start === start) return proto
+/** The proto of the top-level `fn NAME` declared as `fn`, if any (never the script's own). */
+function declaredProto(
+  recording: Recording,
+  name: string,
+  fn: ast.FunctionExpr,
+): FunctionProto | null {
+  const { program } = recording
+  for (const proto of program.protos) {
+    if (
+      proto !== program.script &&
+      proto.name === name &&
+      proto.debug.source === 'main' &&
+      proto.debug.span.start === fn.span.start
+    ) {
+      return proto
+    }
   }
   return null
 }
