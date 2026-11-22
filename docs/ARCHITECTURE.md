@@ -1002,12 +1002,14 @@ it with provenance when a `v*` tag matching the package version is pushed.
 | `whatif FILE --at T --set NAME=1..20` | a sweep (§7.13): one row per value with its steps, deepest depth, outcome and output change, then the longest run |
 | `debug FILE --strategy divide\|top-down` | how questions are chosen (default `divide`, §7.6); questions list side effects and the calls still under suspicion; the verdict is followed by repair previews (§7.12) when a one-token change agrees with the answers |
 | `debug FILE [--no-auto] [--no-ask]` | contracts and assertions answer what they can (§7.6), each printed with its evidence (`Question 2: total(...) returned 250 — right (the assertion on line 13)`); `--no-auto`: a person answers every question; `--no-ask`: nobody is asked, the interview stops at the first question without an automatic answer, prints it and exits 3. Exit codes: 0 verdict, 1 stopped without one (quit, input ended, load error), 3 open question under `--no-ask`. After the verdict, the calls you judged right are printed as assertions to add (§7.6) |
+| `debug FILE --llm[=anthropic\|openai] [--llm-model M] [--llm-max-calls N] [--llm-min-confidence C]` | AI assistance (§9.2): after the contracts and assertions, a model predicts what each open question's call should return (it is not shown the result); a confident prediction that the VM evaluates and finds equal (or different) answers right (or wrong), printed with its evidence (`Question 3: total(...) returned 275 — right (claude-opus-5-5 expected 275, confidence 0.95)`) and its one-sentence reason, undone with `u` like a contract answer; anything else is left to the person with the reason. After the verdict (unless `--no-ask`), an offer to have the model rewrite the culprit, each candidate checked by the VM against the answers, then a choice of a verified candidate to write to FILE |
 | `solve FILE --want TEXT [--output K]` | the inverse what-if (§7.11): earlier values that make output line `K` (default: the last) read `TEXT`; exit 1 when none is found |
 | `solve FILE --no-crash` | earlier values that avoid the run's runtime error |
 | `query FILE QUERY [--limit N]` | the query language (§7.9); prints up to `N` (default 50) stretches, changes or calls |
 | `whynot FILE --line L` | negative provenance (§7.10): the sentence, the guard's line and a `replay` hint |
 | `slice FILE [--at T]` | the source with the lines of the backward slice (§7.8) of step `T` marked; default: the runtime error, else the last output line |
 | `repair FILE` | repair previews (§7.12) for a run that crashed |
+| `repair FILE --llm [--apply N]` | the repair previews, then up to 3 rewrites of the crashed function from the model per round (2 rounds at most), each spliced in, compiled and recorded (§9.2); verified ones print as numbered unified diffs with their behavior change, rejected ones with reasons; `--apply N` writes the Nth verified candidate of this run to FILE. Exit 0 when something verified (or a preview worked), 1 otherwise, 2 for a usage or configuration error |
 | `diff A B [--limit N] [--max-steps N] [--seed S]` | differential execution (§7.14): record both files and compare them call by call: both outcomes, the output diff, calls only in A or B, renames, changed calls and the origins (where the difference starts); `--limit` (default 50) caps each list; exit 0 when the runs behave the same, 1 when they differ, 2 for usage or compile trouble (like diff(1)) |
 | `diff FILE --set NAME=VALUE` | the same, B being FILE with the top-level `let`/`var` `NAME` initialized to the literal `VALUE` (§7.14) |
 | `mcp` | the MCP server (§9.1) |
@@ -1075,6 +1077,74 @@ cut and how to fetch more. Finally, the **size guard** shortens any result whose
 beginning, and maps with more than 32 keys their first keys, halving the allowance until the result
 fits; a `truncated_by_size_guard` note lists what was cut and the options that ask for less. The
 copy is built with an explicit work stack.
+
+### 9.2 AI assistance (`src/cli/llm/*.ts`, `src/cli/ai.ts`)
+
+Optional, in the CLI only: `src/core` stays network-free and the studio (a static site) has none of
+it. Nothing leaves the machine unless `--llm` is given; then a notice on stderr names the provider,
+model and base URL and says that function source and call values are sent, and the calls and tokens
+used are printed on stderr at the end. Every answer of the model is checked by the VM before it
+counts, so the model can save questions and propose fixes but never decides alone.
+
+**Providers** (`types.ts`, `config.ts`, `http.ts`, `anthropic.ts`, `openai.ts`, `client.ts`). One
+JSON POST per request over the global `fetch` (no dependency: the CLI stays one bundle), through a
+narrow `LlmHost` (`env`, `fetch`, `sleep`) so tests script the network (`fake-host.ts`).
+`--llm`/`--llm=anthropic` (or `HINDSIGHT_LLM_PROVIDER`) is the Messages API with
+`ANTHROPIC_API_KEY` (`ANTHROPIC_BASE_URL` optional), default model `claude-opus-5-5`,
+`anthropic-version: 2026-10-21`, `output_config.effort` and a JSON-schema `output_config.format`
+where the model takes them, and server-side refusal fallbacks (`fallbacks: "default"`) on the models
+that have them; refusals and answers cut off at `max_tokens` are errors. `--llm=openai` is
+`POST {HINDSIGHT_LLM_BASE_URL}/chat/completions` for local servers (Ollama, llama.cpp, vLLM, LM
+Studio), optional bearer `HINDSIGHT_LLM_API_KEY`, model required (`--llm-model` or
+`HINDSIGHT_LLM_MODEL`), temperature 0, the JSON shape asked for in the prompt and read leniently
+(`json.ts`: whole text, fenced block, or first `{` to last `}`). Requests time out
+(`HINDSIGHT_LLM_TIMEOUT_MS`, default 180 s), a 429 (not the spend cap) or 5xx is retried once after
+`retry-after` (at most 20 s) or 2 s, and error messages mask the key. `--llm-max-calls` (default 40)
+is a hard cap per command; past it the model is not asked. Providers never throw.
+
+**The LLM oracle** (`oracle.ts`, `context.ts`, `values.ts`, `cheatsheet.ts`). `debug --llm` chains
+contracts and assertions (`contractOracle`), then the model, then the person. The finder stays
+synchronous: when the open question has no automatic answer and the model was not consulted about
+it (nor was its answer taken back), `DebugSession` parks it and `settle()` awaits the model, caches
+the consultation by the finder's memo key and resumes; the cached answer then flows through
+`autoAnswer` like a contract answer (same printing, same `undo`/`declined` handling). The model sees
+the function's source with the comment lines above it, the source of up to 6 user functions the call
+itself called (6,000 characters), the call with full argument values and a short language cheat
+sheet, and is asked to predict the result from the function's evident intent, not by tracing its
+code; it is never shown the actual result (that invites agreement). It answers
+`{"expected": literal | null, "confidence": 0..1, "why": ...}`. The literal must be one expression;
+it is compiled and run as `let expected = (…)` under 100,000 steps, and its value is compared with
+the recorded result by language equality (§7.4) through the Recording API with an explicit work
+stack, numbers within 1e-9 relative (1e-12 absolute). Equal: right, unless the call changed
+anything outside itself (the model judged only the result: those effects are for the person).
+Different: wrong (a wrong result is wrong whatever else the call did). The model abstains, and the
+person is asked with the reason shown, when the call did not return, the request failed or the cap
+was reached, the answer has the wrong shape, `expected` is null or not a value, confidence is below
+`--llm-min-confidence` (default 0.8), or the values cannot be compared (functions, iterators,
+over 20,000 pairs).
+
+**LLM repair** (`repair.ts`, `repair-verify.ts`, `line-diff.ts`). The target is the innermost user
+function at the error (`repair --llm`) or the verdict's culprit (the debug offer); top-level code
+is refused. The model gets the function with its line range and the evidence: for a crash the
+error and hint, the user stack and up to 40 lines of the error slice; after an interview the calls
+judged right (with their results) and wrong (with the expected value when the model predicted one
+confidently, else "something else"), who judged each, and the helpers the culprit called. It
+returns up to 3 whole-function rewrites (`{"candidates": [{"function", "explanation"}]}`). Each
+must parse as one function of the same name (or one function value, for an unnamed target), is
+spliced over the function's span, compiled and recorded with the command's seed under
+`max(4 × steps, steps + 50,000)` steps, then held to the evidence: a crash must finish; in examples
+mode each call judged right that is made again must return an equal value, each call judged wrong
+must be made again and return the expected value (when known) or a different one, and the run must
+not fail a contract or assertion or fail where the original did not. Calls are matched across runs
+by function name and argument texts (at most 5,000 calls scanned). A verified candidate's
+behavior change is summarized with `diffRuns` (outcome, changed output lines, the first origin,
+changed calls) and printed as a unified diff (one hunk, common lines trimmed, the region aligned by
+an iterative LCS bounded at 250,000 cells); rejected ones print their reasons. If none verifies, a
+second (last) round sends each rejected candidate and its reasons back. Nothing is written except
+by `--apply N` or the debug offer's explicit choice.
+
+**The MCP server never calls a model**: agents connected over MCP act as the oracle themselves
+(`find_bug`) and check their own fixes with `verify_patch`.
 
 ## 10. Testing
 
