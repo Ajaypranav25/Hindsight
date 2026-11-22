@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { Diagnostic, OutputEvent, Recording, RecordingComparison } from '../../core/index'
-import { LineIndex } from '../../core/index'
+import type {
+  Diagnostic,
+  OutputEvent,
+  Recording,
+  RecordingComparison,
+  UnfinishedTask,
+} from '../../core/index'
+import { LineIndex, taskWaitText } from '../../core/index'
 import type { MenuAnchor } from '../chrome/ContextMenu'
 import { copyText, selectText } from '../lib/clipboard'
 import { formatCount } from '../lib/format'
@@ -192,6 +198,7 @@ function RunEnd(props: {
   }
   if (outcome.kind === 'aborted')
     return <p className="pn-note pn-pad">Recording stopped before the program ended</p>
+  if (outcome.kind === 'finished') return <UnfinishedTasks tasks={outcome.unfinishedTasks} />
   if (outcome.kind !== 'error') return null
   const { error } = outcome
   return (
@@ -203,7 +210,15 @@ function RunEnd(props: {
       <p className="pn-failure-msg">
         <span className="pn-code">{error.code}</span> {error.message}
       </p>
-      {error.hint && <p className="pn-hint">{error.hint}</p>}
+      {error.code === DEADLOCK && error.hint ? (
+        <ul className="pn-deadlock" aria-label="What each task waits for">
+          {error.hint.split('; ').map((wait) => (
+            <li key={wait}>{wait}</li>
+          ))}
+        </ul>
+      ) : (
+        error.hint && <p className="pn-hint">{error.hint}</p>
+      )}
       {!atEnd && (
         <button type="button" className="pn-link" onClick={() => onSeek(recording.length)}>
           Jump to the failure
@@ -228,6 +243,28 @@ function RunEnd(props: {
 }
 
 const CRASH_REQUEST = { kind: 'crash' } as const
+/** The deadlock error (SPEC §10.6): its hint lists every waiting task, one per `; `. */
+const DEADLOCK = 'R028'
+
+/** The tasks a finished run left waiting or ready when its main task ended (SPEC §10.6). */
+function UnfinishedTasks(props: { readonly tasks: readonly UnfinishedTask[] | undefined }) {
+  const { tasks } = props
+  if (tasks === undefined || tasks.length === 0) return null
+  const names = (id: number) => tasks.find((task) => task.id === id)?.name
+  return (
+    <div className="pn-note pn-pad" role="note">
+      The main task ended while {tasks.length === 1 ? '1 task was' : `${tasks.length} tasks were`}{' '}
+      unfinished:
+      <ul className="pn-deadlock">
+        {tasks.map((task) => (
+          <li key={task.id}>
+            task {task.id} ({task.name}) {taskWaitText(task.wait, names)}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
 
 /** One-token changes to the function the run crashed in that make the run finish. */
 function CrashFixes(props: { readonly recording: Recording }) {

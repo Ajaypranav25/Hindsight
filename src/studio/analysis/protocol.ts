@@ -15,6 +15,7 @@ import type {
   RecordingComparison,
   RepairRequest,
   RepairResult,
+  ScheduleOptions,
   TimedEdit,
   WriteTarget,
 } from '../../core/index'
@@ -23,6 +24,8 @@ import type {
 export interface RunDescription {
   readonly source: string
   readonly seed: number
+  /** How its tasks interleaved (SPEC §10.6); absent for round-robin. */
+  readonly schedule?: ScheduleOptions
   /** The step limit of the run and of every fork in its chain. */
   readonly maxSteps: number
   /** The what-if edits that made it, oldest first (empty for a real run). */

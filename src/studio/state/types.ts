@@ -32,6 +32,14 @@ export interface Settings {
   readonly theme: ThemeSetting
   /** Statements per second during playback. */
   readonly playbackSpeed: number
+  /** How tasks interleave in the next run (SPEC §10.6); seed and quantum matter for `random`. */
+  readonly schedule: StudioSchedule
+}
+
+export interface StudioSchedule {
+  readonly policy: 'round-robin' | 'random'
+  readonly seed: number
+  readonly quantum: number
 }
 
 export type RunStatus =

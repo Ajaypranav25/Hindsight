@@ -18,6 +18,25 @@ export function taskWaitView(wait: TaskWait | null): TaskWaitView | null {
     : { kind: wait.kind, channelId: wait.channel.id }
 }
 
+/**
+ * What a task waits for, as a clause: `waits to receive from channel #3`, `waits for task 2
+ * (worker)` (with `name` giving task names), or `is ready to run` without a wait.
+ */
+export function taskWaitText(
+  wait: TaskWaitView | null,
+  name: (task: number) => string | undefined = () => undefined,
+): string {
+  if (wait === null) return 'is ready to run'
+  if (wait.kind !== 'join') {
+    const verb = wait.kind === 'send' ? 'send to' : 'receive from'
+    return `waits to ${verb} channel #${wait.channelId}`
+  }
+  const named = name(wait.task)
+  return named === undefined
+    ? `waits for task ${wait.task}`
+    : `waits for task ${wait.task} (${named})`
+}
+
 /** The tasks other than the main one that had not finished, in id order. */
 export function unfinishedTasks(tasks: readonly Readonly<Task>[] | null): UnfinishedTask[] {
   const out: UnfinishedTask[] = []

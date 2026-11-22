@@ -90,6 +90,7 @@ export type {
 } from './repair'
 export { repairExample, repairExamples } from './repair'
 export * from './run-diff'
+export { normalSchedule, taskWaitText } from './tasks-info'
 export type {
   ExploreOptions,
   RaceCandidate,

@@ -1,8 +1,12 @@
 import { readJson } from '../lib/storage'
 import { INITIAL_BUG_FINDER } from './bug-finder'
 import { INITIAL_LAB } from './lab'
-import { DEFAULT_SETTINGS, isSettings, STORAGE_KEYS } from './defaults'
+import { DEFAULT_SETTINGS, STORAGE_KEYS, storedSettings } from './defaults'
 import type { Example, KeyValueStorage, StudioState } from './types'
+
+function isObject(value: unknown): value is object {
+  return typeof value === 'object' && value !== null
+}
 
 export interface Startup {
   /** A program carried by a share link, if the page was opened with one. */
@@ -42,7 +46,8 @@ export function initialState(
     breakpoints: new Set<number>(),
     watch: null,
     playing: false,
-    settings: readJson(storage, STORAGE_KEYS.settings, isSettings) ?? DEFAULT_SETTINGS,
+    settings:
+      storedSettings(readJson(storage, STORAGE_KEYS.settings, isObject)) ?? DEFAULT_SETTINGS,
     hintDismissed: storage.read(STORAGE_KEYS.hintDismissed) === 'true',
     notice: lastRunUnfinished(storage) ? { text: UNFINISHED_RUN_NOTICE, tone: 'error' } : null,
     originMark: null,

@@ -709,3 +709,35 @@ describe('helpers', () => {
     expect(visibleFrames(null, true)).toEqual([])
   })
 })
+
+describe('task schedules', () => {
+  test('runs record under the chosen schedule, and changing it runs again', async () => {
+    // Arrange
+    const { engine, store } = setup()
+    const running = store.getState().run()
+    await engine.resolveNext(fakeRecording({ length: 4 }))
+    await running
+
+    // Act
+    store.getState().updateSettings({ schedule: { policy: 'random', seed: 5, quantum: 2 } })
+
+    // Assert
+    expect(engine.recorded[0]!.options.schedule).toBeUndefined()
+    expect(engine.recorded[1]!.options.schedule).toEqual({ policy: 'random', seed: 5, quantum: 2 })
+  })
+
+  test('without auto-run, a new schedule waits for the next run', async () => {
+    // Arrange
+    const { engine, store } = setup()
+    const running = store.getState().run()
+    await engine.resolveNext(fakeRecording({ length: 4 }))
+    await running
+    store.getState().updateSettings({ autoRun: false })
+
+    // Act
+    store.getState().updateSettings({ schedule: { policy: 'random', seed: 1, quantum: 10 } })
+
+    // Assert
+    expect(engine.recorded).toHaveLength(1)
+  })
+})

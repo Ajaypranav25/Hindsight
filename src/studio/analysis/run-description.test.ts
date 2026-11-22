@@ -135,3 +135,46 @@ describe('recording a run again', () => {
     if (!bad.ok) expect(bad.error).toMatch(/^The what-if could not be repeated/)
   })
 })
+
+describe('runs with tasks', () => {
+  const BANK = `var balance = 0
+fn deposit(n) {
+  for i in 0..n {
+    let b = balance
+    balance = b + 1
+  }
+}
+let a = spawn(deposit, 20)
+let b = spawn(deposit, 20)
+wait(a)
+wait(b)
+print(balance)`
+
+  test('a run under a random schedule is described with it and recorded again identically', () => {
+    // Arrange
+    const compiled = compile(BANK)
+    if (!compiled.ok) throw new Error('fixture does not compile')
+    const schedule = { policy: 'random', seed: 4, quantum: 3 } as const
+    const recording = record(compiled.program, { schedule })
+
+    // Act
+    const run = describeRun(recording)!
+    const again = recreateRun(run)
+
+    // Assert
+    expect(run.schedule).toEqual(schedule)
+    expect(again.ok).toBe(true)
+    if (again.ok) {
+      same(recording, again.recording)
+      expect([...again.recording.taskSeries()!]).toEqual([...recording.taskSeries()!])
+    }
+  })
+
+  test('a round-robin run carries no schedule', () => {
+    // Arrange, Act
+    const run = describeRun(recordSource(BANK))!
+
+    // Assert
+    expect(run.schedule).toBeUndefined()
+  })
+})
