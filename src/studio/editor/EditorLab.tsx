@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react'
 import { AnalysisCancelled } from '../analysis/local'
 import type { CausalLink } from '../analysis/protocol'
 import { analysisService } from '../analysis/service'
+import { ContractsCard } from '../insight/ContractsCard'
 import { formatCount } from '../lib/format'
 import { useStudio, useStudioActions } from '../state/context'
 import {
@@ -60,6 +61,7 @@ export function EditorLab() {
   useSliceComputation()
   return (
     <div className="ed-lab">
+      <ContractsCard />
       <SliceChip />
     </div>
   )
