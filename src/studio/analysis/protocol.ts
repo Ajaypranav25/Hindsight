@@ -18,6 +18,7 @@ import type {
   TimedEdit,
   WriteTarget,
 } from '../../core/index'
+import type { InsightRequest, InsightResult } from '../insight/insight-protocol'
 
 /** Everything needed to record a run again, step for step. */
 export interface RunDescription {
@@ -88,6 +89,7 @@ export type AnalysisRequest =
       readonly target: WriteTarget
       readonly values: readonly EditValue[]
     }
+  | InsightRequest
 
 export type AnalysisResult =
   | { readonly kind: 'slice'; readonly slice: SliceSummary | null }
@@ -95,6 +97,7 @@ export type AnalysisResult =
   | { readonly kind: 'solve'; readonly result: InverseResult }
   | { readonly kind: 'repair'; readonly result: RepairResult }
   | { readonly kind: 'sweep'; readonly sweep: SweepSummary }
+  | InsightResult
 
 /** The result type that answers request kind `K`. */
 export type ResultOf<K extends AnalysisRequest['kind']> = Extract<AnalysisResult, { kind: K }>
@@ -124,9 +127,17 @@ export type FromWorker =
 /** The most links a slice summary lists. */
 export const MAX_CHAIN = 40
 
-/** Requests that run many forks or mutants; the others are single passes over the run. */
+/**
+ * Requests that run many forks, mutants or whole runs (contract inference records the program
+ * again to check its clauses); the others are single passes over the run.
+ */
 export function isSearch(request: AnalysisRequest): boolean {
-  return request.kind === 'solve' || request.kind === 'repair' || request.kind === 'sweep'
+  return (
+    request.kind === 'solve' ||
+    request.kind === 'repair' ||
+    request.kind === 'sweep' ||
+    request.kind === 'infer'
+  )
 }
 
 /** Requests whose job reports progress as it goes (a sweep, one fork per value). */

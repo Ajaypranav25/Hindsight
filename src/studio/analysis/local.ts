@@ -7,6 +7,7 @@
 import { solveInverseAsync, sweepAsync, type Recording } from '../../core/index'
 import { queryOutcome, repairJob, sliceSummary, sweepRunSummary, type Job } from './compute'
 import type { AnalysisRequest, AnalysisResult } from './protocol'
+import { insightJob } from '../insight/compute'
 
 /** Time a search may work on the main thread before it lets the page breathe. */
 export const LOCAL_SLICE_MS = 12
@@ -86,6 +87,12 @@ export const localAnalysis: AnalysisBackend = {
           },
         }
       }
+      case 'profile':
+      case 'infer':
+      case 'runDiff':
+        await later()
+        check(signal)
+        return insightJob(recording, request)
     }
   },
 }
