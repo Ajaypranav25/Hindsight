@@ -732,17 +732,20 @@ code is wrong. It is built only on the public `Recording` API.
      `assert(F(args) == EXPECTED)`: the call of F made there is wrong. Every call around the failure
      (it did not return) is wrong.
   2. **Assertions as examples.** An `assert` whose condition is `F(args) == EXPECTED` (either side,
-     also with a pipe) judges the call of F made while evaluating it: right when the assertion
-     passed, wrong when it failed. The verdict also applies to every call with the same inputs and
+     also with a pipe; neither EXPECTED nor the arguments may mention F, since
+     `assert(f(2) == f(1) + 1)` passes for many wrong `f`) judges the call of F made while
+     evaluating it: right when the assertion passed, wrong when it failed. The verdict also applies to every call with the same inputs and
      result anywhere in the run (`resultKey` in `call-details.ts`: function, context, arguments at
      entry and outcome, effects ignored), found by one walk of the call tree with an explicit stack.
   3. **Pinning postconditions.** A function whose `ensures` clauses contain a top-level conjunct
-     `result == EXPR` (either side) pins its result down: each of its calls that returned is right
+     `result == EXPR` (either side, EXPR not mentioning `result`) pins its result down: each of its calls that returned is right
      (the clause held). Other postconditions only ever produce "wrong", through 1.
   4. Otherwise null: a person (or, later, a model) answers.
 
   A "right" answer only vouches for a result, so it is never given for a call that changed anything
-  outside itself (a person judges effects); a wrong result is wrong whatever else the call did.
+  outside itself (a person judges effects), nor for one that ran too many events for all of its
+  changes to be read (`CallDetails.effectsTruncated`); a wrong result is wrong whatever else the
+  call did.
   Syntax is matched by spans: the oracle parses the program's source once and finds call sites
   through `Recording.locationAt(call.entry - 1)`.
 

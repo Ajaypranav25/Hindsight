@@ -6,7 +6,10 @@
 import type * as ast from './ast'
 import type { Span } from './span'
 
-/** An `assert(F(args) == EXPECTED)` (either side): it judges the call of F made inside it. */
+/**
+ * An `assert(F(args) == EXPECTED)` (either side): it judges the call of F made inside it. Neither
+ * EXPECTED nor the arguments may mention F, or the assertion would not pin the result down.
+ */
 export interface AssertionExample {
   /** The `assert(...)` call expression: the span of its `Call` and of its R018. */
   readonly assertSpan: Span
@@ -86,6 +89,11 @@ function assertionExample(call: ast.Call): AssertionExample | null {
     (side): side is ast.Call => side.kind === 'Call' && side.callee.kind === 'Ident',
   )
   if (judged === undefined || judged.callee.kind !== 'Ident') return null
+  // The expectation must not depend on the function judged: `assert(f(2) == f(1) + 1)` or
+  // `assert(f(f(1)) == 4)` relates calls of f to each other and passes for many wrong f.
+  const expected = judged === condition.left ? condition.right : condition.left
+  const name = judged.callee.name
+  if (mentions(expected, name) || judged.args.some((arg) => mentions(arg, name))) return null
   return {
     assertSpan: call.span,
     siteSpan: judged.pipe && judged.pipeSpan !== null ? judged.pipeSpan : judged.span,
