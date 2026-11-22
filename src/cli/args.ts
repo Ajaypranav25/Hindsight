@@ -1,6 +1,8 @@
 import { DEFAULT_MAX_STEPS, DEFAULT_SEED, type EditValue } from '../core/api-types'
 import type { Strategy } from '../core/bug-finder'
 import { parseSweepValues } from '../core/sweep'
+import { CONFIDENCE_FLAG, LLM_FLAGS, llmArgs } from './llm/args'
+import type { LlmArgs } from './llm/types'
 
 export type Command =
   | {
@@ -59,6 +61,8 @@ export type Command =
       readonly auto: boolean
       /** Ask a person the rest (off with --no-ask: stop at the first such question, exit 3). */
       readonly ask: boolean
+      /** `--llm`: a model answers after the contracts, before a person (ARCHITECTURE §9.2). */
+      readonly llm: LlmArgs | null
       readonly maxSteps: number
       readonly seed: number
     }
@@ -98,6 +102,10 @@ export type Command =
   | {
       readonly kind: 'repair'
       readonly file: string
+      /** `--llm`: a model also proposes whole-function rewrites, each checked by the VM. */
+      readonly llm: LlmArgs | null
+      /** `--apply N`: write the Nth verified AI candidate to the file. */
+      readonly apply: number | null
       readonly maxSteps: number
       readonly seed: number
     }
@@ -136,6 +144,9 @@ Usage:
                  [--no-auto] [--no-ask]            contracts and assertions answer what they can;
                                                    --no-auto: you answer all; --no-ask: never ask
                                                    (stop at the first open question, exit 3)
+                 [--llm[=anthropic|openai]]        a model answers next (it is sent code and call
+                 [--llm-min-confidence C]          values), checked by the VM; then you; after the
+                                                   verdict it can propose a repair
   hindsight solve FILE --want TEXT [--output K]    find an earlier value that makes output line K
                                                    (default: the last) print TEXT
   hindsight solve FILE --no-crash                  find an earlier value that avoids the runtime error
@@ -145,6 +156,9 @@ Usage:
   hindsight slice FILE [--at T]                    mark the lines that led to step T (default: the
                                                    crash, else the last output line)
   hindsight repair FILE                            try one-token fixes for a crash
+                 [--llm[=anthropic|openai]]        also ask a model to rewrite the function; each
+                 [--apply N]                       candidate is checked by the VM; --apply N writes
+                                                   the Nth verified one to FILE
   hindsight diff A B [--limit N]                   compare two programs' runs call by call and
                                                    name the calls where the difference starts
   hindsight diff FILE --set NAME=VALUE             compare a run with one in which the top-level
@@ -153,7 +167,11 @@ Usage:
   hindsight --help | --version
 
 run, replay, why, whynot, slice and query also take a .sighttrace file in place of FILE: it brings
-its own step limit, seed and what-if edits (replay without --at shows the saved step).`
+its own step limit, seed and what-if edits (replay without --at shows the saved step).
+
+AI assistance is off unless --llm is given (README: AI assistance). --llm uses ANTHROPIC_API_KEY;
+--llm=openai an OpenAI-compatible server at HINDSIGHT_LLM_BASE_URL (Ollama: http://localhost:11434/v1).
+Also: --llm-model NAME (or HINDSIGHT_LLM_MODEL), --llm-max-calls N (default 40).`
 
 const VALUE_FLAGS = new Set([
   '--max-steps',
@@ -167,11 +185,16 @@ const VALUE_FLAGS = new Set([
   '--output',
   '--limit',
   '--out',
+  '--llm',
+  '--llm-model',
+  '--llm-max-calls',
+  CONFIDENCE_FLAG,
+  '--apply',
 ])
 /** Short spellings of options. */
 const ALIASES: ReadonlyMap<string, string> = new Map([['-o', '--out']])
 /** Options that take no value. */
-const SWITCHES = new Set(['--no-crash', '--no-auto', '--no-ask'])
+const SWITCHES = new Set(['--no-crash', '--no-auto', '--no-ask', '--llm'])
 
 /** What each command accepts: its options, and how many arguments may follow its name. */
 const COMMANDS: ReadonlyMap<string, { readonly flags: readonly string[]; readonly arity: number }> =
@@ -187,13 +210,24 @@ const COMMANDS: ReadonlyMap<string, { readonly flags: readonly string[]; readonl
     ['whatif', { flags: ['--at', '--set', '--max-steps', '--seed'], arity: 1 }],
     [
       'debug',
-      { flags: ['--strategy', '--no-auto', '--no-ask', '--max-steps', '--seed'], arity: 1 },
+      {
+        flags: [
+          '--strategy',
+          '--no-auto',
+          '--no-ask',
+          '--max-steps',
+          '--seed',
+          ...LLM_FLAGS,
+          CONFIDENCE_FLAG,
+        ],
+        arity: 1,
+      },
     ],
     ['solve', { flags: ['--want', '--output', '--no-crash', '--max-steps', '--seed'], arity: 1 }],
     ['query', { flags: ['--limit', '--max-steps', '--seed'], arity: 2 }],
     ['whynot', { flags: ['--line', '--max-steps', '--seed'], arity: 1 }],
     ['slice', { flags: ['--at', '--max-steps', '--seed'], arity: 1 }],
-    ['repair', { flags: ['--max-steps', '--seed'], arity: 1 }],
+    ['repair', { flags: ['--max-steps', '--seed', ...LLM_FLAGS, '--apply'], arity: 1 }],
     ['diff', { flags: ['--set', '--limit', '--max-steps', '--seed'], arity: 2 }],
     ['mcp', { flags: [], arity: 0 }],
   ])
@@ -326,7 +360,12 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
         return { ok: false, error: "--strategy must be 'divide' or 'top-down'" }
       const auto = !flags.has('--no-auto')
       const ask = !flags.has('--no-ask')
-      return { ok: true, command: { kind: 'debug', file, strategy, auto, ask, maxSteps, seed } }
+      const llm = llmArgs(flags)
+      if (typeof llm === 'string') return { ok: false, error: llm }
+      return {
+        ok: true,
+        command: { kind: 'debug', file, strategy, auto, ask, llm, maxSteps, seed },
+      }
     }
     case 'solve':
       return solveCommand(positional, flags, maxSteps, seed)
@@ -358,7 +397,14 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     case 'repair': {
       const file = needFile(positional, name)
       if (typeof file !== 'string') return { ok: false, error: file.error }
-      return { ok: true, command: { kind: 'repair', file, maxSteps, seed } }
+      const llm = llmArgs(flags)
+      if (typeof llm === 'string') return { ok: false, error: llm }
+      const apply = integerFlag(flags, '--apply', 0, 1)
+      if (typeof apply === 'string') return { ok: false, error: apply }
+      if (flags.has('--apply') && llm === null)
+        return { ok: false, error: "option '--apply' needs --llm" }
+      const chosen = flags.has('--apply') ? apply : null
+      return { ok: true, command: { kind: 'repair', file, llm, apply: chosen, maxSteps, seed } }
     }
     case 'diff':
       return diffCommand(positional, flags, maxSteps, seed)

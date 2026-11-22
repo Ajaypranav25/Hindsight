@@ -115,6 +115,10 @@ export class LlmOracle {
     this.recording = tree.recording
   }
 
+  get model(): string {
+    return this.client.model
+  }
+
   private key(call: CallNode): string {
     return this.tree.keyOf(call) ?? `#${call.id}`
   }

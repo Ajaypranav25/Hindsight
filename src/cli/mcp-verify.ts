@@ -76,6 +76,8 @@ export interface RunFailure {
   readonly text: string
   /** Error code and line, to tell two failures apart. */
   readonly key: string
+  /** True for a failed assertion, precondition or postcondition. */
+  readonly check: boolean
 }
 
 export function failureOf(recording: Recording): RunFailure | null {
@@ -93,6 +95,7 @@ export function failureOf(recording: Recording): RunFailure | null {
         kind: 'error',
         text: `${what} with ${error.code} (${error.message}) on line ${line}`,
         key: `${error.code}:${line}`,
+        check: check !== undefined,
       }
     }
     case 'step-limit':
@@ -100,9 +103,10 @@ export function failureOf(recording: Recording): RunFailure | null {
         kind: 'step-limit',
         text: `hits the step limit of ${outcome.maxSteps.toLocaleString('en-US')} steps`,
         key: 'step-limit',
+        check: false,
       }
     case 'aborted':
-      return { kind: 'aborted', text: 'was stopped before the end', key: 'aborted' }
+      return { kind: 'aborted', text: 'was stopped before the end', key: 'aborted', check: false }
   }
 }
 

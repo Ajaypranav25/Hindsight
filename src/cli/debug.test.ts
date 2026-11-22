@@ -56,6 +56,7 @@ function open(source: string, options: OpenOptions = {}): { io: FakeIO; session:
     strategy: options.strategy ?? 'top-down',
     auto: options.auto ?? true,
     ask: options.ask ?? true,
+    llm: null,
     maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
     seed: 1,
   })
@@ -78,6 +79,7 @@ describe('debug arguments', () => {
         strategy: 'divide',
         auto: true,
         ask: true,
+        llm: null,
         maxSteps: DEFAULT_MAX_STEPS,
         seed: DEFAULT_SEED,
       },
@@ -224,6 +226,7 @@ describe('the debug interview', () => {
       strategy: 'top-down',
       auto: true,
       ask: true,
+      llm: null,
       maxSteps: 10,
       seed: 1,
     })

@@ -1,4 +1,5 @@
 import { createInterface } from 'node:readline'
+import { nodeLlmHost, runAiDebug, runAiRepair } from './ai'
 import { parseArgs, USAGE } from './args'
 import { runCommand } from './commands'
 import { type DebugCommand, openDebugSession } from './debug'
@@ -31,6 +32,14 @@ function startRepl(io: CliIO, seed: number): void {
  * or a pipe. The exit code is set when the input ends or the interview does.
  */
 function startDebug(io: CliIO, command: DebugCommand): number | null {
+  if (command.llm !== null) {
+    const input = createInterface({ input: process.stdin, terminal: false })
+    void runAiDebug(io, command, nodeLlmHost(), input).then((code) => {
+      input.close()
+      process.exitCode = code
+    })
+    return null
+  }
   const session = openDebugSession(io, command)
   if (typeof session === 'number') return session
   if (session.finished) return session.exitCode
@@ -74,6 +83,12 @@ export function main(argv: readonly string[], io: CliIO = nodeIO): number | null
     return null
   }
   if (command.kind === 'debug') return startDebug(io, command)
+  if (command.kind === 'repair' && command.llm !== null) {
+    void runAiRepair(io, command, nodeLlmHost()).then((code) => {
+      process.exitCode = code
+    })
+    return null
+  }
   if (command.kind === 'mcp') {
     startMcp(io)
     return null
