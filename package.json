@@ -44,6 +44,7 @@
     "build:studio": "vite build",
     "build:cli": "node scripts/build-cli.mjs",
     "build:page": "vite build --config vite.page.config.ts",
+    "demo:gif": "tsx scripts/demo-gif.ts",
     "preview": "vite preview",
     "sight": "tsx src/cli/main.ts",
     "test": "vitest run",
