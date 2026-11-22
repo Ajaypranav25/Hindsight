@@ -30,6 +30,14 @@
   --whatif-soft: rgb(138 63 196 / 0.12);
   --trace-fill: rgb(23 32 43 / 0.1);
   --trace-line: #17202b;
+  /* Swim lanes of runs with tasks, one color per task, and their waiting hatch. */
+  --lane-1: #17202b;
+  --lane-2: #2958d0;
+  --lane-3: #2c7a4b;
+  --lane-4: #a8691a;
+  --lane-5: #8a3fc4;
+  --lane-6: #0f7c86;
+  --lane-wait: rgb(23 32 43 / 0.3);
   --highlight-line: rgb(41 88 208 / 0.08);
   --highlight-span: rgb(207 52 39 / 0.16);
   --highlight-caller: rgb(127 138 152 / 0.18);
@@ -94,6 +102,20 @@
     --whatif-soft: rgb(199 155 255 / 0.16);
     --trace-fill: rgb(225 231 238 / 0.1);
     --trace-line: #c9d2dd;
+    --lane-1: #c9d2dd;
+    --lane-2: #79a0ff;
+    --lane-3: #5cc28a;
+    --lane-4: #e2a64b;
+    --lane-5: #c79bff;
+    --lane-6: #4fc3cf;
+    --lane-wait: rgb(225 231 238 / 0.32);
+    --lane-1: #c9d2dd;
+    --lane-2: #79a0ff;
+    --lane-3: #5cc28a;
+    --lane-4: #e2a64b;
+    --lane-5: #c79bff;
+    --lane-6: #4fc3cf;
+    --lane-wait: rgb(225 231 238 / 0.32);
     --highlight-line: rgb(121 160 255 / 0.1);
     --highlight-span: rgb(255 90 76 / 0.22);
     --highlight-caller: rgb(154 165 179 / 0.18);
