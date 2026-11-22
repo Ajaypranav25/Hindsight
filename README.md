@@ -4,6 +4,8 @@
 
 **A tiny programming language with a time machine built in.**
 
+![Stepping backwards through a linked-list reversal: the pen moves back along the strip chart while the heap graph rewires its arrows](docs/images/demo.gif)
+
 Run a program, then drag a red pen backwards through its execution. Step into, over and out of
 calls in _both_ directions, ask any variable where its value came from, click a line of output to
 land on the moment it was printed, and watch the heap rewire itself as you scrub.
@@ -12,8 +14,6 @@ Then change the past: give any variable another value at any moment and Hindsigh
 there, so you see where the new future diverges from the real one. Or let it find the bug: answer
 a few yes/no questions about the calls your program made, and it names the function whose own code
 is wrong.
-
-![Hindsight Studio replaying a recursive Fibonacci program](docs/images/studio.png)
 
 Hindsight is a language and a debugger designed together. Every program runs on a bytecode VM that
 records its own execution, so the studio can rebuild the complete program state at any step — the
@@ -107,6 +107,8 @@ waiting, the run stops with `R028 deadlock: every task is waiting` and a hint th
 task waits for. See [SPEC §10.6](docs/SPEC.md).
 
 ## The studio
+
+![Hindsight Studio replaying a recursive Fibonacci program](docs/images/studio.png)
 
 |                                 |                                                                                                                                                                                                                                                                                                                                                                                                             |
 | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
