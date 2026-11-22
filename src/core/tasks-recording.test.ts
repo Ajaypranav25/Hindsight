@@ -191,6 +191,64 @@ describe('the task series', () => {
   })
 })
 
+describe('provenance with tasks (ARCHITECTURE §7.3)', () => {
+  const SHARED = `fn main() {
+  var seen = 0
+  let t = spawn(fn(k) {
+    seen = seen + k
+  }, 5)
+  wait(t)
+  seen = seen + 1
+  print(seen)
+}
+main()`
+
+  test('a captured variable written by another task traces back to that task’s write', () => {
+    // Arrange
+    const recording = recordTasks(SHARED)
+    const before = firstTime(
+      recording,
+      (u) => lineAt(recording, u) === 7 && recording.taskAt(u) === 1,
+    )
+    const local = recording
+      .stateAt(before)
+      .frames.at(-1)!
+      .locals.find((l) => l.name === 'seen')!
+
+    // Act
+    const origin = recording.origin(local.target, before)
+    const history = recording.history(local.target, before)
+
+    // Assert
+    expect(origin?.value).toBe(5)
+    expect(recording.taskAt(origin!.time)).toBe(2)
+    expect(history.events.map((event) => [event.kind, event.value])).toEqual([
+      ['declare', 0],
+      ['write', 5],
+      ['write', 6],
+    ])
+    expect(history.events.map((event) => recording.taskAt(event.time))).toEqual([1, 2, 1])
+  })
+
+  test('a task’s own locals keep their history in that task', () => {
+    // Arrange
+    const recording = recordTasks(BANK_RACE, RANDOM)
+    const series = recording.taskSeries()!
+    const t = firstTime(recording, (u) => series[u] === 3 && lineAt(recording, u) === 6)
+    const local = recording
+      .stateAt(t)
+      .frames.at(-1)!
+      .locals.find((l) => l.name === 'b')!
+
+    // Act
+    const events = recording.history(local.target, t).events
+
+    // Assert
+    expect(events.length).toBeGreaterThan(0)
+    for (const event of events) expect(series[event.time]).toBe(3)
+  })
+})
+
 describe('seeking with tasks (ARCHITECTURE §10.3)', () => {
   function referenceView(schedule: ScheduleOptions, recording: Recording, t: number) {
     const program = recording.program
