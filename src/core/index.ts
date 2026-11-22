@@ -90,6 +90,8 @@ export type {
 } from './repair'
 export { repairExample, repairExamples } from './repair'
 export * from './run-diff'
+export type { MapMomentOptions, MappedMoment, MomentPrecision } from './run-map'
+export { lineMap, mapMoment } from './run-map'
 export type { InputResult } from './run-input'
 export { withInput } from './run-input'
 export * from './profile'
