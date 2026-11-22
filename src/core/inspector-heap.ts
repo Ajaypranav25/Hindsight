@@ -1,9 +1,9 @@
 /**
  * Value and object views, and the heap walk (ARCHITECTURE §7.4): breadth first from the roots
  * (globals in definition order, then each frame's stack region in slot order followed by its
- * closure's captures, for the running task and then every other task in id order), children in
- * `ObjectView` order, each id once, builtins never expanded. Iterative throughout, so nesting depth
- * is unlimited.
+ * closure's captures, for the running task and then every other task in id order, then finished
+ * tasks' results), children in `ObjectView` order, each id once, builtins never expanded. Iterative
+ * throughout, so nesting depth is unlimited.
  */
 import type { CaptureView, ObjectView, RefType, ValueView, WriteTarget } from './api-types'
 import { InternalError } from './diagnostics'
@@ -194,6 +194,8 @@ function forEachRoot(vm: VM, visit: (value: Value) => void): void {
   for (const task of vm.tasks ?? []) {
     if (task.id !== vm.taskId) forEachFrameValue(vm, task.stack, task.frames, visit)
   }
+  // A finished task's result stays inspectable (StateView.tasks) even when no handle is kept.
+  for (const task of vm.tasks ?? []) if (task.status === 'done') visit(task.result)
 }
 
 /** Each frame's stack region in slot order, then its closure's captures, outermost first. */

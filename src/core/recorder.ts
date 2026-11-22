@@ -197,6 +197,17 @@ class RecordedRun implements Recording {
     return this.core.steps.depths.subarray(0, this.length)
   }
 
+  taskSeries(): Int32Array | null {
+    const { steps, hasTasks } = this.core
+    return hasTasks && steps.taskIds !== null ? steps.taskIds.subarray(0, this.length) : null
+  }
+
+  taskAt(t: number): number {
+    this.check(t)
+    if (t < this.length) return this.core.hasTasks ? (this.core.steps.taskIds?.[t] ?? 1) : 1
+    return this.core.end?.task ?? 1
+  }
+
   stateAt(t: number): StateView {
     this.check(t)
     const cached = this.views.get(t)
@@ -243,7 +254,8 @@ class RecordedRun implements Recording {
 
   step(t: number, kind: StepKind, direction: Direction, options?: NavOptions): number {
     this.check(t)
-    return navigateStep(this.nav(), t, kind, direction, options?.justMyCode ?? false)
+    const jmc = options?.justMyCode ?? false
+    return navigateStep(this.nav(), t, kind, direction, jmc, options?.allTasks ?? false)
   }
 
   continue(
@@ -330,6 +342,8 @@ class RecordedRun implements Recording {
         steps.protoIds,
         steps.ips,
         this.table,
+        this.taskSeries(),
+        this.core.end?.task ?? 1,
       )
     }
     return this.navIndex

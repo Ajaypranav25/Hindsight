@@ -59,6 +59,8 @@ export function fakeRecording(options: FakeRecordingOptions): Recording {
     locationAt: () => null,
     depthAt: (t) => depths[t] ?? 0,
     depthSeries: () => depths,
+    taskSeries: () => null,
+    taskAt: () => 1,
     stateAt: (t) => ({ time: t }) as unknown as StateView,
     objectAt: () => null,
     outputCountAt: () => 0,

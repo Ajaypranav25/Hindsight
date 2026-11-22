@@ -647,6 +647,13 @@ floor(r · quantum)` after every switch decision. `policy` and `quantum` are VM 
    Repeated calls return independent, identical continuations.
 9. **Arguments**: every method that takes a time requires an integer in `[0, N]` and throws
    `InternalError` otherwise (the studio clamps first).
+10. **Tasks** (SPEC §10.6): the depth column holds the depth in the running task, and a fourth
+    column, the running task's id (`StepColumns.taskIds`), is created at the first step that runs
+    with tasks (filled with 1 for the steps before), so programs without tasks store and pay
+    nothing. `taskSeries()` returns it (null without tasks), `taskAt(t)` reads it (at N: the task
+    that failed or would run next, 1 when finished). A what-if fork copies the column only when its
+    shared past ran another task, so a fork that never spawns has none either; `hasTasks` keeps an
+    extension's shared columns from changing what the original recording reports.
 
 ### 7.2 Navigator (`navigator*.ts`)
 
@@ -671,6 +678,11 @@ Candidate times range over `0..N−1`; `N` (forward) and `0` (backward) are only
   next invocation.
 - `lineHits(line)` lists every `t < N` with `S(t) ∧ U(t) ∧ L(t) = line`; `lineHitCounts()`
   aggregates them. Linear scans over typed arrays are fast enough; precompute where cheap.
+- **Tasks.** Depths are per task, so step into, over and out only consider the steps of the task
+  running at `t` (`T(t') = T(t)` joins every predicate), unless `NavOptions.allTasks` is set. When
+  that task has no qualifying step, forwards goes to the step after its last step and backwards
+  to the step before its first (when those lie beyond `t`), else `N` / `0`: stepping out of a
+  task's function leaves the task where it ended. `continue` and line hits stop in any task.
 
 ### 7.3 Provenance (`provenance*.ts`)
 
@@ -721,6 +733,12 @@ Builds a `StateView` from the VM positioned at time `t`:
 - `ValueView.preview` comes from the bounded `preview` (~48 characters).
 - At `t == N`: frames are empty when finished; for errors, step limits and aborts, frames show the
   paused state, and `error` is set for errors.
+- **Tasks** (SPEC §10.6): `frames` are the running task's (the one that executes step `t`); `tasks`
+  (present once the program has tasks) lists every task in id order with status, wait, result
+  (done tasks), `current`, and each frame's uid, name, proto, library flag, span and line (the call
+  a caller or a blocked task waits on). The heap walk visits the running task's frames, then every
+  other task's in id order, then finished tasks' results, so a result stays inspectable when no
+  handle is kept.
 
 ### 7.5 What-if forks (`fork.ts`, `compare.ts`, `literal.ts`)
 
@@ -765,6 +783,20 @@ code is wrong. It is built only on the public `Recording` API.
   depth exceeds the previous step's and ends at the last step at that depth; its children are the
   calls one level deeper inside it, in execution order. One pass over `depthSeries()` builds the
   shape on first use; details are built only for the calls asked about, and cached.
+- **Call tree with tasks** (`calls-index-tasks.ts`): each task's steps are read as a depth series
+  of their own, so a call's subtree only holds its own task's calls. Each spawned task's function
+  call (the task's first step) is a child of the root, next to the main task's top-level calls in
+  order of first steps; its `depth` counts one more than its frame depth, so depth 0 still means
+  the root and `depth` is the depth in the tree. Calls are numbered in pre-order (no longer entry
+  order), `callAt(t)` is the innermost call of the task running at `t`, and nodes carry `task` and
+  `after`: the first time after the call in its own task (the caller's next step, or just after a
+  task's final `Return`); `timeAfter(call)` is the time after a call for every consumer (details,
+  effects, assertions, diffs, the studio), since `exit + 1` may belong to another task. A task's
+  function call returns its task's result (`StateView.tasks`). Calls of a task still waiting when
+  the run ended are `unfinished`; on an error, `raised` applies to the failing task's calls. Call
+  effects only read events of steps their own task ran (`eventsBetween(…, task)`); the oracle's
+  assertion scan follows the call's task; divide and query treats another task's calls as outside
+  every call but the root.
 - **Call details**: name, line span, the arguments (the callee's parameter locals at its first step)
   and the result: the caller's top operand temp (`FrameView.temps`) just after the return. The
   outcome is `returned`, `raised` (the run's error is inside the call) or `unfinished` (cut off by

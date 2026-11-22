@@ -194,9 +194,16 @@ class ContractFacts {
     const { recording } = this
     const depths = recording.depthSeries()
     const length = recording.length
-    const callerDepth = call.depth - 1
+    // With tasks, depths are per task and only the call's own task's steps count (SPEC §10.6).
+    const tasks = recording.taskSeries()
+    const task = call.task ?? 1
+    const callerDepth = call.depth - (task === 1 ? 1 : 2)
+    if (callerDepth < 0) return null
+    const ownStep = (t: number): boolean =>
+      tasks === null || (t < length ? tasks[t] === task : recording.taskAt(t) === task)
     const limit = Math.min(length, call.exit + MAX_ASSERT_SCAN)
     for (let t = call.exit + 1; t <= limit; t++) {
+      if (!ownStep(t)) continue
       const depth = t < length ? depths[t]! : recording.depthAt(t)
       if (depth < callerDepth) return null
       if (depth !== callerDepth) continue
@@ -204,7 +211,9 @@ class ContractFacts {
       if (location === null) return null
       if (location.opName !== 'Call' || !sameSpan(location.span, example.assertSpan)) continue
       if (t === length) return this.failedAt(example) ? 'failed' : null
-      return recording.depthAt(t + 1) === callerDepth ? 'passed' : null
+      let next = t + 1
+      while (next < length && !ownStep(next)) next++
+      return recording.depthAt(next) === callerDepth ? 'passed' : null
     }
     return null
   }

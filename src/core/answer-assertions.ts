@@ -13,6 +13,7 @@ import type * as ast from './ast'
 import { instructionLength, Op, type FunctionProto } from './bytecode'
 import type { FinderState } from './bug-finder'
 import { changeTexts } from './bug-finder-text'
+import { timeAfter } from './call-after'
 import type { CallNode, CallTree } from './calls'
 import { formatLiteral } from './literal'
 import { parse } from './parser'
@@ -103,7 +104,7 @@ function assertionFor(
     if (text === null) return null
     args.push(text)
   }
-  const result = sourceText(recording, call.exit + 1, details.result.value)
+  const result = sourceText(recording, timeAfter(call), details.result.value)
   if (result === null) return null
   return `assert(${proto.name}(${args.join(', ')}) == ${result})`
 }

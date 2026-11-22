@@ -26,17 +26,34 @@ function grow<T extends Int32Array | Uint8Array | Float64Array>(array: T, needed
 // ---------------------------------------------------------------------------------------------
 // The per-step trace
 
-/** Location of the instruction about to execute at each step: proto id, ip and depth. */
+/**
+ * Location of the instruction about to execute at each step: proto id, ip and depth (in the
+ * running task), plus the running task's id once the program has tasks (ARCHITECTURE §7.1).
+ */
 export class StepColumns {
   protoIds = new Int32Array(INITIAL_CAPACITY)
   ips = new Int32Array(INITIAL_CAPACITY)
   depths = new Int32Array(INITIAL_CAPACITY)
+  /**
+   * The running task per step; null until a step runs with tasks, so programs without tasks pay
+   * nothing. Created with every earlier step marked as the main task's (only it ran before).
+   */
+  taskIds: Int32Array | null = null
 
   set(t: number, protoId: number, ip: number, depth: number): void {
     if (t >= this.protoIds.length) this.ensure(t + 1)
     this.protoIds[t] = protoId
     this.ips[t] = ip
     this.depths[t] = depth
+  }
+
+  /** Records the running task of step `t` (after `set`). */
+  setTask(t: number, task: number): void {
+    if (this.taskIds === null) {
+      this.taskIds = new Int32Array(this.protoIds.length)
+      this.taskIds.fill(1, 0, t)
+    }
+    this.taskIds[t] = task
   }
 
   /** A copy of steps `0..length`: a what-if fork's shared past (ARCHITECTURE §7.5). */
@@ -46,6 +63,13 @@ export class StepColumns {
     copy.protoIds.set(this.protoIds.subarray(0, length))
     copy.ips.set(this.ips.subarray(0, length))
     copy.depths.set(this.depths.subarray(0, length))
+    // The past keeps its tasks only when another task ran in it; else the fork starts the column
+    // when it first runs with tasks, so a fork that never spawns stays without one.
+    const tasks = this.taskIds?.subarray(0, length)
+    if (tasks !== undefined && tasks.some((task) => task !== 1)) {
+      copy.taskIds = new Int32Array(copy.protoIds.length)
+      copy.taskIds.set(tasks)
+    }
     return copy
   }
 
@@ -53,6 +77,7 @@ export class StepColumns {
     this.protoIds = grow(this.protoIds, needed)
     this.ips = grow(this.ips, needed)
     this.depths = grow(this.depths, needed)
+    if (this.taskIds !== null) this.taskIds = grow(this.taskIds, needed)
   }
 }
 

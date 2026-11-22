@@ -105,11 +105,11 @@ function ensureTasks(m: MachineState): Task[] {
 }
 
 function spawnTask(m: MachineState, fn: ClosureObj, args: readonly Value[]): TaskObj {
-  const tasks = ensureTasks(m)
   if (m.liveTasks >= MAX_LIVE_TASKS) {
     raise('R030', `too many tasks: more than ${MAX_LIVE_TASKS} are unfinished`)
   }
   if (fn.proto.arity !== args.length) raise('R005', closureArityMessage(fn.proto, args.length))
+  const tasks = ensureTasks(m)
   const id = tasks.length + 1
   const name = functionDisplayName(fn.proto)
   const object = m.newTaskObject(id, name)

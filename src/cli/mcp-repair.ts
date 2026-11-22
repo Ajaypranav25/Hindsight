@@ -18,6 +18,7 @@ import {
   repairExample,
   type RepairResult,
   run,
+  timeAfter,
 } from '../core/index'
 import { deepText } from '../core/call-values'
 import { searchRepairs } from './lab'
@@ -356,7 +357,7 @@ function recordedText(recording: Recording, details: CallDetails): string {
   if (call.outcome === 'raised')
     return `raised ${details.error?.code ?? 'an error'}: ${details.error?.message ?? ''}`
   if (call.outcome === 'unfinished' || details.result === null) return 'did not finish'
-  return fullText(recording, call.exit + 1, details, details.result.value)
+  return fullText(recording, timeAfter(call), details, details.result.value)
 }
 
 function argumentTexts(recording: Recording, details: CallDetails): string[] {

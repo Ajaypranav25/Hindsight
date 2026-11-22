@@ -193,6 +193,8 @@ export interface EndLocation {
   readonly protoId: number
   readonly ip: number
   readonly depth: number
+  /** The task that failed or would run next. */
+  readonly task: number
 }
 
 /** Everything a finished recording needs; shared buffers are read only below its own counts. */
@@ -216,6 +218,11 @@ export interface RecordingCore {
   readonly endSnapshot: VMSnapshot | null
   /** The step limit this recording ran under (reported by `step-limit` outcomes). */
   readonly maxSteps: number
+  /**
+   * Whether any of its steps ran with tasks (`steps.taskIds` may exist for a longer extension
+   * sharing the columns, so this recording's own answer is kept).
+   */
+  readonly hasTasks: boolean
 }
 
 export interface SessionInit {
@@ -279,6 +286,7 @@ export class RecordingSession {
       const frames = vm.frames
       const top = frames[frames.length - 1]!
       steps.set(t, top.closure.proto.id, top.ip, frames.length - 1)
+      if (vm.tasks !== null || steps.taskIds !== null) steps.setTask(t, vm.taskId)
       if (vm.work >= schedule.next) schedule.take(vm, t)
       vm.step()
       if (vm.status === 'error') {
@@ -314,6 +322,7 @@ export class RecordingSession {
           protoId: steps.protoIds[length]!,
           ip: steps.ips[length]!,
           depth: steps.depths[length]!,
+          task: steps.taskIds?.[length] ?? 1,
         }
         break
       }
@@ -324,7 +333,12 @@ export class RecordingSession {
             : { kind: 'aborted' }
         const frames = vm.frames
         const top = frames[frames.length - 1]!
-        end = { protoId: top.closure.proto.id, ip: top.ip, depth: frames.length - 1 }
+        end = {
+          protoId: top.closure.proto.id,
+          ip: top.ip,
+          depth: frames.length - 1,
+          task: vm.taskId,
+        }
         endSnapshot = vm.snapshot()
         schedule.add(length, endSnapshot, vm.work)
       }
@@ -347,6 +361,7 @@ export class RecordingSession {
       schedule,
       endSnapshot,
       maxSteps: this.init.maxSteps,
+      hasTasks: steps.taskIds !== null,
     }
     return this.core
   }

@@ -228,7 +228,14 @@ function settle(state: FinderState, first?: Judgment): FinderState {
 // --- divide and query ---------------------------------------------------------------------------
 
 function within(call: CallNode, ancestor: CallNode): boolean {
-  return call.entry >= ancestor.entry && call.exit <= ancestor.exit && call.depth > ancestor.depth
+  // Calls of one task nest in time; another task's calls are only within the root.
+  const sameTask = ancestor.depth === 0 || (call.task ?? 1) === (ancestor.task ?? 1)
+  return (
+    sameTask &&
+    call.entry >= ancestor.entry &&
+    call.exit <= ancestor.exit &&
+    call.depth > ancestor.depth
+  )
 }
 
 const countedSizes = new WeakMap<FinderTree, Map<number, number>>()

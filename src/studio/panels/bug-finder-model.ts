@@ -16,6 +16,7 @@ import {
   questionText,
   type Recording,
   remaining,
+  timeAfter,
   verdict,
   verdictReason,
 } from '../../core/index'
@@ -134,7 +135,7 @@ export function announcement(view: FinderView | null): string {
 
 /** Where "Show me" puts the pen: just after the call returned, or where the run stopped. */
 export function afterCallTime(call: CallNode): number {
-  return call.outcome === 'returned' ? call.exit + 1 : call.exit
+  return timeAfter(call)
 }
 
 /** The failed run's error, with its line in the main source; null when the run did not fail. */

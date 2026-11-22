@@ -373,6 +373,11 @@ export type Direction = 'forward' | 'backward'
 export interface NavOptions {
   /** Skip library (prelude) code. Default false. */
   readonly justMyCode?: boolean
+  /**
+   * Steps (into, over, out) consider every task's steps. Default false: they stay in the task
+   * running at the starting time (ARCHITECTURE §7.2). `continue` always stops in any task.
+   */
+  readonly allTasks?: boolean
 }
 
 export interface RecordOptions {
@@ -411,8 +416,15 @@ export interface Recording {
   /** The instruction about to execute at `t`; at N, the failing or paused instruction (or null). */
   locationAt(t: number): Location | null
   depthAt(t: number): number
-  /** Depth per step, length N (do not mutate). */
+  /** Depth per step, length N (do not mutate); with tasks, the depth in the running task. */
   depthSeries(): Int32Array
+  /**
+   * The running task per step, length N (do not mutate), or null when the program never ran with
+   * tasks (SPEC §10.6).
+   */
+  taskSeries(): Int32Array | null
+  /** The task that executes step `t`; at N, the failing or paused one (1 when finished). */
+  taskAt(t: number): number
   stateAt(t: number): StateView
   /** A reachable object at `t`, paging long lists and records; null when not reachable at `t`. */
   objectAt(

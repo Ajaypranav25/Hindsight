@@ -6,6 +6,7 @@
 import type { Recording, RuntimeErrorInfo, ValueView } from './api-types'
 import { instructionLength, Op, type FunctionProto, type Program } from './bytecode'
 import { type CallEffect, callEffects } from './call-effects'
+import { timeAfter } from './call-after'
 import type { CallNode } from './calls'
 import { cutText, deepText, keyText, PREVIEW_LENGTH, valueText } from './call-values'
 import { InternalError } from './diagnostics'
@@ -63,7 +64,7 @@ export function callDetails(recording: Recording, call: CallNode): CallDetails {
   if (call.depth === 0) {
     return { call, args: [], result: null, error, effects: [], lines, key: null }
   }
-  const after = call.outcome === 'returned' ? call.exit + 1 : recording.length
+  const after = timeAfter(call)
   const params = parameters(recording, call)
   const args = params.map((param) => argument(recording, call.entry, after, param))
   const result = call.outcome === 'returned' ? returnedValue(recording, call) : null
@@ -92,7 +93,7 @@ export function callDetails(recording: Recording, call: CallNode): CallDetails {
 export function resultKey(recording: Recording, call: CallNode): string | null {
   if (call.depth === 0) return null
   const error = call.outcome === 'raised' ? runError(recording) : null
-  const after = call.outcome === 'returned' ? call.exit + 1 : recording.length
+  const after = timeAfter(call)
   const result = call.outcome === 'returned' ? returnedValue(recording, call) : null
   return callKey(recording, call, parameters(recording, call), after, result, error, false)
 }
@@ -181,10 +182,13 @@ function changedText(
  * that slot hold a local, the callee's top operand at its `Return`).
  */
 function returnedValue(recording: Recording, call: CallNode): ValueView {
-  const pushed = recording
-    .stateAt(call.exit + 1)
-    .frames.at(-1)
-    ?.temps.at(-1)
+  if (call.task !== undefined && call.task !== 1 && call.depth === 1) {
+    // A task's function returns to nobody: its result is the task's (SPEC §10.6).
+    const task = recording.stateAt(timeAfter(call)).tasks?.find((each) => each.id === call.task)
+    if (task?.result == null) throw new InternalError(`no result for task ${call.task}`)
+    return task.result
+  }
+  const pushed = recording.stateAt(timeAfter(call)).frames.at(-1)?.temps.at(-1)
   if (pushed !== undefined) return pushed
   const returning = recording.stateAt(call.exit).frames.at(-1)?.temps.at(-1)
   if (returning === undefined) throw new InternalError(`no return value for call ${call.id}`)
