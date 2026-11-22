@@ -161,8 +161,13 @@ export class McpServer implements ToolContext {
     return step
   }
 
-  keep(source: string, recording: Recording, parent: string | null): Trace {
-    const trace: Trace = { id: `t${this.nextTrace++}`, source, recording, parent }
+  keep(
+    source: string,
+    recording: Recording,
+    parent: string | null,
+    base: Recording | null = null,
+  ): Trace {
+    const trace: Trace = { id: `t${this.nextTrace++}`, source, recording, parent, base }
     this.traces.set(trace.id, trace)
     while (this.traces.size > MAX_TRACES) {
       const oldest = this.traces.keys().next()
