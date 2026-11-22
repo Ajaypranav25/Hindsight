@@ -1,0 +1,2 @@
+// A clause needs an expression, and the body still needs its braces.
+fn f(x) requires x > 0 ensures { x } // expect compile error E010: expected '{' but found end of file

@@ -1,5 +1,5 @@
 /** The real studio store, wired to the core. Only main.tsx imports this module. */
-import { compareRecordings, compile, recordAsync } from '../../core/index'
+import { compareRecordings, compile, mapMoment, recordAsync } from '../../core/index'
 import { EXAMPLES } from '../examples'
 import { takeSharedMoment, watchSharedLinks, type ShareHost } from '../lib/share'
 import { browserStorage } from '../lib/storage'
@@ -7,7 +7,7 @@ import { browserScheduler } from './scheduler'
 import { createStudioStore } from './store'
 import type { Engine } from './types'
 
-const engine: Engine = { compile, recordAsync, compare: compareRecordings }
+const engine: Engine = { compile, recordAsync, compare: compareRecordings, mapMoment }
 const host = globalThis as ShareHost
 const moment = takeSharedMoment(host)
 

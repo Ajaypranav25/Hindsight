@@ -13,23 +13,27 @@ export const DEFAULT_EVENT_LIMIT = 10_000
 
 /**
  * The events with `from <= time < to`, in time order: the first `limit` of them, with the `total`
- * in the window (`truncated` when there are more). A recording this module cannot read (one that
- * `record` did not make) has none.
+ * in the window (`truncated` when there are more). With `task`, only the events of steps that task
+ * ran (SPEC §10.6). A recording this module cannot read (one that `record` did not make) has none.
  */
 export function eventsBetween(
   recording: Recording,
   from: number,
   to: number,
   limit: number = DEFAULT_EVENT_LIMIT,
+  task?: number,
 ): HistoryResult {
   const access = replayAccess(recording)
   if (access === null) return { events: [], total: 0, truncated: false }
   const { events, eventCount } = access.core
+  const tasks = task === undefined ? null : recording.taskSeries()
   const events_: ProvenanceEvent[] = []
   let total = 0
   for (let row = events.firstRowAt(Math.max(0, from), eventCount); row < eventCount; row++) {
-    if (events.times[row]! >= to) break
+    const time = events.times[row]!
+    if (time >= to) break
     if (events.kinds[row] === EventCode.cellClosed) continue
+    if (tasks !== null && tasks[time] !== task) continue
     total += 1
     if (events_.length < limit) events_.push(decodeEvent(events, row))
   }

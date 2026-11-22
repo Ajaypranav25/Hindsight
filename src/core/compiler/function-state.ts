@@ -6,6 +6,7 @@ import type { Constant, FunctionProto, LocalInfo, LocalKind, OpCode } from '../b
 import { Op } from '../bytecode'
 import type { Span } from '../span'
 import type { CompileContext } from './context'
+import type { PreparedClause } from './contracts'
 import { buildDebugInfo } from './debug-info'
 import { stackEffect } from './stack-effects'
 
@@ -65,6 +66,10 @@ export class FunctionState {
   readonly loops: LoopContext[] = []
   depth: number
   stmtSpan: Span
+  /** The function's `ensures` clauses, checked at every return (SPEC §7.16). */
+  ensures: readonly PreparedClause[] = []
+  /** True while a contract clause of this function is being compiled (E029, SPEC §7.16). */
+  inContract = false
   private pendingStmtStart = false
   private readonly constantIndex = new Map<string, number>()
 
@@ -178,6 +183,24 @@ export class FunctionState {
     if (count > 0) this.emit(mode === 'value' ? Op.EndScope : Op.PopN, [count], span)
     for (const binding of scope.bindings) this.recordLocal(binding, binding.startIp, this.ip)
     return scope.bindings
+  }
+
+  /**
+   * Runs `body` the way a contract clause sees the function: only the parameter scope (plus
+   * `extra`, the `result` binding of `ensures`) is visible, and no loop encloses it. The hidden
+   * scopes and loops come back afterwards.
+   */
+  withContractView(extra: Binding | null, body: () => void): void {
+    const hiddenScopes = this.scopes.splice(1)
+    const hiddenLoops = this.loops.splice(0)
+    const wasInContract = this.inContract
+    this.inContract = true
+    if (extra !== null) this.pushScope().bindings.push(extra)
+    body()
+    if (extra !== null) this.scopes.pop()
+    this.scopes.push(...hiddenScopes)
+    this.loops.push(...hiddenLoops)
+    this.inContract = wasInContract
   }
 
   recordLocal(binding: Binding, startIp: number, endIp: number, hidden = false): void {

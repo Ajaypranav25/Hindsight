@@ -4,10 +4,15 @@
   position: relative;
 }
 
-.pn-line-wish {
+.pn-line-tools {
   position: absolute;
   top: 0;
   right: var(--space-2);
+  display: flex;
+  gap: var(--space-1);
+}
+
+.pn-line-tool {
   padding: 0 var(--space-1);
   border: 1px solid var(--rule);
   border-radius: var(--radius-sm);
@@ -19,23 +24,47 @@
   opacity: 0;
 }
 
-.pn-line:hover .pn-line-wish,
-.pn-line-wish:focus-visible,
-.pn-line-wish[aria-expanded='true'] {
+.pn-line-tool:hover {
+  color: var(--ink);
+  border-color: var(--marker);
+}
+
+.pn-line:hover .pn-line-tool,
+.pn-line-row:focus-within .pn-line-tool,
+.pn-line-tool[aria-expanded='true'] {
   opacity: 1;
 }
 
-.pn-line-wish:focus-visible {
+.pn-line-tool:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
 }
 
-@media (hover: none) {
-  .pn-line-wish {
+/*
+ * Phones and touch screens: no hover to reveal the tools over the line, and too little room for
+ * them beside it. They sit under the line at the pen (a tap on a line moves the pen there) or
+ * under a line with keyboard focus.
+ */
+@media (hover: none), (max-width: 699.98px) {
+  .pn-line-tools {
     position: static;
-    opacity: 1;
+    display: none;
     margin: 0 var(--space-3) var(--space-1);
   }
+
+  .pn-line--now .pn-line-tools,
+  .pn-line-row:focus-within .pn-line-tools,
+  .pn-line-tools:has([aria-expanded='true']) {
+    display: flex;
+  }
+
+  .pn-line-tool {
+    opacity: 1;
+  }
+}
+
+.pn-copied:empty {
+  padding: 0;
 }
 
 .pn-wish {

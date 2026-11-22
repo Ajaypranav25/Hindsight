@@ -4,12 +4,23 @@ import { afterEach, describe, expect, test } from 'vitest'
 import { compile, queryRecording, record, type Recording } from '../../core/index'
 import { buildEnvelope, fullViewport } from '../lib/timeline-math'
 import { renderWithRecording } from '../panels/test-fixtures'
+import { setAnalysisService } from '../analysis/service'
 import { liveQuery, liveSweep } from '../state/lab'
-import { drawQueryMarks, drawSweepGhosts, labMaxDepth, type ChartLab } from './chart-lab'
+import { buildMarkPyramid } from '../lib/mark-pyramid'
+import {
+  drawQueryMarks,
+  drawSliceMarks,
+  drawSweepGhosts,
+  labMaxDepth,
+  type ChartLab,
+} from './chart-lab'
 import { neighbours, QueryBar, queryRows, querySummary } from './QueryBar'
 import { longestRun, SweepBanner, sweepHeadline } from './SweepBanner'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  setAnalysisService(null)
+})
 
 function recordSource(source: string): Recording {
   const result = compile(source)
@@ -172,6 +183,7 @@ describe('sweeps', () => {
   test('a row opens that run as a what-if, and the sweep is back after leaving it', async () => {
     const { store, recording, at } = await swept()
     fireEvent.click(screen.getByRole('button', { name: '27' }))
+    await waitFor(() => expect(store.getState().whatIf).not.toBeNull())
     const state = store.getState()
     expect(state.whatIf).toMatchObject({ parent: recording, label: `start = 27 at step ${at}` })
     expect(state.recording?.outputs[0]?.text).toBe('111')
@@ -194,6 +206,46 @@ describe('sweeps', () => {
     await act(() => store.getState().sweepWhatIf(target, [1], 'start', '1'))
     expect(liveSweep(store.getState().lab, recording)?.failed).toHaveLength(1)
     expect(screen.getByRole('table').textContent).toContain('1')
+  })
+
+  test('the banner counts the values forked so far, and a sweep that fails says so', async () => {
+    const recording = recordSource(COLLATZ)
+    const at = recording.lineHits(11)[0]!
+    const start = recording.stateAt(at).globals.find((global) => global.name === 'start')!
+    let finish: (error: Error) => void = () => undefined
+    setAnalysisService({
+      analyze: (_recording, _request, _signal, onProgress) =>
+        new Promise((_resolve, reject) => {
+          onProgress?.(1)
+          finish = reject
+        }),
+    })
+    const { store } = renderWithRecording(<SweepBanner />, recording, at)
+    let running: Promise<void> = Promise.resolve()
+    act(() => {
+      running = store.getState().sweepWhatIf(start.target, [6, 7], 'start', '6, 7')
+    })
+    expect(liveSweep(store.getState().lab, recording)?.done).toBe(1)
+    expect(screen.getByText(/1 of 2/)).toBeTruthy()
+    finish(new Error('out of memory'))
+    await act(() => running)
+    expect(store.getState().lab.sweep).toBeNull()
+    expect(store.getState().notice).toEqual({ text: 'No sweep: out of memory', tone: 'error' })
+  })
+
+  test('closing a sweep that is still running stops it and keeps nothing', async () => {
+    const recording = recordSource(COLLATZ)
+    const at = recording.lineHits(11)[0]!
+    const start = recording.stateAt(at).globals.find((global) => global.name === 'start')!
+    const { store } = renderWithRecording(<SweepBanner />, recording, at)
+    let running: Promise<void> = Promise.resolve()
+    act(() => {
+      running = store.getState().sweepWhatIf(start.target, [6, 7, 27], 'start', '6, 7, 27')
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Stop' }))
+    await act(() => running)
+    expect(store.getState().lab.sweep).toBeNull()
+    expect(store.getState().notice).toBeNull()
   })
 
   test('a sweep stops when another run is shown', async () => {
@@ -253,6 +305,31 @@ describe('chart layers', () => {
       'rect 100 10 1 50',
     ])
     expect(ctx.globalAlpha).toBe(1)
+  })
+
+  test('a slice shades the columns of its steps and draws a rug under the baseline', () => {
+    // Arrange: steps 10..14 and 60 of a 100-step view over 200 columns.
+    const marks = new Uint8Array(101)
+    for (const step of [10, 11, 12, 13, 14, 60]) marks[step] = 1
+    const { ctx, calls } = fakeContext()
+    // Act
+    drawSliceMarks(ctx, buildMarkPyramid(marks), layout, 'blue')
+    // Assert: two bands (one per run of columns), then the same two as a rug.
+    expect(calls).toEqual([
+      'rect 20 10 10 50',
+      'rect 120 10 2 50',
+      'rect 20 61 10 2',
+      'rect 120 61 2 2',
+    ])
+    expect(ctx.globalAlpha).toBe(1)
+  })
+
+  test('a slice outside the view draws nothing', () => {
+    const marks = new Uint8Array(101)
+    marks[90] = 1
+    const { ctx, calls } = fakeContext()
+    drawSliceMarks(ctx, buildMarkPyramid(marks), { ...layout, view: { start: 0, end: 50 } }, 'b')
+    expect(calls).toEqual([])
   })
 
   test('every sweep run is traced from the fork step on', () => {

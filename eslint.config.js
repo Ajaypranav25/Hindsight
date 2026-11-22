@@ -5,7 +5,14 @@ import globals from 'globals'
 
 export default tseslint.config(
   {
-    ignores: ['dist', 'coverage', 'node_modules', 'playwright-report', 'test-results'],
+    ignores: [
+      'dist',
+      'coverage',
+      'node_modules',
+      'playwright-report',
+      'test-results',
+      'editors/vscode/dist',
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -25,7 +32,14 @@ export default tseslint.config(
     languageOptions: { globals: globals.browser },
   },
   {
-    files: ['src/cli/**', 'scripts/**', 'e2e/**', 'tests/**', '*.config.{js,ts}'],
+    files: [
+      'src/cli/**',
+      'scripts/**',
+      'e2e/**',
+      'tests/**',
+      '*.config.{js,ts}',
+      'editors/vscode/scripts/**',
+    ],
     languageOptions: { globals: globals.node },
     rules: { 'no-console': 'off' },
   },

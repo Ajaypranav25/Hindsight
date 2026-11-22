@@ -12,7 +12,15 @@ import {
   type DepthScale,
   type Viewport,
 } from '../lib/timeline-math'
-import { drawQueryMarks, drawSweepGhosts, labMaxDepth, type ChartLab } from './chart-lab'
+import {
+  drawQueryMarks,
+  drawSliceMarks,
+  drawSweepGhosts,
+  labMaxDepth,
+  type ChartLab,
+} from './chart-lab'
+import { laneAt } from '../lib/lanes'
+import { drawLanes, laneY, type ChartLanes, type LaneLayout } from './chart-lanes'
 import { drawGhost, drawWhatIfMarks, type ChartWhatIf, type WhatIfLayout } from './chart-whatif'
 
 /** Chart layout in CSS pixels. */
@@ -45,6 +53,13 @@ const COLOR_TOKENS = {
   rule: '--rule',
   fontMono: '--font-mono',
   whatIf: '--whatif',
+  lane1: '--lane-1',
+  lane2: '--lane-2',
+  lane3: '--lane-3',
+  lane4: '--lane-4',
+  lane5: '--lane-5',
+  lane6: '--lane-6',
+  laneWait: '--lane-wait',
 } as const
 
 export type ChartColors = { readonly [K in keyof typeof COLOR_TOKENS]: string }
@@ -80,8 +95,10 @@ export interface ChartScene {
   readonly colors: ChartColors
   /** Set while a what-if is shown: the real run's ghost and the fork and divergence marks. */
   readonly whatIf?: ChartWhatIf | null
-  /** A query's matches and a sweep's runs, when there are any. */
+  /** A query's matches, a slice's steps and a sweep's runs, when there are any. */
   readonly lab?: ChartLab | null
+  /** Set for a run with tasks: one swim lane per task instead of the single trace. */
+  readonly lanes?: ChartLanes | null
 }
 
 interface Frame {
@@ -94,6 +111,8 @@ interface Frame {
   readonly top: number
   readonly plotBottom: number
   readonly scale: DepthScale
+  /** The swim lanes' layout, for a run with tasks. */
+  readonly laneLayout: LaneLayout | null
 }
 
 export function drawChart(ctx: CanvasRenderingContext2D, scene: ChartScene): void {
@@ -109,7 +128,8 @@ export function drawChart(ctx: CanvasRenderingContext2D, scene: ChartScene): voi
     baseline,
     CHART_LAYOUT.maxDepthUnit * px,
   )
-  const frame: Frame = { ctx, scene, w, h, px, top, plotBottom, scale }
+  const laneLayout = scene.lanes ? laneLayoutOf(scene, w, px, top, baseline) : null
+  const frame: Frame = { ctx, scene, w, h, px, top, plotBottom, scale, laneLayout }
   ctx.clearRect(0, 0, w, h)
   drawGrid(frame)
   ctx.globalAlpha = scene.stale ? 0.4 : 1
@@ -118,14 +138,46 @@ export function drawChart(ctx: CanvasRenderingContext2D, scene: ChartScene): voi
   if (whatIf) drawGhost(ctx, whatIf, { ...layout, color: scene.colors.inkMuted })
   const lab = scene.lab ?? null
   if (lab) drawQueryMarks(ctx, lab, layout, scene.colors.marker)
+  if (lab?.slice) drawSliceMarks(ctx, lab.slice, layout, scene.colors.marker)
   if (lab && lab.ghosts.length > 0) drawSweepGhosts(ctx, lab, layout, scene.colors.whatIf)
-  drawTrace(frame)
+  if (scene.lanes && laneLayout) drawLanes(ctx, scene.lanes, laneLayout)
+  else drawTrace(frame)
   drawMarkers(frame)
   if (whatIf) drawWhatIfMarks(ctx, whatIf, layout)
   ctx.globalAlpha = 1
   drawScale(frame)
   if (scene.progress !== null) drawProgress(frame, scene.progress)
   else drawPen(frame)
+}
+
+function laneLayoutOf(
+  scene: ChartScene,
+  w: number,
+  px: number,
+  top: number,
+  baseline: number,
+): LaneLayout {
+  const { colors } = scene
+  return {
+    view: scene.view,
+    w,
+    px,
+    top,
+    baseline,
+    maxUnit: CHART_LAYOUT.maxDepthUnit * px,
+    colors: [colors.lane1, colors.lane2, colors.lane3, colors.lane4, colors.lane5, colors.lane6],
+    waitColor: colors.laneWait,
+    ruleColor: colors.rule,
+    font: colors.fontMono,
+  }
+}
+
+/** The y of a mark at depth `depth` of step `t`: in its task's lane when there are lanes. */
+function markY(f: Frame, t: number, depth: number): number {
+  const lanes = f.scene.lanes
+  if (!lanes || !f.laneLayout) return depthToY(depth, f.scale)
+  const at = laneAt(lanes.model, t)
+  return laneY(lanes, f.laneLayout, at.lane, at.depth)
 }
 
 function drawGrid(f: Frame): void {
@@ -206,7 +258,7 @@ function drawMarkers(f: Frame): void {
 }
 
 function drawWatch(f: Frame): void {
-  const { ctx, scene, w, px, scale } = f
+  const { ctx, scene, w, px } = f
   const depths = scene.env?.mins[0]
   const r = 3.5 * px
   ctx.fillStyle = scene.colors.marker
@@ -219,7 +271,7 @@ function drawWatch(f: Frame): void {
     const x = timeToX(t, scene.view, w)
     if (x - lastX < 2 * px) continue
     lastX = x
-    const y = depthToY(depths && t < depths.length ? depths[t]! : 0, scale)
+    const y = markY(f, t, depths && t < depths.length ? depths[t]! : 0)
     ctx.beginPath()
     ctx.moveTo(x, y - r)
     ctx.lineTo(x + r, y)
@@ -282,13 +334,22 @@ function drawPen(f: Frame): void {
   ctx.lineTo(lineX, top - 4 * px)
   ctx.closePath()
   ctx.fill()
-  const y = depthToY(scene.penDepth, scale)
+  const y = penY(f)
   ctx.beginPath()
   ctx.arc(lineX, y, 3.5 * px, 0, Math.PI * 2)
   ctx.fill()
   ctx.strokeStyle = scene.colors.surface
   ctx.lineWidth = 1.25 * px
   ctx.stroke()
+}
+
+/** The pen's dot: at its depth, in the lane of the task at the pen when there are lanes. */
+function penY(f: Frame): number {
+  const { scene, scale } = f
+  const lanes = scene.lanes
+  if (!lanes || !f.laneLayout) return depthToY(scene.penDepth, scale)
+  const lane = Math.max(0, lanes.model.laneOf[lanes.penTask] ?? 0)
+  return laneY(lanes, f.laneLayout, lane, scene.penDepth)
 }
 
 function drawProgress(f: Frame, fraction: number): void {

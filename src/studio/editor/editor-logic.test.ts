@@ -57,6 +57,22 @@ describe('syntax classes from the lexer', () => {
     ])
   })
 
+  test('requires and ensures are keywords only in contract position', () => {
+    // Arrange
+    const source = 'fn f(requires) requires requires > 0 ensures result { 1 }'
+
+    // Act
+    const words = classesOf(source).filter((c) => c.endsWith(':requires') || c.endsWith('ensures'))
+
+    // Assert
+    expect(words).toEqual([
+      'ident:requires',
+      'keyword:requires',
+      'ident:requires',
+      'keyword:ensures',
+    ])
+  })
+
   test('ranges are sorted and non-empty, also for broken input', () => {
     for (const source of ['"abc {x', '/* open', 'let 1x = "{}"', '']) {
       const ranges = highlightRanges(source)

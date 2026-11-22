@@ -14,6 +14,7 @@ import type {
   TracedValue,
   ValueView,
 } from './api-types'
+import { timeAfter } from './call-after'
 import type { CallNode } from './calls'
 import { eventsBetween } from './events'
 import { preview } from './values'
@@ -39,8 +40,9 @@ const NO_EFFECTS: CallEffects = { effects: [], truncated: false }
 /** The non-local state `call` changed, in the order it was first touched. */
 export function callEffects(recording: Recording, call: CallNode): CallEffects {
   if (call.depth === 0) return NO_EFFECTS
-  const after = call.outcome === 'returned' ? call.exit + 1 : recording.length
-  const window = eventsBetween(recording, call.entry, after, EFFECT_EVENT_LIMIT)
+  const after = timeAfter(call)
+  // With tasks, only the call's own task's steps are its doing.
+  const window = eventsBetween(recording, call.entry, after, EFFECT_EVENT_LIMIT, call.task)
   if (window.total === 0) return NO_EFFECTS
   const entry = recording.stateAt(call.entry)
   const names = new Names(recording, call, entry)

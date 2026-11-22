@@ -65,6 +65,7 @@ export const Op = {
   Destructure: 54,
   MatchPattern: 55,
   NoMatch: 56,
+  Check: 57,
 } as const
 
 export type OpName = keyof typeof Op
@@ -111,6 +112,7 @@ export const OPERAND_COUNTS: readonly number[] = (() => {
     'Interp',
     'IterNext',
     'Destructure',
+    'Check',
   ]
   for (const name of withOne) counts[Op[name]] = 1
   counts[Op.MatchPattern] = 2
@@ -134,7 +136,7 @@ export function instructionLength(
 // ---------------------------------------------------------------------------------------------
 // Constants
 
-export type Constant = number | string | FunctionProto | PatternConst
+export type Constant = number | string | FunctionProto | PatternConst | ContractConst
 
 /** A compiled pattern (ARCHITECTURE §4.3.4, SPEC §6). */
 export type PatternDesc =
@@ -168,6 +170,18 @@ export interface PatternConst {
   readonly bindCount: number
 }
 
+/** A contract clause checked by `Check` (SPEC §7.16, ARCHITECTURE §4.3.3). */
+export interface ContractConst {
+  readonly tag: 'contract'
+  readonly kind: 'requires' | 'ensures'
+  /** The clause expression's exact source text, used in R026/R027 messages. */
+  readonly text: string
+  /** The function's display name (SPEC §7.12), `lambda` when it has none. */
+  readonly fn: string
+  /** Each parameter pattern's source text, naming the arguments in the R026 hint. */
+  readonly params: readonly string[]
+}
+
 export function isFunctionProto(c: Constant | undefined): c is FunctionProto {
   return typeof c === 'object' && c !== null && c.tag === 'proto'
 }
@@ -176,10 +190,15 @@ export function isPatternConst(c: Constant | undefined): c is PatternConst {
   return typeof c === 'object' && c !== null && c.tag === 'pattern'
 }
 
+export function isContractConst(c: Constant | undefined): c is ContractConst {
+  return typeof c === 'object' && c !== null && c.tag === 'contract'
+}
+
 // ---------------------------------------------------------------------------------------------
 // Functions and programs
 
-export type LocalKind = 'let' | 'var' | 'param' | 'fn' | 'loop' | 'match' | 'hidden'
+/** `result`: the returned value while a function's `ensures` clauses run (SPEC §7.16). */
+export type LocalKind = 'let' | 'var' | 'param' | 'fn' | 'loop' | 'match' | 'hidden' | 'result'
 
 export interface LocalInfo {
   readonly name: string

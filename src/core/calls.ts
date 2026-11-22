@@ -3,18 +3,24 @@
  * the whole program; a call's children are the calls it made, in execution order. The shape comes
  * from one pass over `depthSeries()` on first use; nodes and their details (which need state
  * seeks) are built only for the calls asked about, and cached. Built on the public Recording API.
+ *
+ * With tasks (SPEC §10.6), each task's calls come from that task's own steps, and each spawned
+ * task's function call is a child of the root (`calls-index-tasks.ts`).
  */
 import type { Recording } from './api-types'
 import { type CallDetails, callDetails } from './call-details'
-import { buildCallIndex, type CallIndex } from './calls-index'
+import { buildCallIndex, type CallShape } from './calls-index'
+import { buildTaskCallIndex, TaskCallIndex } from './calls-index-tasks'
 import { InternalError } from './diagnostics'
 
 export type { CallArgument, CallDetails, CallValue, LineSpan } from './call-details'
 export type { CallEffect } from './call-effects'
+export { timeAfter } from './call-after'
 
 /**
- * `returned`: the call came back. `raised`: the run ended with an error while it was running.
- * `unfinished`: the recording stopped (step limit or abort) while it was running.
+ * `returned`: the call came back. `raised`: the run ended with an error while it was running (in
+ * the failing task). `unfinished`: the recording stopped (step limit or abort) while it was
+ * running, or, with tasks, the run ended while its task waited or was not the failing one.
  */
 export type CallOutcome = 'returned' | 'raised' | 'unfinished'
 
@@ -25,7 +31,10 @@ export interface CallNode {
   readonly entry: number
   /** The call's last step: its `Return` when it returned, else N (where the run stopped). */
   readonly exit: number
-  /** Frame depth of the callee (0 for the root, the top-level script). */
+  /**
+   * Frame depth of the callee (0 for the root, the top-level script); in a spawned task, its frame
+   * depth plus one (the task's function call is a child of the root).
+   */
   readonly depth: number
   readonly outcome: CallOutcome
   readonly protoId: number
@@ -33,6 +42,13 @@ export interface CallNode {
   readonly name: string
   /** Library (prelude) code. */
   readonly library: boolean
+  /** The task the call ran in, when the program has tasks (absent otherwise). */
+  readonly task?: number
+  /**
+   * With tasks, the first time after the call in its own task (the caller's next step; just after
+   * the last step for a task's function; N when it never returned). See `timeAfter`.
+   */
+  readonly after?: number
 }
 
 export interface CallTreeOptions {
@@ -53,7 +69,7 @@ export function callTree(recording: Recording): CallTree {
 }
 
 export class CallTree {
-  private shape: CallIndex | null = null
+  private shape: CallShape | null = null
   private readonly nodes = new Map<number, CallNode>()
   /** Call index by entry step, for every node handed out. */
   private readonly indexes = new Map<number, number>()
@@ -143,13 +159,23 @@ export class CallTree {
     return this.details(call).key
   }
 
-  private index(): CallIndex {
-    const { recording } = this
-    this.shape ??= buildCallIndex(
-      recording.depthSeries(),
-      recording.length,
-      recording.depthAt(recording.length),
-    )
+  private index(): CallShape {
+    if (this.shape === null) {
+      const { recording } = this
+      const tasks = recording.taskSeries()
+      const length = recording.length
+      this.shape =
+        tasks === null
+          ? buildCallIndex(recording.depthSeries(), length, recording.depthAt(length))
+          : buildTaskCallIndex({
+              depths: recording.depthSeries(),
+              tasks,
+              length,
+              endDepth: recording.depthAt(length),
+              endTask: recording.taskAt(length),
+              returnsAt: (t) => recording.locationAt(t)?.opName === 'Return',
+            })
+    }
     return this.shape
   }
 
@@ -210,12 +236,13 @@ export class CallTree {
 
   private buildNode(index: number): CallNode {
     const { recording } = this
-    const entry = this.index().entryOf(index)
-    const end = this.index().endOf(index)
+    const shape = this.index()
+    const entry = shape.entryOf(index)
+    const end = shape.endOf(index)
     const outcome = this.outcomeOf(index)
     const location = recording.locationAt(entry)
     const script = recording.program.script
-    return {
+    const node = {
       id: entry,
       entry,
       exit: outcome === 'returned' ? end - 1 : recording.length,
@@ -225,11 +252,27 @@ export class CallTree {
       name: location?.functionName ?? '<top level>',
       library: location?.library ?? false,
     }
+    if (!(shape instanceof TaskCallIndex)) return node
+    const returned = shape.returnedOf(index)
+    return {
+      ...node,
+      exit: returned ? shape.exitOf(index) : node.exit,
+      depth: shape.depthOf(index),
+      task: shape.taskOf(index),
+      after: returned ? end : recording.length,
+    }
   }
 
   private outcomeOf(index: number): CallOutcome {
     const { recording } = this
-    if (this.index().returnedOf(index)) return 'returned'
+    const shape = this.index()
+    if (shape.returnedOf(index)) return 'returned'
+    if (index > 0 && shape instanceof TaskCallIndex) {
+      const failing =
+        recording.outcome.kind === 'error' &&
+        shape.taskOf(index) === recording.taskAt(recording.length)
+      return failing ? 'raised' : 'unfinished'
+    }
     switch (recording.outcome.kind) {
       case 'finished':
         return 'returned'

@@ -6,6 +6,7 @@
 import type { Recording, RuntimeErrorInfo, ValueView } from './api-types'
 import { instructionLength, Op, type FunctionProto, type Program } from './bytecode'
 import { type CallEffect, callEffects } from './call-effects'
+import { timeAfter } from './call-after'
 import type { CallNode } from './calls'
 import { cutText, deepText, keyText, PREVIEW_LENGTH, valueText } from './call-values'
 import { InternalError } from './diagnostics'
@@ -39,6 +40,11 @@ export interface CallDetails {
   readonly error: RuntimeErrorInfo | null
   /** What the call changed outside itself and its arguments (globals, captured variables, objects). */
   readonly effects: readonly CallEffect[]
+  /**
+   * True when the call ran too many events to read them all (`callEffects`): `effects` may then
+   * miss changes, so nothing may conclude from it that the call changed nothing.
+   */
+  readonly effectsTruncated: boolean
   /** 1-based first and last line of the function in the main source; null for library code. */
   readonly lines: LineSpan | null
   /**
@@ -61,9 +67,18 @@ export function callDetails(recording: Recording, call: CallNode): CallDetails {
   const error = call.outcome === 'raised' ? runError(recording) : null
   const lines = linesOf(recording.program, call.protoId)
   if (call.depth === 0) {
-    return { call, args: [], result: null, error, effects: [], lines, key: null }
+    return {
+      call,
+      args: [],
+      result: null,
+      error,
+      effects: [],
+      effectsTruncated: false,
+      lines,
+      key: null,
+    }
   }
-  const after = call.outcome === 'returned' ? call.exit + 1 : recording.length
+  const after = timeAfter(call)
   const params = parameters(recording, call)
   const args = params.map((param) => argument(recording, call.entry, after, param))
   const result = call.outcome === 'returned' ? returnedValue(recording, call) : null
@@ -78,9 +93,24 @@ export function callDetails(recording: Recording, call: CallNode): CallDetails {
     result: result && { value: result, text: valueText(result) },
     error,
     effects,
+    effectsTruncated: truncated,
     lines,
     key,
   }
+}
+
+/**
+ * Equal for calls of one function with the same context (captures, globals read), argument values
+ * at entry and outcome, whatever they changed; null when that cannot be told. Unlike
+ * `CallDetails.key` it ignores effects, so a call on a temporary list matches one on a list that
+ * lives on: the contract oracle shares an assertion's verdict about a result through it.
+ */
+export function resultKey(recording: Recording, call: CallNode): string | null {
+  if (call.depth === 0) return null
+  const error = call.outcome === 'raised' ? runError(recording) : null
+  const after = timeAfter(call)
+  const result = call.outcome === 'returned' ? returnedValue(recording, call) : null
+  return callKey(recording, call, parameters(recording, call), after, result, error, false)
 }
 
 function runError(recording: Recording): RuntimeErrorInfo {
@@ -167,10 +197,13 @@ function changedText(
  * that slot hold a local, the callee's top operand at its `Return`).
  */
 function returnedValue(recording: Recording, call: CallNode): ValueView {
-  const pushed = recording
-    .stateAt(call.exit + 1)
-    .frames.at(-1)
-    ?.temps.at(-1)
+  if (call.task !== undefined && call.task !== 1 && call.depth === 1) {
+    // A task's function returns to nobody: its result is the task's (SPEC §10.6).
+    const task = recording.stateAt(timeAfter(call)).tasks?.find((each) => each.id === call.task)
+    if (task?.result == null) throw new InternalError(`no result for task ${call.task}`)
+    return task.result
+  }
+  const pushed = recording.stateAt(timeAfter(call)).frames.at(-1)?.temps.at(-1)
   if (pushed !== undefined) return pushed
   const returning = recording.stateAt(call.exit).frames.at(-1)?.temps.at(-1)
   if (returning === undefined) throw new InternalError(`no return value for call ${call.id}`)
@@ -184,6 +217,7 @@ function callKey(
   after: number,
   result: ValueView | null,
   error: RuntimeErrorInfo | null,
+  withChanges = true,
 ): string | null {
   const ending = outcomeKey(recording, after, result, error)
   if (ending === null) return null
@@ -194,7 +228,7 @@ function callKey(
     const before = keyText(recording, call.entry, param.value)
     if (before === null) return null
     parts.push(before)
-    if (param.value.kind === 'ref') {
+    if (withChanges && param.value.kind === 'ref') {
       const later = laterKey(recording, after, param.value)
       if (later === null) return null
       parts.push(later)
@@ -231,7 +265,7 @@ function contextKey(recording: Recording, call: CallNode): string[] | null {
 const globalReads = new WeakMap<FunctionProto, readonly string[]>()
 
 /** The names of the globals a function's own code reads (`GetGlobal`), sorted. */
-function globalsReadBy(proto: FunctionProto): readonly string[] {
+export function globalsReadBy(proto: FunctionProto): readonly string[] {
   let names = globalReads.get(proto)
   if (names === undefined) {
     const found = new Set<string>()

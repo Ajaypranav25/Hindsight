@@ -55,12 +55,13 @@ export function prepareFork(
     program: core.program,
     runtime: core.runtime,
     seed: core.seed,
+    taskSchedule: core.taskSchedule,
     heapLimit: options.heapLimit ?? core.heapLimit,
     steps: core.steps.copyPrefix(time),
     events: sink.events,
     allocs: sink.allocs,
     sink,
-    schedule: core.schedule.forkAt(time, vm.snapshot()),
+    schedule: core.schedule.forkAt(vm, time),
     vm,
     start: time,
     stopAt: maxSteps,
@@ -100,6 +101,7 @@ function positionedVM(core: RecordingCore, time: number): VM {
     builtins: runtime.builtins,
     libraryProtos: runtime.libraryProtos,
     seed: core.seed,
+    schedule: core.taskSchedule,
   })
   vm.restore(core.schedule.latestAtOrBefore(time).snapshot)
   vm.runUntil(time)

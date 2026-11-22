@@ -10,6 +10,22 @@
 
 const INITIAL_CAPACITY = 64
 
+/** What the call tree needs of an index (single task here, `calls-index-tasks.ts` with tasks). */
+export interface CallShape {
+  /** Number of calls, the root included. */
+  readonly count: number
+  /** Steps recorded (N). */
+  readonly length: number
+  entryOf(call: number): number
+  endOf(call: number): number
+  returnedOf(call: number): boolean
+  parentOf(call: number): number
+  subtreeEndOf(call: number): number
+  childrenOf(call: number): number[]
+  indexOfEntry(t: number): number
+  innermostAt(t: number): number
+}
+
 class Column {
   data: Int32Array
 
@@ -29,7 +45,7 @@ class Column {
   }
 }
 
-export class CallIndex {
+export class CallIndex implements CallShape {
   constructor(
     /** Number of calls, the root included. */
     readonly count: number,

@@ -1,7 +1,19 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, test } from 'vitest'
-import { compile, record, run, verifyProgram } from '../src/core/index'
+import {
+  autoAnswer,
+  callTree,
+  compile,
+  contractOracle,
+  exploreSchedules,
+  record,
+  run,
+  startFinder,
+  type Strategy,
+  verdict,
+  verifyProgram,
+} from '../src/core/index'
 import { parseExample } from '../src/studio/examples'
 
 const dir = fileURLToPath(new URL('../examples/', import.meta.url))
@@ -78,5 +90,57 @@ describe('gallery examples', () => {
       'linus: 8',
       'grace: 41',
     ])
+    expect(output('19-contracts.sight')).toEqual(['subtotal: 55'])
+    expect(output('20-producer-consumer.sight')).toEqual([
+      'sum of squares: 91',
+      'worker a squared 4, worker b squared 2',
+    ])
+    expect(output('21-bank-race.sight')).toEqual(['alice 100, bob 100, total 200'])
+    expect(output('22-dining-philosophers.sight')).toEqual([
+      'philosopher 0 picked up the left fork',
+      'philosopher 1 picked up the left fork',
+      'philosopher 2 picked up the left fork',
+    ])
   })
+
+  test('the bank race loses money under some random schedules, and the finder names the accounts', () => {
+    const compiled = compile(readFileSync(`${dir}21-bank-race.sight`, 'utf8'))
+    if (!compiled.ok) throw new Error('compile failed')
+    const found = exploreSchedules(compiled.program, { runs: 10 })
+    expect(found.groups.length).toBeGreaterThan(1)
+    expect(found.divergence?.candidates.map((candidate) => candidate.name)).toEqual(
+      expect.arrayContaining(['accounts.alice', 'accounts.bob']),
+    )
+  })
+
+  test('the philosophers deadlock with every wait in the hint', () => {
+    const compiled = compile(readFileSync(`${dir}22-dining-philosophers.sight`, 'utf8'))
+    if (!compiled.ok) throw new Error('compile failed')
+    const { outcome } = run(compiled.program)
+    expect(outcome.kind === 'error' && outcome.error.code).toBe('R028')
+    expect(outcome.kind === 'error' && outcome.error.hint?.split('; ')).toHaveLength(4)
+  })
+
+  test.each<Strategy>(['divide', 'top-down'])(
+    'in 19-contracts the bug finder names total with no questions (%s)',
+    (strategy) => {
+      // Arrange
+      const compiled = compile(readFileSync(`${dir}19-contracts.sight`, 'utf8'))
+      if (!compiled.ok) throw new Error('compile failed')
+      const recording = record(compiled.program)
+      const tree = callTree(recording)
+
+      // Act
+      const start = startFinder(tree, tree.root, { justMyCode: true, strategy })
+      const state = autoAnswer(start, contractOracle(recording, tree))
+
+      // Assert
+      expect(verdict(state)).toMatchObject({
+        kind: 'found',
+        certainty: 'certain',
+        call: { name: 'total' },
+      })
+      expect(state.asked).toBe(0)
+    },
+  )
 })

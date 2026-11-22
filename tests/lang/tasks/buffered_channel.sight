@@ -1,0 +1,18 @@
+// A buffered channel accepts sends until it holds `capacity` values (SPEC §10.6).
+let ch = channel(2)
+send(ch, "a")
+send(ch, "b")
+print(ch) // expect: <channel #2 (2/2)>
+fn sender() {
+  print("sending c")
+  send(ch, "c")
+  print("sent c")
+}
+spawn(sender)
+print(recv(ch)) // expect: a
+// The waiting sender's value moved into the freed place.
+print(ch) // expect: <channel #2 (1/2)>
+yield() // expect: sending c
+// expect: sent c
+print(ch) // expect: <channel #2 (2/2)>
+print(recv(ch), recv(ch)) // expect: b c

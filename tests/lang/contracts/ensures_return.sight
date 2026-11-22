@@ -1,0 +1,13 @@
+// Every `return` statement checks the postconditions too (R027).
+fn sign(n)
+  ensures result == -1 or result == 0 or result == 1 // expect runtime error R027: postcondition failed: result == -1 or result == 0 or result == 1 // hint: 'sign' returned 2
+{
+  if n < 0 { return -1 }
+  for i in 0..3 {
+    if i == n { return 0 }
+  }
+  if n > 100 { return 2 }
+  1
+}
+print(sign(-4), sign(0), sign(7)) // expect: -1 0 1
+print(sign(500))

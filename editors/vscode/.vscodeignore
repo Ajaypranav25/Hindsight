@@ -1,0 +1,10 @@
+# Only the bundle, the manifest, the grammar, the language configuration, README and LICENSE ship.
+src/**
+scripts/**
+node_modules/**
+**/*.map
+**/*.test.ts
+tsconfig.json
+package-lock.json
+*.vsix
+.vscode/**

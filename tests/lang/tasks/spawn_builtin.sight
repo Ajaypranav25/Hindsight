@@ -1,0 +1,2 @@
+// A builtin native cannot be a task's function (R019); a lambda can call it.
+spawn(print, "x") // expect runtime error R019: 'spawn' cannot run the builtin 'print' as a task // hint: wrap it in a function

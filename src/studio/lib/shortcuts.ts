@@ -35,6 +35,8 @@ export interface FocusContext {
   readonly inDialog: boolean
   /** Inside a widget that moves with Home, End and the arrows itself (tabs, sliders, lists). */
   readonly keyWidget: boolean
+  /** Inside an element with a context menu of its own: Shift+F10 opens that menu. */
+  readonly contextMenu?: boolean
 }
 
 export const NO_FOCUS: FocusContext = {
@@ -42,6 +44,7 @@ export const NO_FOCUS: FocusContext = {
   control: false,
   inDialog: false,
   keyWidget: false,
+  contextMenu: false,
 }
 
 const STEP_KEYS: Readonly<Record<string, StepKind>> = { F11: 'into', F10: 'over', F7: 'out' }
@@ -54,6 +57,7 @@ export function commandForKey(input: KeyInput, focus: FocusContext): ShortcutCom
   if (mod || input.altKey) return null
   const direction: Direction = input.shiftKey ? 'backward' : 'forward'
   const step = STEP_KEYS[input.key]
+  if (step === 'over' && input.shiftKey && focus.contextMenu === true) return null
   if (step) return { kind: 'step', step, direction }
   if (input.key === 'F8') return { kind: 'continue', direction }
   // Shift+F9: why did the cursor line not run?
@@ -142,6 +146,8 @@ const DIALOG_SELECTOR = '[role="dialog"], [role="menu"], [role="alertdialog"], d
  */
 const KEY_WIDGET_SELECTOR = '[role="tablist"], [role="listbox"], [role="menu"], [role="slider"]'
 const MODAL_SELECTOR = '[aria-modal="true"]'
+/** Marks an element whose own context menu Shift+F10 opens (console lines). */
+const CONTEXT_MENU_SELECTOR = '[data-context-menu]'
 
 /** The document surface `focusContextOf` reads to see whether a modal dialog is open. */
 export interface ModalRoot {
@@ -179,20 +185,33 @@ export function focusContextOf(target: FocusTarget | null, root?: ModalRoot): Fo
     control,
     inDialog: modal || target.closest(DIALOG_SELECTOR) !== null,
     keyWidget: target.closest(KEY_WIDGET_SELECTOR) !== null,
+    contextMenu: target.closest(CONTEXT_MENU_SELECTOR) !== null,
   }
 }
 
 // --- editor cursor registry -----------------------------------------------------------------
 
 let editorCursorLine: number | null = null
+const cursorListeners = new Set<() => void>()
 
 /** The editor publishes its cursor's 1-based line here (null when it has no cursor). */
 export function setEditorCursorLine(line: number | null): void {
-  editorCursorLine = line !== null && Number.isInteger(line) && line >= 1 ? line : null
+  const next = line !== null && Number.isInteger(line) && line >= 1 ? line : null
+  if (next === editorCursorLine) return
+  editorCursorLine = next
+  for (const listener of [...cursorListeners]) listener()
 }
 
 export function getEditorCursorLine(): number | null {
   return editorCursorLine
+}
+
+/** Calls `listener` whenever the cursor line changes; returns the unsubscribe function. */
+export function subscribeEditorCursorLine(listener: () => void): () => void {
+  cursorListeners.add(listener)
+  return () => {
+    cursorListeners.delete(listener)
+  }
 }
 
 // --- labels ---------------------------------------------------------------------------------

@@ -1,0 +1,12 @@
+// spawn starts a task but the spawning task keeps running until it blocks, yields or ends
+// (SPEC §10.6); round-robin then runs the next runnable task in id order.
+fn hello(name) {
+  print("hello from {name}")
+  return len(name)
+}
+let t = spawn(hello, "ada")
+print("spawned", t) // expect: spawned <task 2: hello>
+print(type(t)) // expect: task
+print(wait(t)) // expect: hello from ada
+// expect: 3
+print(wait(t)) // expect: 3

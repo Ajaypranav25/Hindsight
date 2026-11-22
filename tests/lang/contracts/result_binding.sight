@@ -1,0 +1,27 @@
+// `result` is the returned value inside `ensures` and shadows a parameter named result; it is an
+// ordinary name everywhere else (SPEC §7.16).
+let result = "global"
+fn id(x) ensures result == x { x }
+print(id(3), result) // expect: 3 global
+fn wrap(result) ensures result == [1] { [result] }
+print(wrap(1)) // expect: [1]
+fn sum_to(n) ensures result == n * (n + 1) / 2 {
+  var result = 0
+  for i in 1..=n { result += i }
+  return result
+}
+print(sum_to(10)) // expect: 55
+// A precondition does not see `result`: here it is the global.
+fn hello(name) requires result == "global" { "hello {name}" }
+print(hello("you")) // expect: hello you
+// Clauses see the parameters, not the body's locals.
+fn shadow(x) ensures result == x + 1 {
+  let x = 100
+  x - 99
+}
+print(shadow(0)) // expect: 1
+// A closure in a clause can use `result`.
+fn evens(xs) ensures all(result, |x| x % 2 == 0) and len(result) <= len(xs) {
+  filter(xs, |x| x % 2 == 0)
+}
+print(evens([1, 2, 3, 4])) // expect: [2, 4]

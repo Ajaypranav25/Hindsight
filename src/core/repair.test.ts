@@ -2,7 +2,13 @@ import { describe, expect, test } from 'vitest'
 import { answer, question, startFinder, verdict } from './bug-finder'
 import { callTree } from './calls'
 import { compile, record, type Recording } from './index'
-import { repairExamples, type RepairRequest, type RepairResult, repairSearch } from './repair'
+import {
+  crashCulprit,
+  repairExamples,
+  type RepairRequest,
+  type RepairResult,
+  repairSearch,
+} from './repair'
 
 function recorded(source: string): Recording {
   const result = compile(source)
@@ -90,6 +96,46 @@ describe('repair previews', () => {
     const fixed = repairs(off, { kind: 'crash' })
     expect(fixed.repairs.map((repair) => repair.after.trim())).toEqual(['xs[len(xs) - 1]'])
     expect(fixed.repairs.map((repair) => repair.now)).toContainEqual(['the run finishes'])
+  })
+
+  test('a failed precondition: the caller that broke it is changed, not the function', () => {
+    // Arrange: report passes the empty group; average's precondition blames report.
+    const source = `fn average(xs) requires len(xs) > 0 { sum(xs) / len(xs) }
+fn report(groups) {
+  average(groups[1])
+}
+print(report([[1], [2]]))
+print(report([[3], []]))
+`
+    const recording = recorded(source)
+
+    // Act
+    const culprit = crashCulprit(recording)
+    const result = repairs(recording, { kind: 'crash' })
+
+    // Assert
+    expect(culprit?.name).toBe('report')
+    expect(result.repairs.map((repair) => repair.after.trim())).toContain('average(groups[0])')
+    for (const repair of result.repairs) expect(repair.line).toBe(3)
+  })
+
+  test('a failed precondition in a call from the top level blames the top-level code', () => {
+    // Arrange
+    const recording = recorded(`fn f(n) requires n > 0 { n }
+print(f(0))
+`)
+
+    // Act
+    const culprit = crashCulprit(recording)
+
+    // Assert
+    expect(culprit?.protoId).toBe(recording.program.script.id)
+    expect(
+      crashCulprit(
+        recorded(`print(1)
+`),
+      ),
+    ).toBeNull()
   })
 
   test('says when there is nothing to try', () => {

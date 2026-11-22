@@ -27,6 +27,7 @@ const cell: CellObj = {
   id: 7,
   open: false,
   stackIndex: 0,
+  stack: [],
   value: null,
   ownerFrameUid: 1,
   slot: 1,

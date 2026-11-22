@@ -1,9 +1,15 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 
 /** Everything the CLI touches outside itself, so commands can be tested with fakes. */
 export interface CliIO {
   readFile(path: string): string
+  /** Replaces a file's content (`hindsight infer --write`); a host without it cannot write. */
+  writeFile?(path: string, text: string): void
+  /** A file's bytes (trace files); hosts without it cannot read traces. */
+  readBytes?(path: string): Uint8Array
+  /** Writes a file (`record`); hosts without it cannot write traces. */
+  writeBytes?(path: string, bytes: Uint8Array): void
   /** Paths (relative to `dir`, forward slashes) of files under `dir` ending in `extension`. */
   listFiles(dir: string, extension: string): string[]
   stdout(text: string): void
@@ -21,6 +27,9 @@ function walk(dir: string, extension: string, root: string, found: string[]): vo
 
 export const nodeIO: CliIO = {
   readFile: (path) => readFileSync(path, 'utf8'),
+  writeFile: (path, text) => writeFileSync(path, text, 'utf8'),
+  readBytes: (path) => readFileSync(path),
+  writeBytes: (path, bytes) => writeFileSync(path, bytes),
   listFiles(dir, extension) {
     const found: string[] = []
     walk(dir, extension, dir, found)

@@ -7,6 +7,7 @@ import { InternalError } from './diagnostics'
 import type { Frame, NativeObj, Value } from './runtime-types'
 import { articleType } from './values'
 import { raise } from './vm-errors'
+import { Request } from './vm-request'
 import type { MachineState } from './vm-state'
 
 /** SPEC §10.5: active calls are user and library frames; the top-level frame does not count. */
@@ -58,7 +59,11 @@ export function declareTop(m: MachineState, frame: Frame, count: number): void {
   }
 }
 
-/** A call whose callee is not a closure: run a native atomically, or R004. */
+/**
+ * A call whose callee is not a closure: run a native atomically, or R004. A task native that blocked
+ * the running task (`Request.block`) leaves the callee and arguments on the stack: the call is
+ * completed later by the task that unblocks it, or re-executed (ARCHITECTURE §6.11).
+ */
 export function callNonClosure(
   m: MachineState,
   callee: Value,
@@ -72,6 +77,7 @@ export function callNonClosure(
     raise('R005', nativeArityMessage(callee, argc))
   const stack = m.stack
   const result = callee.fn(m.context, stack.slice(calleeIndex + 1))
+  if (m.request === Request.block) return
   stack.length = calleeIndex
   stack.push(result)
 }

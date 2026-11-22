@@ -1,0 +1,12 @@
+// Nested functions have their own contracts and may capture outer variables in them.
+fn scaler(k) requires k != 0 {
+  fn scale(x) ensures result / k == x { x * k }
+  scale
+}
+let triple = scaler(3)
+print(triple(4)) // expect: 12
+fn outer(limit) {
+  fn inner(n) requires n < limit { n * 2 } // expect runtime error R026: precondition failed: n < limit // hint: the caller passed n = 5
+  inner(1) + inner(5)
+}
+outer(3)

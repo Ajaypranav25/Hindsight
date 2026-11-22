@@ -1,0 +1,3 @@
+// A task's function gets exactly its parameters (R005).
+fn two(a, b) { a + b }
+spawn(two, 1) // expect runtime error R005: 'two' expects 2 arguments but got 1

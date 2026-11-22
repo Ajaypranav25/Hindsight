@@ -1,0 +1,10 @@
+// The program ends when the main task returns, even if other tasks never finished (SPEC §10.6).
+let never = channel()
+fn stuck() {
+  print("stuck waits")
+  recv(never)
+  print("unreachable")
+}
+spawn(stuck)
+yield() // expect: stuck waits
+print("main done") // expect: main done

@@ -1,0 +1,2 @@
+// A task cannot wait for itself (R019).
+wait(current_task()) // expect runtime error R019: 'wait' cannot wait for the task that calls it

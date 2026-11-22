@@ -40,11 +40,15 @@ export interface Dependence {
 
 const cache = new WeakMap<Recording, Dependence | null>()
 
-/** The dependence graph of `recording` (built on first use), or null when it cannot be built. */
+/**
+ * The dependence graph of `recording` (built on first use), or null when it cannot be built: too
+ * long, or with tasks, whose stacks and channel hand-offs the shadow does not follow (SPEC §10.6).
+ */
 export function dependenceOf(recording: Recording): Dependence | null {
   let graph = cache.get(recording)
   if (graph === undefined) {
-    graph = recording.length > MAX_DEPENDENCE_STEPS ? null : build(recording)
+    const refused = recording.length > MAX_DEPENDENCE_STEPS || recording.taskSeries() !== null
+    graph = refused ? null : build(recording)
     cache.set(recording, graph)
   }
   return graph
@@ -347,6 +351,7 @@ function build(recording: Recording): Dependence | null {
       case Op.Neg:
       case Op.Not:
       case Op.IterInit:
+      case Op.Check:
         return operands(1)
       case Op.JumpIfFalse:
         activations[activations.length - 1]!.branches.set(ip, t)

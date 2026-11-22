@@ -4,7 +4,14 @@
  * Returns one message per problem; an empty list means the proto is well formed.
  */
 import type { Constant, FunctionProto, Program } from './bytecode'
-import { isFunctionProto, isPatternConst, Op, OP_NAMES, OPERAND_COUNTS } from './bytecode'
+import {
+  isContractConst,
+  isFunctionProto,
+  isPatternConst,
+  Op,
+  OP_NAMES,
+  OPERAND_COUNTS,
+} from './bytecode'
 import { BUILTIN_NAMES } from './builtin-names'
 import { stackEffect } from './compiler/stack-effects'
 
@@ -15,6 +22,7 @@ const NAME_OPS = new Set<number>([
   Op.GetField,
   Op.SetField,
 ])
+const CONSTANT_OPS = new Set<number>([Op.Const, Op.Destructure, Op.MatchPattern, Op.Check])
 const JUMP_OPS = new Set<number>([Op.Jump, Op.JumpIfFalse, Op.AndJump, Op.OrJump, Op.IterNext])
 const POSITIVE_OPS = new Set<number>([Op.PopN, Op.EndScope, Op.Declare])
 
@@ -88,6 +96,8 @@ class Verifier {
       this.fail(`${name} constant ${k} is not a name`, ip)
     } else if ((op === Op.Destructure || op === Op.MatchPattern) && !isPatternConst(constant)) {
       this.fail(`${name} constant ${k} is not a pattern`, ip)
+    } else if (op === Op.Check && !isContractConst(constant)) {
+      this.fail(`Check constant ${k} is not a contract`, ip)
     }
   }
 
@@ -98,9 +108,7 @@ class Verifier {
   checkOperands(ip: number): void {
     const op = this.code[ip]!
     const a = this.code[ip + 1] ?? 0
-    if (op === Op.Const || op === Op.Destructure || op === Op.MatchPattern || NAME_OPS.has(op)) {
-      this.checkConstantOperand(op, a, ip)
-    }
+    if (CONSTANT_OPS.has(op) || NAME_OPS.has(op)) this.checkConstantOperand(op, a, ip)
     if (op === Op.MatchPattern) this.checkTarget(this.code[ip + 2] ?? -1, ip)
     if (JUMP_OPS.has(op)) this.checkTarget(a, ip)
     if ((op === Op.GetBuiltin || op === Op.DefineBuiltin) && a >= BUILTIN_NAMES.length) {

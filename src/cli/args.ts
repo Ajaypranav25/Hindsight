@@ -1,6 +1,15 @@
-import { DEFAULT_MAX_STEPS, DEFAULT_SEED, type EditValue } from '../core/api-types'
+import {
+  DEFAULT_MAX_STEPS,
+  DEFAULT_QUANTUM,
+  DEFAULT_SCHEDULE_SEED,
+  DEFAULT_SEED,
+  type EditValue,
+  type ScheduleOptions,
+} from '../core/api-types'
 import type { Strategy } from '../core/bug-finder'
 import { parseSweepValues } from '../core/sweep'
+import { CONFIDENCE_FLAG, LLM_FLAGS, llmArgs } from './llm/args'
+import type { LlmArgs } from './llm/types'
 
 export type Command =
   | {
@@ -8,15 +17,28 @@ export type Command =
       readonly file: string
       readonly maxSteps: number
       readonly seed: number
+      /** `--schedule random`: how tasks interleave (undefined: round-robin). */
+      readonly schedule?: ScheduleOptions
     }
   | { readonly kind: 'check'; readonly file: string }
   | { readonly kind: 'disasm'; readonly file: string }
   | {
       readonly kind: 'replay'
       readonly file: string
-      readonly at: number
+      /** null: the pen saved in a trace file. */
+      readonly at: number | null
       readonly maxSteps: number
       readonly seed: number
+      readonly schedule?: ScheduleOptions
+    }
+  | {
+      readonly kind: 'record'
+      readonly file: string
+      /** The trace file to write; null: FILE with the `.sighttrace` extension. */
+      readonly out: string | null
+      readonly maxSteps: number
+      readonly seed: number
+      readonly schedule?: ScheduleOptions
     }
   | {
       readonly kind: 'why'
@@ -46,6 +68,12 @@ export type Command =
       readonly kind: 'debug'
       readonly file: string
       readonly strategy: Strategy
+      /** Let contracts and assertions answer what they can (off with --no-auto). */
+      readonly auto: boolean
+      /** Ask a person the rest (off with --no-ask: stop at the first such question, exit 3). */
+      readonly ask: boolean
+      /** `--llm`: a model answers after the contracts, before a person (ARCHITECTURE §9.2). */
+      readonly llm: LlmArgs | null
       readonly maxSteps: number
       readonly seed: number
     }
@@ -85,8 +113,54 @@ export type Command =
   | {
       readonly kind: 'repair'
       readonly file: string
+      /** `--llm`: a model also proposes whole-function rewrites, each checked by the VM. */
+      readonly llm: LlmArgs | null
+      /** `--apply N`: write the Nth verified AI candidate to the file. */
+      readonly apply: number | null
       readonly maxSteps: number
       readonly seed: number
+    }
+  | {
+      readonly kind: 'diff'
+      readonly fileA: string
+      /** The second program; null when B is `fileA` with an input set. */
+      readonly fileB: string | null
+      /** `--set NAME=VALUE`: B is A with the top-level binding NAME initialized to VALUE. */
+      readonly set: { readonly name: string; readonly value: string } | null
+      readonly limit: number
+      readonly maxSteps: number
+      readonly seed: number
+    }
+  | {
+      readonly kind: 'profile'
+      readonly file: string
+      /** Rows listed per table. */
+      readonly top: number
+      /** Also list the lines that took the most steps. */
+      readonly lines: boolean
+      /** Print folded stacks (flame graph input) instead of tables. */
+      readonly folded: boolean
+      readonly maxSteps: number
+      readonly seed: number
+    }
+  | {
+      readonly kind: 'infer'
+      readonly file: string
+      /** Only this function; null: every function called often enough. */
+      readonly fn: string | null
+      /** Insert the suggested clauses into the file's function headers. */
+      readonly write: boolean
+      readonly maxSteps: number
+      readonly seed: number
+    }
+  | {
+      readonly kind: 'races'
+      readonly file: string
+      readonly runs: number
+      /** The first schedule seed (run i uses seed + i). */
+      readonly seed: number
+      readonly quantum: number
+      readonly maxSteps: number
     }
   | { readonly kind: 'mcp' }
 
@@ -97,9 +171,13 @@ export const USAGE = `hindsight: a tiny programming language with a time machine
 
 Usage:
   hindsight run FILE [--max-steps N] [--seed S]     run a program
+                 [--schedule random]               interleave tasks at random (default:
+                 [--schedule-seed S] [--quantum Q] round-robin); also for replay and record
   hindsight check FILE                             report compile errors only
   hindsight disasm FILE                            show the bytecode
   hindsight replay FILE --at T [--max-steps N]     show the program state at step T
+  hindsight record FILE [-o OUT.sighttrace]        save the run as a trace file (re-recorded and
+                 [--max-steps N] [--seed S]        verified when opened)
   hindsight why FILE --line L --name X             list every change to variable X declared on line L
   hindsight test [DIR]                             run annotated conformance files (default: tests/lang)
   hindsight repl [--seed S]                        interactive prompt
@@ -107,6 +185,12 @@ Usage:
                                                    (NAME=1..20 or NAME=1,5,9 sweeps several values)
   hindsight debug FILE [--max-steps N] [--seed S]  find a bug by answering questions about calls
                  [--strategy divide|top-down]      (divide: halve the suspects with each answer)
+                 [--no-auto] [--no-ask]            contracts and assertions answer what they can;
+                                                   --no-auto: you answer all; --no-ask: never ask
+                                                   (stop at the first open question, exit 3)
+                 [--llm[=anthropic|openai]]        a model answers next (it is sent code and call
+                 [--llm-min-confidence C]          values), checked by the VM; then you; after the
+                                                   verdict it can propose a repair
   hindsight solve FILE --want TEXT [--output K]    find an earlier value that makes output line K
                                                    (default: the last) print TEXT
   hindsight solve FILE --no-crash                  find an earlier value that avoids the runtime error
@@ -116,8 +200,29 @@ Usage:
   hindsight slice FILE [--at T]                    mark the lines that led to step T (default: the
                                                    crash, else the last output line)
   hindsight repair FILE                            try one-token fixes for a crash
+                 [--llm[=anthropic|openai]]        also ask a model to rewrite the function; each
+                 [--apply N]                       candidate is checked by the VM; --apply N writes
+                                                   the Nth verified one to FILE
+  hindsight diff A B [--limit N]                   compare two programs' runs call by call and
+                                                   name the calls where the difference starts
+  hindsight diff FILE --set NAME=VALUE             compare a run with one in which the top-level
+                                                   binding NAME starts as the literal VALUE
+  hindsight profile FILE [--top N] [--lines]       where the run spent its steps, per function
+                 [--folded]                        (and per line); --folded: flame graph input
+  hindsight infer FILE [--fn NAME] [--write]       suggest requires/ensures clauses that held in
+                                                   every recorded call; --write adds them
+  hindsight races FILE [--runs N] [--seed S]       run a program with tasks under N random
+                 [--quantum Q] [--max-steps N]     schedules (seeds S, S+1, ...); name the shared
+                                                   places behind different results (exit 1)
   hindsight mcp                                    serve the debugger to AI agents (MCP over stdio)
-  hindsight --help | --version`
+  hindsight --help | --version
+
+run, replay, why, whynot, slice and query also take a .sighttrace file in place of FILE: it brings
+its own step limit, seed and what-if edits (replay without --at shows the saved step).
+
+AI assistance is off unless --llm is given (README: AI assistance). --llm uses ANTHROPIC_API_KEY;
+--llm=openai an OpenAI-compatible server at HINDSIGHT_LLM_BASE_URL (Ollama: http://localhost:11434/v1).
+Also: --llm-model NAME (or HINDSIGHT_LLM_MODEL), --llm-max-calls N (default 40).`
 
 const VALUE_FLAGS = new Set([
   '--max-steps',
@@ -130,27 +235,70 @@ const VALUE_FLAGS = new Set([
   '--want',
   '--output',
   '--limit',
+  '--top',
+  '--fn',
+  '--out',
+  '--llm',
+  '--llm-model',
+  '--llm-max-calls',
+  CONFIDENCE_FLAG,
+  '--apply',
+  '--schedule',
+  '--schedule-seed',
+  '--quantum',
+  '--runs',
 ])
+/** The options that choose a task schedule (SPEC §10.6). */
+const SCHEDULE_FLAGS = ['--schedule', '--schedule-seed', '--quantum']
+/** Short spellings of options. */
+const ALIASES: ReadonlyMap<string, string> = new Map([['-o', '--out']])
 /** Options that take no value. */
-const SWITCHES = new Set(['--no-crash'])
+const SWITCHES = new Set([
+  '--no-crash',
+  '--no-auto',
+  '--no-ask',
+  '--lines',
+  '--folded',
+  '--write',
+  '--llm',
+])
 
 /** What each command accepts: its options, and how many arguments may follow its name. */
 const COMMANDS: ReadonlyMap<string, { readonly flags: readonly string[]; readonly arity: number }> =
   new Map([
-    ['run', { flags: ['--max-steps', '--seed'], arity: 1 }],
+    ['run', { flags: ['--max-steps', '--seed', ...SCHEDULE_FLAGS], arity: 1 }],
     ['check', { flags: [], arity: 1 }],
     ['disasm', { flags: [], arity: 1 }],
-    ['replay', { flags: ['--at', '--max-steps', '--seed'], arity: 1 }],
+    ['replay', { flags: ['--at', '--max-steps', '--seed', ...SCHEDULE_FLAGS], arity: 1 }],
+    ['record', { flags: ['--out', '--max-steps', '--seed', ...SCHEDULE_FLAGS], arity: 1 }],
     ['why', { flags: ['--line', '--name', '--max-steps', '--seed'], arity: 1 }],
     ['test', { flags: [], arity: 1 }],
     ['repl', { flags: ['--seed'], arity: 0 }],
     ['whatif', { flags: ['--at', '--set', '--max-steps', '--seed'], arity: 1 }],
-    ['debug', { flags: ['--strategy', '--max-steps', '--seed'], arity: 1 }],
+    [
+      'debug',
+      {
+        flags: [
+          '--strategy',
+          '--no-auto',
+          '--no-ask',
+          '--max-steps',
+          '--seed',
+          ...LLM_FLAGS,
+          CONFIDENCE_FLAG,
+        ],
+        arity: 1,
+      },
+    ],
     ['solve', { flags: ['--want', '--output', '--no-crash', '--max-steps', '--seed'], arity: 1 }],
     ['query', { flags: ['--limit', '--max-steps', '--seed'], arity: 2 }],
     ['whynot', { flags: ['--line', '--max-steps', '--seed'], arity: 1 }],
     ['slice', { flags: ['--at', '--max-steps', '--seed'], arity: 1 }],
-    ['repair', { flags: ['--max-steps', '--seed'], arity: 1 }],
+    ['repair', { flags: ['--max-steps', '--seed', ...LLM_FLAGS, '--apply'], arity: 1 }],
+    ['diff', { flags: ['--set', '--limit', '--max-steps', '--seed'], arity: 2 }],
+    ['profile', { flags: ['--top', '--lines', '--folded', '--max-steps', '--seed'], arity: 1 }],
+    ['infer', { flags: ['--fn', '--write', '--max-steps', '--seed'], arity: 1 }],
+    ['races', { flags: ['--runs', '--seed', '--quantum', '--max-steps'], arity: 1 }],
     ['mcp', { flags: [], arity: 0 }],
   ])
 
@@ -166,7 +314,7 @@ function split(argv: readonly string[]): Split | string {
   const positional: string[] = []
   const flags = new Map<string, string>()
   for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i]!
+    const arg = ALIASES.get(argv[i]!) ?? argv[i]!
     if (!arg.startsWith('--')) {
       positional.push(arg)
       continue
@@ -225,12 +373,15 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
   if (typeof parts === 'string') return { ok: false, error: parts }
   const { positional, flags } = parts
   const name = positional[0] ?? ''
-  const problem = unexpected(name, parts)
+  const problem = unexpected(name, parts) ?? traceProblem(name, parts)
   if (problem !== null) return { ok: false, error: problem }
   const maxSteps = integerFlag(flags, '--max-steps', DEFAULT_MAX_STEPS, 1)
   const seed = integerFlag(flags, '--seed', DEFAULT_SEED, Number.MIN_SAFE_INTEGER)
   if (typeof maxSteps === 'string') return { ok: false, error: maxSteps }
   if (typeof seed === 'string') return { ok: false, error: seed }
+
+  const schedule = name === 'races' ? undefined : scheduleFlags(flags)
+  if (typeof schedule === 'string') return { ok: false, error: schedule }
 
   switch (name) {
     case 'run':
@@ -238,16 +389,26 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     case 'disasm': {
       const file = needFile(positional, name)
       if (typeof file !== 'string') return { ok: false, error: file.error }
-      if (name === 'run') return { ok: true, command: { kind: 'run', file, maxSteps, seed } }
+      if (name === 'run')
+        return { ok: true, command: { kind: 'run', file, maxSteps, seed, schedule } }
       return { ok: true, command: { kind: name, file } }
     }
     case 'replay': {
       const file = needFile(positional, name)
       if (typeof file !== 'string') return { ok: false, error: file.error }
-      if (!flags.has('--at')) return { ok: false, error: "'replay' needs --at T" }
+      if (!flags.has('--at') && !isTraceFile(file))
+        return { ok: false, error: "'replay' needs --at T" }
       const at = integerFlag(flags, '--at', 0, 0)
       if (typeof at === 'string') return { ok: false, error: at }
-      return { ok: true, command: { kind: 'replay', file, at, maxSteps, seed } }
+      const step = flags.has('--at') ? at : null
+      return { ok: true, command: { kind: 'replay', file, at: step, maxSteps, seed, schedule } }
+    }
+    case 'record': {
+      const file = needFile(positional, name)
+      if (typeof file !== 'string') return { ok: false, error: file.error }
+      const out = flags.get('--out') ?? null
+      if (out === '') return { ok: false, error: "option '--out' needs a file name" }
+      return { ok: true, command: { kind: 'record', file, out, maxSteps, seed, schedule } }
     }
     case 'why': {
       const file = needFile(positional, name)
@@ -271,7 +432,14 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
       const strategy = flags.get('--strategy') ?? 'divide'
       if (strategy !== 'divide' && strategy !== 'top-down')
         return { ok: false, error: "--strategy must be 'divide' or 'top-down'" }
-      return { ok: true, command: { kind: 'debug', file, strategy, maxSteps, seed } }
+      const auto = !flags.has('--no-auto')
+      const ask = !flags.has('--no-ask')
+      const llm = llmArgs(flags)
+      if (typeof llm === 'string') return { ok: false, error: llm }
+      return {
+        ok: true,
+        command: { kind: 'debug', file, strategy, auto, ask, llm, maxSteps, seed },
+      }
     }
     case 'solve':
       return solveCommand(positional, flags, maxSteps, seed)
@@ -303,14 +471,90 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     case 'repair': {
       const file = needFile(positional, name)
       if (typeof file !== 'string') return { ok: false, error: file.error }
-      return { ok: true, command: { kind: 'repair', file, maxSteps, seed } }
+      const llm = llmArgs(flags)
+      if (typeof llm === 'string') return { ok: false, error: llm }
+      const apply = integerFlag(flags, '--apply', 0, 1)
+      if (typeof apply === 'string') return { ok: false, error: apply }
+      if (flags.has('--apply') && llm === null)
+        return { ok: false, error: "option '--apply' needs --llm" }
+      const chosen = flags.has('--apply') ? apply : null
+      return { ok: true, command: { kind: 'repair', file, llm, apply: chosen, maxSteps, seed } }
     }
+    case 'diff':
+      return diffCommand(positional, flags, maxSteps, seed)
+    case 'profile':
+    case 'infer':
+      return insightCommand(name, positional, flags, maxSteps, seed)
+    case 'races':
+      return racesCommand(positional, flags, maxSteps)
     case 'mcp':
       return { ok: true, command: { kind: 'mcp' } }
     default:
       return { ok: false, error: `unknown command '${name}'` }
   }
 }
+
+/** Commands that take a `.sighttrace` file in place of a program. */
+const TRACE_COMMANDS = new Set(['run', 'replay', 'why', 'whynot', 'slice', 'query'])
+
+/** True for a path the CLI reads as a trace file. */
+export function isTraceFile(path: string): boolean {
+  return path.toLowerCase().endsWith('.sighttrace')
+}
+
+/** A trace file where it does not fit: a command that takes none, or options it brings itself. */
+function traceProblem(command: string, parts: Split): string | null {
+  const file = parts.positional[1]
+  if (file === undefined || !isTraceFile(file)) return null
+  if (!TRACE_COMMANDS.has(command))
+    return `'${command}' takes a .sight program, not a trace file (trace files work with run, replay, why, whynot, slice and query)`
+  for (const flag of ['--max-steps', '--seed', ...SCHEDULE_FLAGS]) {
+    if (parts.flags.has(flag))
+      return `a trace file brings its own step limit, seed and schedule: drop ${flag}`
+  }
+  return null
+}
+
+/** `--schedule random [--schedule-seed S] [--quantum Q]`; undefined for round-robin. */
+function scheduleFlags(flags: ReadonlyMap<string, string>): ScheduleOptions | undefined | string {
+  const policy = flags.get('--schedule') ?? 'round-robin'
+  if (policy !== 'round-robin' && policy !== 'random')
+    return "--schedule must be 'round-robin' or 'random'"
+  if (policy === 'round-robin') {
+    for (const flag of ['--schedule-seed', '--quantum']) {
+      if (flags.has(flag)) return `option '${flag}' needs --schedule random`
+    }
+    return undefined
+  }
+  const seed = integerFlag(flags, '--schedule-seed', DEFAULT_SCHEDULE_SEED, 0)
+  const quantum = integerFlag(flags, '--quantum', DEFAULT_QUANTUM, 1)
+  if (typeof seed === 'string') return seed
+  if (typeof quantum === 'string') return quantum
+  return { policy: 'random', quantum, seed }
+}
+
+/** `races FILE [--runs N] [--seed S] [--quantum Q]`: --seed is the first schedule seed. */
+function racesCommand(
+  positional: readonly string[],
+  flags: ReadonlyMap<string, string>,
+  maxSteps: number,
+): ParsedArgs {
+  const file = needFile(positional, 'races')
+  if (typeof file !== 'string') return { ok: false, error: file.error }
+  const runs = integerFlag(flags, '--runs', DEFAULT_RACE_RUNS, 2)
+  if (typeof runs === 'string') return { ok: false, error: runs }
+  if (runs > MAX_RACE_RUNS)
+    return { ok: false, error: `option '--runs' must be at most ${MAX_RACE_RUNS}` }
+  const seed = integerFlag(flags, '--seed', 1, 0)
+  if (typeof seed === 'string') return { ok: false, error: seed }
+  const quantum = integerFlag(flags, '--quantum', DEFAULT_QUANTUM, 1)
+  if (typeof quantum === 'string') return { ok: false, error: quantum }
+  return { ok: true, command: { kind: 'races', file, runs, seed, quantum, maxSteps } }
+}
+
+/** Schedules `races` tries by default, and at most. */
+const DEFAULT_RACE_RUNS = 20
+const MAX_RACE_RUNS = 500
 
 const NAME_AND_VALUE = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/s
 
@@ -364,4 +608,57 @@ function solveCommand(
     ok: true,
     command: { kind: 'solve', file, goal: { kind: 'output', line, text: want }, maxSteps, seed },
   }
+}
+
+/** `diff A B` or `diff FILE --set NAME=VALUE` (VALUE: a literal, checked against the program). */
+function diffCommand(
+  positional: readonly string[],
+  flags: ReadonlyMap<string, string>,
+  maxSteps: number,
+  seed: number,
+): ParsedArgs {
+  const fileA = positional[1]
+  const fileB = positional[2] ?? null
+  const limit = integerFlag(flags, '--limit', 50, 1)
+  if (typeof limit === 'string') return { ok: false, error: limit }
+  if (!flags.has('--set')) {
+    if (fileA === undefined || fileB === null)
+      return { ok: false, error: "'diff' needs two files (or FILE --set NAME=VALUE)" }
+    return { ok: true, command: { kind: 'diff', fileA, fileB, set: null, limit, maxSteps, seed } }
+  }
+  if (fileA === undefined) return { ok: false, error: "'diff' needs a FILE" }
+  if (fileB !== null) return { ok: false, error: "'diff' takes two files or --set, not both" }
+  const set = NAME_AND_VALUE.exec(flags.get('--set') ?? '')
+  if (set === null) return { ok: false, error: "'diff' needs --set NAME=VALUE" }
+  const [, name = '', value = ''] = set
+  return {
+    ok: true,
+    command: { kind: 'diff', fileA, fileB, set: { name, value }, limit, maxSteps, seed },
+  }
+}
+
+/** `profile FILE [--top N] [--lines] [--folded]` or `infer FILE [--fn NAME] [--write]`. */
+function insightCommand(
+  name: 'profile' | 'infer',
+  positional: readonly string[],
+  flags: ReadonlyMap<string, string>,
+  maxSteps: number,
+  seed: number,
+): ParsedArgs {
+  const file = needFile(positional, name)
+  if (typeof file !== 'string') return { ok: false, error: file.error }
+  if (name === 'infer') {
+    const fn = flags.get('--fn') ?? null
+    if (fn !== null && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(fn))
+      return { ok: false, error: `--fn needs a function name, got '${fn}'` }
+    const write = flags.has('--write')
+    return { ok: true, command: { kind: 'infer', file, fn, write, maxSteps, seed } }
+  }
+  const top = integerFlag(flags, '--top', 15, 1)
+  if (typeof top === 'string') return { ok: false, error: top }
+  const lines = flags.has('--lines')
+  const folded = flags.has('--folded')
+  if (folded && (lines || flags.has('--top')))
+    return { ok: false, error: "'profile --folded' prints every stack: drop --lines and --top" }
+  return { ok: true, command: { kind: 'profile', file, top, lines, folded, maxSteps, seed } }
 }

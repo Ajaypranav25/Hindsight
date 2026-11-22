@@ -1,0 +1,2 @@
+// Channel and task arguments are checked (R019).
+send(1, 2) // expect runtime error R019: 'send' expects a channel as argument 1, got a number

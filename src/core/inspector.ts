@@ -9,6 +9,8 @@ import type {
   Location,
   RuntimeErrorInfo,
   StateView,
+  TaskFrameView,
+  TaskView,
   ValueView,
 } from './api-types'
 import { functionDisplayName, type LocalInfo } from './bytecode'
@@ -16,6 +18,7 @@ import { InternalError } from './diagnostics'
 import type { Frame, Value, VM } from './runtime-types'
 import { captureViews, valueView, walkHeap } from './inspector-heap'
 import { type ProtoTable, spanAtIp, stmtSpanAtIp } from './inspector-location'
+import { taskWaitView } from './tasks-info'
 
 export interface ViewContext {
   readonly table: ProtoTable
@@ -32,7 +35,7 @@ export interface ViewMoment {
 
 export function buildStateView(vm: VM, context: ViewContext, moment: ViewMoment): StateView {
   const { heap, truncated } = walkHeap(vm, context.heapLimit)
-  return {
+  const view: StateView = {
     time: moment.time,
     location: moment.location,
     frames: frameViews(vm, context.table),
@@ -41,6 +44,39 @@ export function buildStateView(vm: VM, context: ViewContext, moment: ViewMoment)
     heapTruncated: truncated,
     outputCount: moment.outputCount,
     error: moment.error,
+  }
+  return vm.tasks === null ? view : { ...view, tasks: taskViews(vm, context.table) }
+}
+
+/** Every task in id order: status, wait, result and the location of each frame (§7.4). */
+function taskViews(vm: VM, table: ProtoTable): TaskView[] {
+  return (vm.tasks ?? []).map((task) => {
+    const current = task.id === vm.taskId
+    const frames = current ? vm.frames : task.frames
+    return {
+      id: task.id,
+      name: task.name,
+      status: task.status,
+      current,
+      wait: taskWaitView(task.wait),
+      frames: frames.map((frame, index) =>
+        taskFrameView(table, frame, index === frames.length - 1),
+      ),
+      result: task.status === 'done' ? valueView(task.result) : null,
+    }
+  })
+}
+
+function taskFrameView(table: ProtoTable, frame: Frame, top: boolean): TaskFrameView {
+  const proto = frame.closure.proto
+  const span = spanAtIp(proto, top ? frame.ip : frame.ip - 1)
+  return {
+    uid: frame.uid,
+    name: functionDisplayName(proto),
+    protoId: proto.id,
+    library: proto.debug.library,
+    span,
+    line: table.lineOf(proto, span.start),
   }
 }
 

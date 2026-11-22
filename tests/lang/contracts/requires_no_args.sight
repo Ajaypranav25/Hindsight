@@ -1,0 +1,4 @@
+// A precondition of a function without parameters (R026).
+var ready = false
+fn go() requires ready { "went" } // expect runtime error R026: precondition failed: ready // hint: the caller passed no arguments
+go()

@@ -1,9 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { Diagnostic, OutputEvent, Recording, RecordingComparison } from '../../core/index'
-import { LineIndex } from '../../core/index'
-import { clipText, formatCount } from '../lib/format'
+import type {
+  Diagnostic,
+  OutputEvent,
+  Recording,
+  RecordingComparison,
+  UnfinishedTask,
+} from '../../core/index'
+import { LineIndex, taskWaitText } from '../../core/index'
+import type { MenuAnchor } from '../chrome/ContextMenu'
+import { copyText, selectText } from '../lib/clipboard'
+import { formatCount } from '../lib/format'
 import { useStudio, useStudioActions } from '../state/context'
-import { type Wish, WishForm, WishResults } from './MakeItSo'
+import { type LineActions, OutputLine } from './ConsoleLine'
+import { type Wish, WishResults } from './MakeItSo'
 import { consoleWindow } from './panel-logic'
 import { RepairPreviews } from './RepairPreviews'
 import './panels.css'
@@ -54,7 +63,7 @@ function CompileErrors(props: {
 function Output(props: { readonly recording: Recording }) {
   const { recording } = props
   const time = useStudio((s) => s.time)
-  const { seek } = useStudioActions()
+  const { seek, sliceFrom } = useStudioActions()
   const comparison = useStudio((s) => s.whatIf?.comparison ?? null)
   const changed = useMemo(() => changedLines(comparison), [comparison])
   const outputs = recording.outputs
@@ -63,9 +72,13 @@ function Output(props: { readonly recording: Recording }) {
   const visible = outputs.slice(start, end)
   // What the user asked the past for; it belongs to the recording it was asked about.
   const [asked, setAsked] = useState<Wish | null>(null)
-  const [wishing, setWishing] = useState<{ recording: Recording; index: number } | null>(null)
+  const [wishing, setWishing] = useState<LineMark | null>(null)
+  const [menu, setMenu] = useState<(LineMark & { readonly anchor: MenuAnchor }) | null>(null)
+  const [copied, setCopied] = useState<(LineMark & { readonly ok: boolean }) | null>(null)
   const wish = asked?.recording === recording ? asked : null
   const formAt = wishing?.recording === recording ? wishing.index : null
+  const menuAt = menu?.recording === recording ? menu : null
+  const copiedNow = copied?.recording === recording ? copied : null
   const makeWish = (index: number, text: string) => {
     setWishing(null)
     setAsked({
@@ -74,6 +87,25 @@ function Output(props: { readonly recording: Recording }) {
       label: `output line ${formatCount(index + 1)} to read ${JSON.stringify(text.trim())}`,
     })
   }
+  const lineActions = (index: number, event: OutputEvent): LineActions => ({
+    seek,
+    setWishing: (open) => setWishing(open ? { recording, index } : null),
+    wish: (text) => makeWish(index, text),
+    slice: () => {
+      seek(event.time)
+      sliceFrom(event.time, `output line ${formatCount(index + 1)}`)
+    },
+    setMenu: (anchor) => {
+      setCopied(null)
+      setMenu(anchor === null ? null : { recording, index, anchor })
+    },
+    copy: (node) => {
+      void copyText(event.text).then((ok) => {
+        if (!ok && node !== null) selectText(node)
+        setCopied({ recording, index, ok })
+      })
+    },
+  })
   return (
     <>
       {outputs.length === 0 && <p className="pn-empty">Nothing printed</p>}
@@ -84,13 +116,13 @@ function Output(props: { readonly recording: Recording }) {
             <OutputLine
               key={start + i}
               event={event}
+              index={start + i}
               time={time}
               lastPrinted={start + i === printed - 1}
               changed={changed?.has(start + i) ?? false}
-              onSeek={seek}
               wishing={formAt === start + i}
-              onWishing={(open) => setWishing(open ? { recording, index: start + i } : null)}
-              onWish={(text) => makeWish(start + i, text)}
+              menu={menuAt !== null && menuAt.index === start + i ? menuAt.anchor : null}
+              actions={lineActions(start + i, event)}
             />
           ))}
         </ol>
@@ -98,6 +130,9 @@ function Output(props: { readonly recording: Recording }) {
       {end < outputs.length && (
         <p className="pn-note pn-pad">{formatCount(outputs.length - end)} later lines not shown</p>
       )}
+      <p className="pn-note pn-pad pn-copied" role="status">
+        {copiedNow === null ? '' : copiedText(copiedNow.index, copiedNow.ok)}
+      </p>
       {comparison !== null && comparison.removed > 0 && (
         <p className="pn-note pn-pad">
           {formatCount(comparison.removed)} {comparison.removed === 1 ? 'line' : 'lines'} of the
@@ -117,57 +152,16 @@ function Output(props: { readonly recording: Recording }) {
   )
 }
 
-function OutputLine(props: {
-  readonly event: OutputEvent
-  readonly time: number
-  readonly lastPrinted: boolean
-  /** Not printed by the real run (in what-if mode). */
-  readonly changed: boolean
-  readonly onSeek: (time: number) => void
-  /** The "make this print" form is open under this line. */
-  readonly wishing: boolean
-  readonly onWishing: (open: boolean) => void
-  readonly onWish: (text: string) => void
-}) {
-  const { event, time, lastPrinted, changed, onSeek, wishing, onWishing, onWish } = props
-  const wishButton = useRef<HTMLButtonElement>(null)
-  const closeForm = () => {
-    onWishing(false)
-    wishButton.current?.focus()
-  }
-  const atPen = event.time === time
-  const future = event.time >= time
-  const className = `pn-line${future ? ' pn-line--future' : ''}${atPen ? ' pn-line--now' : ''}`
-  return (
-    <li className={className} data-last-printed={lastPrinted ? 'true' : undefined}>
-      <button
-        type="button"
-        className="pn-line-btn"
-        aria-current={atPen ? 'step' : undefined}
-        title={`Printed at step ${formatCount(event.time)}${future ? ' (after the pen)' : ''}`}
-        onClick={() => onSeek(event.time)}
-      >
-        <span className="pn-stamp">{formatCount(event.time)}</span>
-        <span className="pn-out">{clipText(event.text)}</span>
-        {changed && (
-          <span className="pn-badge pn-badge--whatif" title="The real run did not print this line">
-            changed
-          </span>
-        )}
-      </button>
-      <button
-        ref={wishButton}
-        type="button"
-        className="pn-line-wish"
-        aria-expanded={wishing}
-        title="Find an earlier value that makes this line print something else"
-        onClick={() => onWishing(!wishing)}
-      >
-        Make this print…
-      </button>
-      {wishing && <WishForm current={event.text} onWish={onWish} onCancel={closeForm} />}
-    </li>
-  )
+/** A console line of one recording. */
+interface LineMark {
+  readonly recording: Recording
+  readonly index: number
+}
+
+/** What "Copy line" did. */
+export function copiedText(index: number, ok: boolean): string {
+  const line = `Output line ${formatCount(index + 1)}`
+  return ok ? `${line} copied` : `${line} is selected: press Ctrl+C or ⌘ C to copy it`
 }
 
 /** Scrolls the latest printed line into view whenever the pen moves forward past new output. */
@@ -204,6 +198,7 @@ function RunEnd(props: {
   }
   if (outcome.kind === 'aborted')
     return <p className="pn-note pn-pad">Recording stopped before the program ended</p>
+  if (outcome.kind === 'finished') return <UnfinishedTasks tasks={outcome.unfinishedTasks} />
   if (outcome.kind !== 'error') return null
   const { error } = outcome
   return (
@@ -215,7 +210,15 @@ function RunEnd(props: {
       <p className="pn-failure-msg">
         <span className="pn-code">{error.code}</span> {error.message}
       </p>
-      {error.hint && <p className="pn-hint">{error.hint}</p>}
+      {error.code === DEADLOCK && error.hint ? (
+        <ul className="pn-deadlock" aria-label="What each task waits for">
+          {error.hint.split('; ').map((wait) => (
+            <li key={wait}>{wait}</li>
+          ))}
+        </ul>
+      ) : (
+        error.hint && <p className="pn-hint">{error.hint}</p>
+      )}
       {!atEnd && (
         <button type="button" className="pn-link" onClick={() => onSeek(recording.length)}>
           Jump to the failure
@@ -240,6 +243,28 @@ function RunEnd(props: {
 }
 
 const CRASH_REQUEST = { kind: 'crash' } as const
+/** The deadlock error (SPEC §10.6): its hint lists every waiting task, one per `; `. */
+const DEADLOCK = 'R028'
+
+/** The tasks a finished run left waiting or ready when its main task ended (SPEC §10.6). */
+function UnfinishedTasks(props: { readonly tasks: readonly UnfinishedTask[] | undefined }) {
+  const { tasks } = props
+  if (tasks === undefined || tasks.length === 0) return null
+  const names = (id: number) => tasks.find((task) => task.id === id)?.name
+  return (
+    <div className="pn-note pn-pad" role="note">
+      The main task ended while {tasks.length === 1 ? '1 task was' : `${tasks.length} tasks were`}{' '}
+      unfinished:
+      <ul className="pn-deadlock">
+        {tasks.map((task) => (
+          <li key={task.id}>
+            task {task.id} ({task.name}) {taskWaitText(task.wait, names)}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
 
 /** One-token changes to the function the run crashed in that make the run finish. */
 function CrashFixes(props: { readonly recording: Recording }) {

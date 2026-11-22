@@ -2,8 +2,8 @@
  * Arithmetic, comparison and range operators (SPEC §7.2, §7.3, §7.6). The step loop handles the
  * number–number fast paths inline and calls these for everything else.
  */
-import type { RangeObj, Value } from './runtime-types'
-import { SIZE_LIMIT, isList, typeName } from './values'
+import type { HeapObject, RangeObj, Value } from './runtime-types'
+import { SIZE_LIMIT, equals, isList, typeName } from './values'
 import { raise, raiseTooLarge } from './vm-errors'
 import type { MachineState } from './vm-state'
 
@@ -63,6 +63,19 @@ export function compareSlow(op: ComparisonOp, a: Value, b: Value): boolean {
     case '>=':
       return a >= b
   }
+}
+
+/**
+ * `a == b` when `b` is an object: structural equality (SPEC §7.4). Comparing two containers of the
+ * same type visits their items, which counts as work for the snapshot cadence (§7.1.4).
+ */
+export function equalsSlow(m: MachineState, a: Value, b: HeapObject): boolean {
+  if (a === b) return true
+  if (typeof a === 'object' && a !== null && a.type === b.type) {
+    if (b.type === 'list') m.scanned += b.items.length
+    else if (b.type === 'record') m.scanned += b.fields.size
+  }
+  return equals(a, b)
 }
 
 export function negateSlow(a: Value): never {

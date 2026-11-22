@@ -1,183 +1,239 @@
 /**
- * Snapshots (ARCHITECTURE §6.8): deep copies of the whole VM record that preserve object identity
- * and ids. Strings, numbers, ranges, natives, library closures (negative ids) and protos are shared.
- * Copying is iterative (a work list), so nesting depth is unlimited.
+ * Snapshots (ARCHITECTURE §6.8) with structural sharing. A snapshot holds frozen roots (stack,
+ * frames, open cells, globals) and a persistent object table of frozen copies indexed by id
+ * (vm-snapshot-frozen.ts). Taking one copies only what changed since the machine's previous
+ * snapshot, as reported by the write barrier (vm-snapshot-freeze.ts); everything else is shared
+ * with it, so consecutive snapshots cost and retain O(changes). Every snapshot is still complete on
+ * its own, so dropping any of them (thinning) never invalidates another. Restoring builds fresh
+ * live objects (vm-snapshot-thaw.ts) and can be repeated any number of times.
+ *
+ * Objects that became unreachable stay in the table until a compacting snapshot rebuilds the table
+ * with only the reachable ones (reusing their copies); it happens when the table holds more than
+ * twice the values it held after the last compaction, so its cost is paid for by the garbage.
  */
-import type { RuntimeErrorInfo } from './api-types'
 import type { Program } from './bytecode'
 import { InternalError } from './diagnostics'
-import type {
-  CellObj,
-  ClosureObj,
-  Frame,
-  HeapObject,
-  IteratorObj,
-  ListObj,
-  RecordObj,
-  Value,
-  VMSnapshot,
-  VMStatus,
-} from './runtime-types'
+import { PVec } from './pvec'
+import type { VMSnapshot } from './runtime-types'
+import { Freezer } from './vm-snapshot-freeze'
+import {
+  type FrozenObject,
+  type FrozenRoots,
+  type MachineScalars,
+  isRef,
+  forEachRoot,
+  forEachValue,
+  freshSize,
+  objectSize,
+  rootsSize,
+} from './vm-snapshot-frozen'
+import { deltaThawer } from './vm-snapshot-delta'
+import { type MachineRecord, Thawer, thaw, thawRoots } from './vm-snapshot-thaw'
+import { Request } from './vm-request'
+import type { MachineState } from './vm-state'
 
-/** The part of the VM state a snapshot captures. */
-export interface MachineRecord {
-  readonly stack: Value[]
-  readonly frames: Frame[]
-  readonly openCells: CellObj[]
-  readonly globals: Map<string, Value>
-  readonly time: number
-  readonly nextObjectId: number
-  readonly nextFrameUid: number
-  readonly rngState: number
-  readonly allocated: number
-  readonly status: VMStatus
-  readonly error: RuntimeErrorInfo | null
-}
+export type { MachineRecord } from './vm-snapshot-thaw'
+export type { RecordPositions } from './vm-snapshot-freeze'
+
+/** Compact when the table holds more than this factor times its values after the last one… */
+const COMPACT_FACTOR = 2
+/** …plus this many values, so small heaps never compact. */
+const COMPACT_SLACK = 1 << 16
 
 export class MachineSnapshot implements VMSnapshot {
   constructor(
-    readonly time: number,
-    readonly size: number,
     readonly program: Program,
-    readonly record: MachineRecord,
+    /**
+     * The line of snapshots this one belongs to: a full snapshot starts a new line, and every
+     * snapshot taken on top of a base (taken or restored) continues the base's line.
+     */
+    readonly lineage: symbol,
+    /** Serial of this snapshot in its line: its base's serial + 1 (1 for a full one). */
+    readonly serial: number,
+    readonly roots: FrozenRoots,
+    readonly scalars: MachineScalars,
+    readonly table: PVec<FrozenObject>,
+    /** The values this snapshot copied: roots, objects or their changed leaves, table slots. */
+    readonly size: number,
+    /** The values held by all objects in the table. */
+    readonly tableValues: number,
+    /** The table's values after the last compaction. */
+    readonly compactedValues: number,
   ) {}
-}
 
-/** A deep copy of `source` and the number of values copied. */
-export function copyRecord(source: MachineRecord): { record: MachineRecord; size: number } {
-  const copier = new GraphCopier()
-  const stack = source.stack.map((value) => copier.value(value))
-  const frames = source.frames.map((frame) => ({
-    closure: copier.object(frame.closure),
-    ip: frame.ip,
-    base: frame.base,
-    uid: frame.uid,
-  }))
-  const openCells = source.openCells.map((cell) => copier.object(cell))
-  const globals = new Map<string, Value>()
-  for (const [name, value] of source.globals) globals.set(name, copier.value(value))
-  copier.drain()
-  const record: MachineRecord = {
-    stack,
-    frames,
-    openCells,
-    globals,
-    time: source.time,
-    nextObjectId: source.nextObjectId,
-    nextFrameUid: source.nextFrameUid,
-    rngState: source.rngState,
-    allocated: source.allocated,
-    status: source.status,
-    error: source.error,
+  get time(): number {
+    return this.scalars.time
   }
-  return { record, size: copier.size + stack.length + frames.length + globals.size }
+
+  get nextObjectId(): number {
+    return this.scalars.nextObjectId
+  }
+
+  /** The values a restore rebuilds, at most: the roots and every object in the table. */
+  get restoreSize(): number {
+    return rootsSize(this.roots) + this.tableValues
+  }
+
+  /**
+   * The values this snapshot holds that `earlier` does not share: everything for null, else what
+   * was copied after `earlier`. Sharing is counted only when `earlier` is in the same line with a
+   * smaller serial, which callers keep to ancestors (the recorder's snapshots form a chain); for
+   * anything else the whole snapshot counts.
+   */
+  retainedSince(earlier: VMSnapshot | null): number {
+    const after =
+      earlier instanceof MachineSnapshot &&
+      earlier.lineage === this.lineage &&
+      earlier.serial < this.serial
+        ? earlier.serial
+        : 0
+    let count = rootsSize(this.roots)
+    this.table.freshNodes(after, (node, leaf) => {
+      // The table's own slots count too: they cost as much as values.
+      count += node.slots.length
+      if (!leaf) return
+      for (const object of node.slots) {
+        if (object !== undefined) count += freshSize(object as FrozenObject, after)
+      }
+    })
+    return count
+  }
+
+  /** Fresh live objects for the state this snapshot holds. */
+  thaw(): MachineRecord {
+    return thaw(this.roots, this.table, this.scalars)
+  }
 }
 
-function isShared(object: HeapObject): boolean {
-  return (
-    object.type === 'range' ||
-    object.type === 'native' ||
-    (object.type === 'closure' && object.id < 0)
+/** Snapshots the machine's state, sharing with its base, and makes the result the new base. */
+export function takeSnapshot(m: MachineState): MachineSnapshot {
+  const base = m.base
+  const serial = (base?.serial ?? 0) + 1
+  const freezer = new Freezer(m, serial)
+  if (base !== null) freezer.applyChanges(m.changeLog)
+  const roots = freezer.roots()
+  freezer.drain()
+  let table = freezer.table.build()
+  let tableValues = freezer.tableValues
+  let size = freezer.copied + freezer.table.copied
+  let compacted = base === null ? tableValues : base.compactedValues
+  if (tableValues > COMPACT_FACTOR * compacted + COMPACT_SLACK) {
+    const result = compactTable(table, roots, serial)
+    table = result.table
+    tableValues = result.values
+    // A compaction stores a new table slot for every reachable object.
+    size += result.objects
+    compacted = tableValues
+  }
+  const snapshot = new MachineSnapshot(
+    m.program,
+    base?.lineage ?? Symbol('snapshot line'),
+    serial,
+    roots,
+    scalarsOf(m),
+    table,
+    size,
+    tableValues,
+    compacted,
   )
+  m.trackFrom(snapshot)
+  // Live objects now match the new base only where they were copied; delta restores need a map
+  // built by a restore.
+  m.live = null
+  return snapshot
 }
 
-class GraphCopier {
-  /** Number of values copied into objects (one per object plus one per slot it holds). */
-  size = 0
-  private readonly copies = new Map<HeapObject, HeapObject>()
-  /** Originals whose copies still need their contents. */
-  private readonly pending: HeapObject[] = []
+/**
+ * Replaces the machine's state with the state `snapshot` holds, which becomes its base. When the
+ * machine's base and `snapshot` belong to the same line and the machine was positioned by a
+ * restore, only objects that differ are rebuilt (a delta restore): those changed since the base
+ * (the change log) and those whose copies differ between the two tables (a diff of the shared
+ * radix trees). They are refilled in place, every other live object is reused as it is, and the
+ * roots are rebuilt. Otherwise every object is created afresh.
+ */
+export function restoreSnapshot(m: MachineState, snapshot: MachineSnapshot): void {
+  const thawer = deltaThawer(m, snapshot) ?? new Thawer(snapshot.table)
+  const record = thawRoots(thawer, snapshot.roots, snapshot.scalars)
+  m.stack = record.stack
+  m.frames = record.frames
+  m.openCells = record.openCells
+  m.globals = record.globals
+  m.time = record.time
+  m.nextObjectId = record.nextObjectId
+  m.nextFrameUid = record.nextFrameUid
+  m.rngState = record.rngState
+  m.allocated = record.allocated
+  m.scanned = record.scanned
+  m.status = record.status
+  m.error = record.error
+  m.tasks = record.tasks
+  m.current = record.current
+  m.liveTasks = record.tasks === null ? 0 : record.tasks.filter((t) => t.status !== 'done').length
+  m.request = Request.none
+  m.preemptAt = record.preemptAt
+  m.schedState = record.schedState
+  m.positions.clear()
+  m.trackFrom(snapshot)
+  m.live = thawer.live
+}
 
-  value(value: Value): Value {
-    return typeof value === 'object' && value !== null ? this.object(value) : value
+function scalarsOf(m: MachineState): MachineScalars {
+  return {
+    time: m.time,
+    nextObjectId: m.nextObjectId,
+    nextFrameUid: m.nextFrameUid,
+    rngState: m.rngState,
+    allocated: m.allocated,
+    scanned: m.scanned,
+    status: m.status,
+    error: m.error,
+    preemptAt: m.preemptAt,
+    schedState: m.schedState,
   }
+}
 
-  /** The copy of `original`, created empty and queued for filling on first sight. */
-  object<T extends HeapObject>(original: T): T {
-    if (isShared(original)) return original
-    const existing = this.copies.get(original)
-    if (existing !== undefined) return existing as T
-    const copy = this.shell(original)
-    this.copies.set(original, copy)
-    this.pending.push(original)
-    return copy as T
-  }
-
-  drain(): void {
-    while (this.pending.length > 0) {
-      const original = this.pending.pop()!
-      this.fill(original, this.copies.get(original)!)
+/**
+ * A table with only the objects reachable from `roots` (their copies reused). Marks live in a
+ * bitset over the table's ids, so the new table is built in id order without sorting.
+ */
+function compactTable(
+  table: PVec<FrozenObject>,
+  roots: FrozenRoots,
+  serial: number,
+): { table: PVec<FrozenObject>; values: number; objects: number } {
+  const marks = new Uint32Array((table.length + 31) >>> 5)
+  const work: number[] = []
+  const mark = (value: unknown): void => {
+    if (!isRef(value)) return
+    const id = value.id
+    const bit = 1 << (id & 31)
+    const word = id >>> 5
+    if ((marks[word]! & bit) === 0) {
+      marks[word] = marks[word]! | bit
+      work.push(id)
     }
   }
-
-  private shell(original: HeapObject): HeapObject {
-    switch (original.type) {
-      case 'list':
-        return { type: 'list', id: original.id, items: original.items.slice() }
-      case 'record':
-        return { type: 'record', id: original.id, fields: new Map(original.fields) }
-      case 'closure':
-        return { type: 'closure', id: original.id, proto: original.proto, upvalues: [] }
-      case 'cell':
-        return { ...original }
-      case 'iterator':
-        return this.iteratorCopy(original)
-      default:
-        throw new InternalError(`cannot copy ${original.type}`)
+  forEachRoot(roots, mark)
+  while (work.length > 0) {
+    const id = work.pop()!
+    const object = table.get(id)
+    if (object === undefined) throw new InternalError(`snapshot has no object ${id}`)
+    forEachValue(object, mark)
+  }
+  const editor = PVec.empty<FrozenObject>().edit(serial)
+  let values = 0
+  let objects = 0
+  for (let word = 0; word < marks.length; word++) {
+    let bits = marks[word]!
+    while (bits !== 0) {
+      const low = bits & -bits
+      const id = (word << 5) + 31 - Math.clz32(low)
+      bits ^= low
+      const object = table.get(id)!
+      editor.set(id, object)
+      values += objectSize(object)
+      objects++
     }
   }
-
-  /** Iterators have no further mutable children; the source copy is queued like any value. */
-  private iteratorCopy(original: IteratorObj): IteratorObj {
-    return {
-      type: 'iterator',
-      id: original.id,
-      source: this.value(original.source),
-      position: original.position,
-      keys: original.keys,
-    }
-  }
-
-  private fill(original: HeapObject, copy: HeapObject): void {
-    this.size += 1
-    switch (original.type) {
-      case 'list':
-        this.fillList(copy as ListObj)
-        break
-      case 'record':
-        this.fillRecord(copy as RecordObj)
-        break
-      case 'closure':
-        this.fillClosure(original, copy as ClosureObj)
-        break
-      case 'cell':
-        ;(copy as CellObj).value = this.value(original.value)
-        this.size += 1
-        break
-      default:
-        break
-    }
-  }
-
-  /** The shell already holds the original items; replace object references with copies. */
-  private fillList(copy: ListObj): void {
-    const items = copy.items
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i]!
-      if (typeof item === 'object' && item !== null) items[i] = this.object(item)
-    }
-    this.size += items.length
-  }
-
-  private fillRecord(copy: RecordObj): void {
-    for (const [key, value] of copy.fields) {
-      if (typeof value === 'object' && value !== null) copy.fields.set(key, this.object(value))
-    }
-    this.size += copy.fields.size
-  }
-
-  private fillClosure(original: ClosureObj, copy: ClosureObj): void {
-    for (const cell of original.upvalues) copy.upvalues.push(this.object(cell))
-    this.size += original.upvalues.length
-  }
+  return { table: editor.build(), values, objects }
 }

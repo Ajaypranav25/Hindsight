@@ -45,6 +45,7 @@ describe('the bug finder in the store', () => {
       focused: 0,
       session: null,
       strategy: 'divide',
+      auto: true,
     })
     store.getState().openBugFinder()
     expect(store.getState().bugFinder.reveal).toBe(1)
@@ -115,6 +116,7 @@ describe('the bug finder in the store', () => {
       focused: 0,
       session: null,
       strategy: 'divide',
+      auto: true,
     })
     store.getState().startBugFinder()
     expect(openQuestion(store)?.outcome).toBe('raised')
@@ -158,6 +160,7 @@ describe('the bug finder in the store', () => {
       focused: 0,
       session: null,
       strategy: 'divide',
+      auto: true,
     })
     store.getState().startBugFinder()
     expect(store.getState().bugFinder.session).toBeNull()
@@ -179,6 +182,80 @@ describe('the bug finder in the store', () => {
       focused: 0,
       session: null,
       strategy: 'divide',
+      auto: true,
     })
   })
+
+  test('contracts and assertions answer questions; undo hands one back to the user', async () => {
+    // Arrange
+    const { store } = await setup(CONTRACTS)
+
+    // Act
+    store.getState().openBugFinder()
+    const automatic = liveSession(store.getState().bugFinder, store.getState().recording)!
+
+    // Assert
+    expect(verdict(automatic.finder)).toMatchObject({ kind: 'found', call: { name: 'average' } })
+    expect(automatic.finder.asked).toBe(0)
+    expect(automatic.finder.answeredAutomatically).toBeGreaterThan(0)
+    store.getState().undoBugFinder()
+    const asked = openQuestion(store)
+    expect(asked).toBeDefined()
+    store.getState().answerBugFinder('wrong')
+    const after = liveSession(store.getState().bugFinder, store.getState().recording)!
+    expect(after.finder.asked).toBe(1)
+  })
+
+  test('turning automatic answers off restarts the interview with every question for the user', async () => {
+    // Arrange
+    const { store } = await setup(CONTRACTS)
+    store.getState().openBugFinder()
+
+    // Act
+    store.getState().setBugFinderAuto(false)
+
+    // Assert
+    const session = liveSession(store.getState().bugFinder, store.getState().recording)!
+    expect(store.getState().bugFinder.auto).toBe(false)
+    expect(session.oracle).toBeNull()
+    expect(session.finder.answeredAutomatically).toBe(0)
+    expect(openQuestion(store)).toBeDefined()
+    store.getState().answerBugFinder('wrong')
+    expect(
+      liveSession(store.getState().bugFinder, store.getState().recording)!.finder
+        .answeredAutomatically,
+    ).toBe(0)
+    store.getState().setBugFinderAuto(false)
+    store.getState().setBugFinderAuto(true)
+    expect(liveSession(store.getState().bugFinder, store.getState().recording)!.finder.asked).toBe(
+      0,
+    )
+  })
+
+  test('after a failed contract, opening starts the interview at once; with them off it waits', async () => {
+    // Arrange
+    const first = await setup(CONTRACTS)
+    const second = await setup(CONTRACTS)
+    second.store.getState().setBugFinderAuto(false)
+
+    // Act
+    first.store.getState().openBugFinder()
+    second.store.getState().openBugFinder()
+
+    // Assert
+    expect(first.store.getState().bugFinder.session).not.toBeNull()
+    expect(second.store.getState().bugFinder.session).toBeNull()
+  })
 })
+
+const CONTRACTS = `fn total(xs) {
+  var sum = 0
+  for x in xs { sum += x }
+  sum
+}
+fn average(xs) ensures result * len(xs) == total(xs) {
+  total(xs) / (len(xs) - 1)
+}
+assert(total([88, 83, 79]) == 250)
+print(average([88, 83, 79]))
+`

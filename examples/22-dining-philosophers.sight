@@ -1,0 +1,29 @@
+// title: Dining philosophers
+// summary: Three philosophers each pick up the fork on their left, then wait for the one on their right. Soon every task is waiting: the run stops with a deadlock error that says what each one waits for. Scrub back through the swim lanes to the moment the last fork was taken.
+// outcome: error
+
+fn new_fork() {
+  let fork = channel(1)
+  send(fork, "fork")
+  fork
+}
+
+let forks = [new_fork(), new_fork(), new_fork()]
+
+fn philosopher(seat) {
+  let left = forks[seat]
+  let right = forks[(seat + 1) % 3]
+  recv(left)
+  print("philosopher {seat} picked up the left fork")
+  yield()
+  recv(right)
+  print("philosopher {seat} eats")
+  send(left, "fork")
+  send(right, "fork")
+}
+
+let diners = [spawn(philosopher, 0), spawn(philosopher, 1), spawn(philosopher, 2)]
+for diner in diners {
+  wait(diner)
+}
+print("everyone ate")

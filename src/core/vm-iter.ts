@@ -12,6 +12,7 @@ export function iterInit(m: MachineState): void {
   const source = stack[top] as Value
   if (!isIterable(source)) raise('R013', `cannot iterate over ${articleType(source)}`)
   const keys = isRecord(source) ? Array.from(source.fields.keys()) : null
+  if (keys !== null) m.scanned += keys.length
   stack[top] = m.newIterator(source, keys)
 }
 
@@ -41,6 +42,7 @@ export function iterNext(m: MachineState): boolean {
     throw new InternalError('IterNext without an iterator')
   }
   iterator.position = position + 1
+  if (iterator.id < m.logBelow) m.logChange(iterator, 0)
   stack.push(element)
   return true
 }

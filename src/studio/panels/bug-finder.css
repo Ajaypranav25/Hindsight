@@ -186,3 +186,83 @@
 .bf-repair-after {
   color: var(--ok);
 }
+
+/* Questions the program's contracts and assertions answered (ARCHITECTURE §7.6). */
+.bf-auto {
+  display: grid;
+  gap: 4px;
+}
+
+.bf-auto-title {
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.bf-auto[open] > .bf-auto-title {
+  margin-bottom: 4px;
+}
+
+.bf-auto-list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bf-auto-item {
+  padding: 2px var(--space-2);
+  border-left: 2px solid var(--ok);
+  font: var(--text-sm) / 1.45 var(--font-ui);
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
+}
+
+.bf-auto-item[data-answer='wrong'] {
+  border-left-color: var(--pen);
+}
+
+.bf-auto-number {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.bf-auto-call {
+  font-family: var(--font-mono);
+  color: var(--ink);
+}
+
+.bf-auto-answer {
+  font-weight: 600;
+  color: var(--ok);
+}
+
+.bf-auto-item[data-answer='wrong'] .bf-auto-answer {
+  color: var(--pen);
+}
+
+.bf-auto-summary {
+  margin: 0;
+  padding: 0;
+}
+
+.bf-asserts {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--rule);
+}
+
+.bf-assert-code {
+  margin: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  padding: var(--space-2);
+  background: var(--surface-sunken);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  white-space: pre;
+}

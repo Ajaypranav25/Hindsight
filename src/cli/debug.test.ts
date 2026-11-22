@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { DEFAULT_MAX_STEPS, DEFAULT_SEED } from '../core/api-types'
+import type { Strategy } from '../core/index'
 import { parseArgs, USAGE } from './args'
 import { type DebugSession, openDebugSession, parseAnswer } from './debug'
 import type { CliIO } from './io'
@@ -40,13 +41,23 @@ fn average(xs) {
 print(average([88, 83, 79]))
 `
 
-function open(source: string, maxSteps = DEFAULT_MAX_STEPS): { io: FakeIO; session: DebugSession } {
+interface OpenOptions {
+  readonly strategy?: Strategy
+  readonly maxSteps?: number
+  readonly auto?: boolean
+  readonly ask?: boolean
+}
+
+function open(source: string, options: OpenOptions = {}): { io: FakeIO; session: DebugSession } {
   const io = fakeIO({ 'avg.sight': source })
   const session = openDebugSession(io, {
     kind: 'debug',
     file: 'avg.sight',
-    strategy: 'top-down',
-    maxSteps,
+    strategy: options.strategy ?? 'top-down',
+    auto: options.auto ?? true,
+    ask: options.ask ?? true,
+    llm: null,
+    maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
     seed: 1,
   })
   if (typeof session === 'number') throw new Error(`no session: ${io.err.join('')}`)
@@ -66,10 +77,18 @@ describe('debug arguments', () => {
         kind: 'debug',
         file: 'a.sight',
         strategy: 'divide',
+        auto: true,
+        ask: true,
+        llm: null,
         maxSteps: DEFAULT_MAX_STEPS,
         seed: DEFAULT_SEED,
       },
     })
+    expect(parseArgs(['debug', 'a.sight', '--no-auto', '--no-ask'])).toMatchObject({
+      ok: true,
+      command: { auto: false, ask: false },
+    })
+    expect(parseArgs(['debug', 'a.sight', '--no-ask=1'])).toMatchObject({ ok: false })
     expect(parseArgs(['debug', 'a.sight', '--max-steps=50', '--seed', '3'])).toMatchObject({
       ok: true,
       command: { maxSteps: 50, seed: 3 },
@@ -84,6 +103,7 @@ describe('debug arguments', () => {
       error: "unexpected argument 'b.sight'",
     })
     expect(USAGE).toContain('hindsight debug FILE [--max-steps N] [--seed S]')
+    expect(USAGE).toContain('[--no-auto] [--no-ask]')
   })
 
   test('reads answers in short and long forms', () => {
@@ -117,6 +137,10 @@ describe('the debug interview', () => {
       'Every call it makes returned the right value, but its own result is wrong.',
     )
     expect(out).toContain('   9 |   total(xs) / (len(xs) - 1)\n')
+    expect(out).toContain(
+      'Your answers as assertions (add them to the program and these questions answer themselves next time):\n' +
+        '  assert(total([88, 83, 79]) == 250)\n',
+    )
     expect(session.finished).toBe(true)
     expect(session.exitCode).toBe(0)
   })
@@ -175,7 +199,7 @@ describe('the debug interview', () => {
   })
 
   test('a run cut off by the step limit says so', () => {
-    const { io } = open('fn spin() {\n  while true {}\n}\nspin()\n', 100)
+    const { io } = open('fn spin() {\n  while true {}\n}\nspin()\n', { maxSteps: 100 })
     expect(io.out.join('')).toContain('stopped at the step limit')
     expect(io.out.join('')).toContain(
       'Question 1: spin() was still running when the recording stopped',
@@ -200,6 +224,9 @@ describe('the debug interview', () => {
       kind: 'debug',
       file: 'bad.sight',
       strategy: 'top-down',
+      auto: true,
+      ask: true,
+      llm: null,
       maxSteps: 10,
       seed: 1,
     })
@@ -210,5 +237,118 @@ describe('the debug interview', () => {
   test('program text is sanitized for the terminal', () => {
     const { io } = open('fn shout(s) {\n  s\n}\nshout("\\u{1b}[2J")\n')
     expect(io.out.join('')).not.toContain('\u001b')
+  })
+})
+
+const CONTRACTS = `fn total(xs) {
+  var sum = 0
+  for x in xs {
+    sum += x
+  }
+  sum
+}
+fn average(xs)
+  ensures result * len(xs) == total(xs)
+{
+  total(xs) / (len(xs) - 1)
+}
+assert(total([88, 83, 79]) == 250)
+print(average([88, 83, 79]))
+`
+
+/** CONTRACTS without its assertion: the postcondition answers the first question only. */
+const POSTCONDITION_ONLY = CONTRACTS.replace('assert(total([88, 83, 79]) == 250)\n', '')
+
+describe('automatic answers from contracts and assertions', () => {
+  test('answers every question itself and prints each answer with its evidence', () => {
+    // Arrange / Act
+    const { io, session } = open(CONTRACTS)
+    const divided = open(CONTRACTS, { strategy: 'divide' })
+
+    // Assert
+    const out = io.out.join('')
+    expect(out).toContain('The run failed a contract or an assertion (above)')
+    expect(out).toContain(
+      'Question 1: total(xs = [88, 83, 79]) returned 250 — right (the assertion on line 13)\n',
+    )
+    expect(out).toContain(
+      'Question 2: average(xs = [88, 83, 79]) raised an error: postcondition failed: ' +
+        'result * len(xs) == total(xs) (R027) — wrong (its postcondition on line 9 failed)\n',
+    )
+    expect(out).toContain('Found it: the bug is in average (lines 8–12).')
+    expect(out).not.toContain('Is that right?')
+    expect(session.finished).toBe(true)
+    expect(session.exitCode).toBe(0)
+    expect(divided.io.out.join('')).toContain(
+      'Question 2: total(xs = [88, 83, 79]) returned 250 — right ' +
+        '(an identical call passed the assertion on line 13)\n',
+    )
+    expect(divided.session.exitCode).toBe(0)
+  })
+
+  test('asks a person the questions contracts cannot answer, numbering on', () => {
+    // Arrange / Act
+    const { io, session } = open(POSTCONDITION_ONLY)
+    feed(session, ['r'])
+
+    // Assert
+    const out = io.out.join('')
+    expect(out).toContain('— wrong (its postcondition on line 9 failed)')
+    expect(out).toContain('Question 2: total(xs = [88, 83, 79]) returned 250\n')
+    expect(out).toContain('Found it: the bug is in average')
+    expect(session.exitCode).toBe(0)
+  })
+
+  test('--no-auto leaves every question to the person', () => {
+    // Arrange / Act
+    const { io, session } = open(CONTRACTS, { auto: false })
+
+    // Assert
+    const out = io.out.join('')
+    expect(out).toContain('Question 1: total(xs = [88, 83, 79]) returned 250\n')
+    expect(out).not.toContain('— right')
+    expect(session.finished).toBe(false)
+  })
+
+  test('undo takes back an automatic answer and hands that question to the person', () => {
+    // Arrange
+    const { io, session } = open(POSTCONDITION_ONLY)
+
+    // Act
+    feed(session, ['u', 'w', 'r'])
+
+    // Assert
+    const out = io.out.join('')
+    expect(out).toContain('(took back the automatic answer about average; it is yours to answer)')
+    expect(out).toMatch(
+      /answer\)\n\nQuestion 1: average\(xs = \[88, 83, 79\]\) raised an error: .+\(R027\)\n/,
+    )
+    expect(out).toContain('Found it: the bug is in average')
+    expect(session.exitCode).toBe(0)
+  })
+
+  test('--no-ask stops at the first question nobody can answer, with exit code 3', () => {
+    // Arrange / Act
+    const { io, session } = open(POSTCONDITION_ONLY, { ask: false })
+
+    // Assert
+    const out = io.out.join('')
+    expect(out).toContain('Question 2: total(xs = [88, 83, 79]) returned 250\n')
+    expect(out).toContain(
+      'stopped: no contract or assertion answers this question, and --no-ask means nobody else is asked.',
+    )
+    expect(out).not.toContain('Is that right?')
+    expect(session.finished).toBe(true)
+    expect(session.exitCode).toBe(3)
+    expect(session.handle('r')).toBe(false)
+  })
+
+  test('--no-ask still reaches the verdict when contracts answer everything', () => {
+    // Arrange / Act
+    const { session } = open(CONTRACTS, { ask: false })
+
+    // Assert
+    expect(session.finished).toBe(true)
+    expect(session.exitCode).toBe(0)
   })
 })

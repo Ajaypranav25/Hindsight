@@ -17,9 +17,11 @@ import type { StudioActions } from '../state/types'
 import { penDecorations } from './decorations'
 import { breakpointGutterExtension, heatGutterExtension } from './gutters'
 import { valueHover } from './hover'
+import { labGutterExtension } from './lab-gutter'
 import { hindsightLanguage } from './language'
 import { studioActions, studioField, studioOf } from './studio-field'
 import { hindsightTheme } from './theme'
+import { whyNotField } from './why-not-widget'
 
 /** Marks transactions that apply the store's source, so they are not echoed back to it. */
 export const fromStore = Annotation.define<boolean>()
@@ -64,6 +66,7 @@ export function editorExtensions(options: SetupOptions): Extension {
     breakpointGutterExtension(),
     lineNumbers(),
     heatGutterExtension(),
+    labGutterExtension(),
     highlightActiveLineGutter(),
     history(),
     drawSelection(),
@@ -83,6 +86,7 @@ export function editorExtensions(options: SetupOptions): Extension {
     ]),
     hindsightLanguage(),
     penDecorations,
+    whyNotField,
     valueHover,
     hindsightTheme,
     EditorView.contentAttributes.of({ 'aria-label': 'Program source' }),

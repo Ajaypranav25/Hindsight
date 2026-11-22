@@ -15,6 +15,7 @@ import {
   NOTICE_DURATION_MS,
   penTime,
   PERSIST_DELAY_MS,
+  scheduleOptions,
   STORAGE_KEYS,
 } from './defaults'
 import {
@@ -29,6 +30,8 @@ import {
   keepPreviousSource,
   type KeepResult,
 } from './previous-source'
+import { editRunOf, keptPlace, type KeptPlace } from './keep-place'
+import { KEPT_AFTER_TRACE_NOTICE, TraceFlow } from './trace'
 import { WhatIfFlow } from './what-if'
 import type {
   Engine,
@@ -135,6 +138,7 @@ class Controller {
   /** See ProgramOrigin: saving is held back until the user edits. */
   private persistBlocked: boolean
   private readonly whatIf: WhatIfFlow
+  private readonly trace: TraceFlow
 
   constructor(
     private readonly deps: StoreDeps,
@@ -154,6 +158,23 @@ class Controller {
       begin: (progress) => this.beginRecording(progress),
       finish: (token) => this.finishRecording(token),
       cancel: (token) => this.cancelRecording(token),
+      progress: (token, time) => this.reportProgress(token, time),
+      completedStatus: () => this.completedStatus(),
+      notify: (notice) => this.notify(notice),
+      stopPlay: () => this.stopPlay(),
+      displayed: () => this.clearRunMarkAfterDisplay(),
+    })
+    this.trace = new TraceFlow({
+      get,
+      set: (patch) => set(patch),
+      engine: deps.engine,
+      replace: (source) => {
+        // The trace's recording supersedes any run in flight, as a new run does.
+        if (this.current) this.current.aborted = true
+        return this.replaceKeepingPrevious(source, KEPT_AFTER_TRACE_NOTICE, false)
+      },
+      begin: (progress) => this.beginRecording(progress),
+      finish: (token) => this.finishRecording(token),
       progress: (token, time) => this.reportProgress(token, time),
       completedStatus: () => this.completedStatus(),
       notify: (notice) => this.notify(notice),
@@ -191,6 +212,7 @@ class Controller {
       clearNotice: () => this.set({ notice: null }),
       restorePreviousSource: () => this.restorePreviousSource(),
       openSharedSource: (source, time) => this.openSharedSource(source, time),
+      openTraceFile: (bytes) => this.trace.open(bytes),
       forkWhatIf: (target, value, name) => this.whatIf.fork(target, value, name),
       leaveWhatIf: () => this.leaveWhatIf(),
       ...bugFinderActions(this.get, this.set),
@@ -249,8 +271,9 @@ class Controller {
   /**
    * Replaces the program with delivered text, first keeping the user's own and saying so with
    * `notice`. When the copy cannot be stored, the new program is shown but not saved over it.
+   * Returns whether the user's program was kept.
    */
-  private replaceKeepingPrevious(source: string, notice: Notice, run: boolean): void {
+  private replaceKeepingPrevious(source: string, notice: Notice, run: boolean): boolean {
     const current = this.get().source
     const result = keepPreviousSource(this.deps.storage, this.deps.examples, {
       current,
@@ -259,9 +282,10 @@ class Controller {
     })
     if (result === 'failed') this.persistBlocked = true
     this.replaceProgram(source, { delivered: true, run })
-    if (result !== 'kept') return
+    if (result !== 'kept') return false
     this.set({ previousSource: current })
     this.notify(notice)
+    return true
   }
 
   private restorePreviousSource(): void {
@@ -344,6 +368,7 @@ class Controller {
     })
     const recording = await this.deps.engine.recordAsync(compile.program, {
       maxSteps: settings.maxSteps,
+      schedule: scheduleOptions(settings.schedule),
       signal: token,
       onProgress: (progress) => this.reportProgress(token, progress),
     })
@@ -351,33 +376,38 @@ class Controller {
     this.stopPlay()
     const previous = this.get()
     const pending = this.pendingTime
-    const time =
-      pending === null ? this.placePen(recording) : Math.max(0, Math.min(pending, recording.length))
+    const edited = pending === null && this.penStrategy === 'keep'
+    const placed: KeptPlace =
+      pending !== null
+        ? { time: Math.max(0, Math.min(pending, recording.length)), place: null }
+        : this.placePen(recording)
     this.pendingTime = null
     this.penStrategy = 'keep'
     this.set({
       recording,
       recordedSource: source,
       status: this.completedStatus(),
-      time,
+      time: placed.time,
       selectedFrameUid: null,
       watch: previous.recordedSource === source ? previous.watch : null,
       originMark: null,
+      editRun: edited ? editRunOf(previous.recording, recording, placed.place) : null,
     })
     this.clearRunMarkAfterDisplay()
   }
 
-  private placePen(recording: Recording): number {
-    if (this.penStrategy === 'keep') return this.keptTime(recording.length)
+  /**
+   * After an edit, the pen keeps its place (the same moment of the new run, or with that setting
+   * off the same step; at the end if it was at the end); else where the example asks for it.
+   */
+  private placePen(recording: Recording): KeptPlace {
+    const { recording: previous, time, settings } = this.get()
+    if (this.penStrategy === 'keep') {
+      if (previous === null) return { time: recording.length, place: null }
+      return keptPlace(this.deps.engine, previous, time, recording, settings.keepPlace)
+    }
     const example = this.deps.examples.find((candidate) => candidate.id === this.get().exampleId)
-    return penTime(recording, example?.pen ?? 'peak')
-  }
-
-  /** After an edit, keep the pen where it was (or at the end if it was at the end). */
-  private keptTime(length: number): number {
-    const { recording, time } = this.get()
-    if (!recording || time >= recording.length) return length
-    return Math.min(time, length)
+    return { time: penTime(recording, example?.pen ?? 'peak'), place: null }
   }
 
   private async extend(): Promise<void> {
@@ -592,6 +622,9 @@ class Controller {
     if (this.get().playing && settings.playbackSpeed !== previous.playbackSpeed) {
       this.schedulePlay(settings.playbackSpeed)
     }
+    // Another interleaving is only worth seeing at once: run again under the new schedule.
+    const scheduleChanged = JSON.stringify(settings.schedule) !== JSON.stringify(previous.schedule)
+    if (scheduleChanged && this.get().recording !== null && settings.autoRun) void this.run()
   }
 }
 

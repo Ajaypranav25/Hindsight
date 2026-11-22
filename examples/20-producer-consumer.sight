@@ -1,0 +1,34 @@
+// title: Producer and consumer
+// summary: A producer sends jobs over a buffered channel, two workers square them and the main task adds up the results. The strip chart draws one swim lane per task; hatched stretches are a task waiting on a channel or on another task.
+// pen: 0.5
+
+let jobs = channel(2)
+let results = channel()
+
+fn producer(n) {
+  for i in 1..=n {
+    send(jobs, i)
+  }
+  close(jobs)
+}
+
+fn worker(name) {
+  var count = 0
+  var job = recv(jobs)
+  while job != nil {
+    send(results, job * job)
+    count += 1
+    job = recv(jobs)
+  }
+  return count
+}
+
+spawn(producer, 6)
+let a = spawn(worker, "a")
+let b = spawn(worker, "b")
+var total = 0
+for i in 0..6 {
+  total += recv(results)
+}
+print("sum of squares: {total}")
+print("worker a squared {wait(a)}, worker b squared {wait(b)}")

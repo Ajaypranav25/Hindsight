@@ -43,7 +43,7 @@ export function StripChart() {
   const stale = useStudio(isStale)
   const maxSteps = useStudio((s) => s.settings.maxSteps)
   const actions = useStudioActions()
-  const data = useChartData(recording)
+  const { laneModel, ...data } = useChartData(recording)
   const whatIf = useChartWhatIf()
   const { lab, extent } = useChartLab()
   const helpId = useId()
@@ -59,6 +59,11 @@ export function StripChart() {
   const progress = progressOf(status, maxSteps)
   const depth = penDepth(recording, time)
   const errorAt = recording?.outcome.kind === 'error' ? length : null
+  const penTask = recording && laneModel ? recording.taskAt(Math.min(time, length)) : 1
+  const lanes = useMemo(
+    () => (laneModel ? { model: laneModel, penTask } : null),
+    [laneModel, penTask],
+  )
 
   const paintInput = useMemo(
     () => ({
@@ -75,6 +80,7 @@ export function StripChart() {
       themeVersion,
       whatIf,
       lab,
+      lanes,
     }),
     [
       size,
@@ -90,6 +96,7 @@ export function StripChart() {
       themeVersion,
       whatIf,
       lab,
+      lanes,
     ],
   )
   useChartPaint(canvasRef, paintInput)
@@ -145,7 +152,7 @@ export function StripChart() {
         )}
       </div>
       <div className="tl-chart__readouts">
-        <span className="tl-chart__label">Depth</span>
+        <span className="tl-chart__label">{laneModel ? 'Depth by task' : 'Depth'}</span>
         {status.kind === 'recording' ? (
           <span className="tl-chart__recording">
             Recording · {formatCount(status.progress)} steps
@@ -176,6 +183,7 @@ function ChartTooltip(props: { hover: Hover; recording: Recording; width: number
   const { hover, recording, width } = props
   const step = Math.max(0, Math.min(recording.length, hover.step))
   const location = recording.locationAt(step)
+  const task = recording.taskSeries() === null ? '' : `task ${recording.taskAt(step)} · `
   const flip = hover.x > width - 160
   return (
     <div
@@ -184,7 +192,10 @@ function ChartTooltip(props: { hover: Hover; recording: Recording; width: number
       aria-hidden="true"
     >
       <span className="tl-chart__tooltip-step">step {formatCount(step)}</span>
-      <span>{locationText(location)}</span>
+      <span>
+        {task}
+        {locationText(location)}
+      </span>
     </div>
   )
 }

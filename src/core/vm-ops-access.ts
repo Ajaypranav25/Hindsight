@@ -38,6 +38,7 @@ export function setField(m: MachineState, object: Value, name: string, value: Va
   if (!isRecord(object)) raise('R011', `cannot set field '${name}' on ${articleType(object)}`)
   checkNewKey(m, object, name)
   object.fields.set(name, value)
+  m.noteField(object, name)
   m.recordField(object.id, name, value)
 }
 
@@ -76,6 +77,7 @@ export function setIndex(m: MachineState, object: Value, index: Value, value: Va
   if (isList(object)) {
     const position = checkedIndex(index, object.items.length, 'list')
     object.items[position] = value
+    m.noteElement(object, position)
     m.recordElement(object.id, position, value)
     return
   }
@@ -83,6 +85,7 @@ export function setIndex(m: MachineState, object: Value, index: Value, value: Va
     const key = recordKey(index)
     checkNewKey(m, object, key)
     object.fields.set(key, value)
+    m.noteField(object, key)
     m.recordField(object.id, key, value)
     return
   }

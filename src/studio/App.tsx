@@ -8,6 +8,8 @@ import { PanelTabs } from './chrome/PanelTabs'
 import { useGlobalShortcuts } from './chrome/useGlobalShortcuts'
 import { useLayoutMode } from './chrome/useLayoutMode'
 import { Editor } from './editor/Editor'
+import { EditDiffStrip } from './insight/EditDiffStrip'
+import { ProfilePanel } from './insight/ProfilePanel'
 import { BugFinder } from './panels/BugFinder'
 import { CallStack } from './panels/CallStack'
 import { Console } from './panels/Console'
@@ -18,7 +20,7 @@ import { TapeCounter } from './timeline/TapeCounter'
 import { Transport } from './timeline/Transport'
 import './chrome/layout.css'
 
-type PanelId = 'stack' | 'variables' | 'heap' | 'console' | 'bugs'
+type PanelId = 'stack' | 'variables' | 'heap' | 'console' | 'bugs' | 'profile'
 
 interface InstrumentPanel {
   readonly id: PanelId
@@ -34,6 +36,7 @@ const COLUMN_PANELS: readonly InstrumentPanel[] = [
   { id: 'variables', title: 'Variables', Component: Variables },
   { id: 'heap', title: 'Heap', Component: HeapGraph },
   { id: 'bugs', title: 'Bug finder', Component: BugFinder },
+  { id: 'profile', title: 'Profile', Component: ProfilePanel },
 ]
 
 /** Tablet and phone show every panel, the console included, as tabs. */
@@ -79,6 +82,9 @@ export function App() {
       </div>
       <div className="app-hint">
         <Hint />
+        <PanelBoundary name="The behaviour diff">
+          <EditDiffStrip />
+        </PanelBoundary>
       </div>
       <div className="app-transport" role="group" aria-label="Transport">
         <PanelBoundary name="The transport">
@@ -95,9 +101,14 @@ export function App() {
   )
 }
 
-/** The bug finder starts collapsed and opens whenever it is revealed (`reveal` changes). */
+/**
+ * The bug finder and the profile start collapsed (the profile is computed only while it is open);
+ * the bug finder opens whenever it is revealed (`reveal` changes).
+ */
 function useCollapsedPanels(reveal: number): [ReadonlySet<PanelId>, (id: PanelId) => void] {
-  const [collapsed, setCollapsed] = useState<ReadonlySet<PanelId>>(() => new Set(['bugs']))
+  const [collapsed, setCollapsed] = useState<ReadonlySet<PanelId>>(
+    () => new Set(['bugs', 'profile']),
+  )
   const [revealed, setRevealed] = useState(reveal)
   if (revealed !== reveal) {
     setRevealed(reveal)

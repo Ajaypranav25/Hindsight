@@ -1,0 +1,32 @@
+// Contracts that hold change nothing (SPEC §7.16).
+fn average(xs)
+  requires len(xs) > 0
+  ensures result >= 0
+{
+  sum(xs) / len(xs)
+}
+print(average([1, 2, 3])) // expect: 2
+fn clamp(x, lo, hi) requires lo <= hi ensures lo <= result and result <= hi {
+  if x < lo { return lo }
+  if x > hi { return hi }
+  x
+}
+print(clamp(-5, 0, 10), clamp(5, 0, 10), clamp(50, 0, 10)) // expect: 0 5 10
+// Several clauses of each kind, in any order.
+fn sqrt_floor(n)
+  requires type(n) == "number"
+  ensures result * result <= n
+  requires n >= 0
+  ensures (result + 1) * (result + 1) > n
+{
+  var r = 0
+  while (r + 1) * (r + 1) <= n { r += 1 }
+  r
+}
+print(sqrt_floor(0), sqrt_floor(15), sqrt_floor(16)) // expect: 0 3 4
+// Pattern parameters are bound before the preconditions run.
+fn span([lo, hi]) requires lo <= hi ensures result >= 0 { hi - lo }
+print(span([2, 9])) // expect: 7
+// Anonymous fn expressions take contracts too.
+let half = fn(n) requires n % 2 == 0 { n / 2 }
+print(half(8)) // expect: 4

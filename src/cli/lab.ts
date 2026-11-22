@@ -6,12 +6,15 @@
 import {
   backwardSlice,
   errorSlice,
+  SLICE_LENGTH_PROBLEM,
+  sliceProblem,
   LineIndex,
   type ProvenanceEvent,
   queryRecording,
   type QueryResult,
   record,
   type Recording,
+  type RepairOptions,
   type RepairRequest,
   type RepairResult,
   repairSearch,
@@ -24,6 +27,7 @@ import type { Command } from './args'
 import type { ExitCode, Loaded } from './commands'
 import { sanitize, type Style } from './format'
 import type { CliIO } from './io'
+import { recordingFor } from './trace'
 
 const count = (n: number) => n.toLocaleString('en-US')
 const plural = (n: number, one: string, many = `${one}s`) => `${count(n)} ${n === 1 ? one : many}`
@@ -129,7 +133,7 @@ export function query(
   loaded: Loaded,
   command: Extract<Command, { kind: 'query' }>,
 ): ExitCode {
-  const recording = record(loaded.program, { maxSteps: command.maxSteps, seed: command.seed })
+  const recording = recordingFor(loaded, command)
   const outcome = queryRecording(recording, command.text, { limit: command.limit })
   if (!outcome.ok) return fail(io, style, outcome.error)
   io.stdout(`${queryLines(recording, outcome.result, style).join('\n')}\n`)
@@ -144,7 +148,7 @@ export function whyNotCommand(
   loaded: Loaded,
   command: Extract<Command, { kind: 'whynot' }>,
 ): ExitCode {
-  const recording = record(loaded.program, { maxSteps: command.maxSteps, seed: command.seed })
+  const recording = recordingFor(loaded, command)
   const why = whyNot(recording, command.line)
   io.stdout(`${sanitize(why.sentence)}\n`)
   if (why.kind === 'guard') {
@@ -166,7 +170,7 @@ export function slice(
   loaded: Loaded,
   command: Extract<Command, { kind: 'slice' }>,
 ): ExitCode {
-  const recording = record(loaded.program, { maxSteps: command.maxSteps, seed: command.seed })
+  const recording = recordingFor(loaded, command)
   let at = command.at
   let about: string
   if (at !== null) {
@@ -185,7 +189,10 @@ export function slice(
   }
   const found = at === recording.length ? errorSlice(recording) : null
   const result = found ?? backwardSlice(recording, at)
-  if (result === null) return fail(io, style, 'this run is too long to analyze')
+  if (result === null) {
+    const problem = sliceProblem(recording) ?? SLICE_LENGTH_PROBLEM
+    return fail(io, style, problem.charAt(0).toLowerCase() + problem.slice(1))
+  }
   const ran = recording.lineHitCounts()
   const index = new LineIndex(loaded.source)
   const width = Math.max(3, String(index.lineCount).length)
@@ -209,8 +216,12 @@ export function slice(
 // --- repair -------------------------------------------------------------------------------------
 
 /** Runs a repair search to the end. */
-export function searchRepairs(recording: Recording, request: RepairRequest): RepairResult {
-  const search = repairSearch(recording, request)
+export function searchRepairs(
+  recording: Recording,
+  request: RepairRequest,
+  options: RepairOptions = {},
+): RepairResult {
+  const search = repairSearch(recording, request, options)
   let next = search.next()
   while (next.done !== true) next = search.next()
   return next.value

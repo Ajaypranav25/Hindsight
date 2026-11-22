@@ -61,6 +61,14 @@ export const NATIVE_NAMES = [
   'steps',
   'PI',
   'INF',
+  'spawn',
+  'channel',
+  'send',
+  'recv',
+  'close',
+  'wait',
+  'yield',
+  'current_task',
 ] as const
 
 export const LIBRARY_NAMES = [

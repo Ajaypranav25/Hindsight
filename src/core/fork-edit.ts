@@ -1,17 +1,18 @@
 /**
  * What-if edits (ARCHITECTURE §7.5): finds where an edit's target lives in a VM positioned at the
  * fork step, and writes the new value there. This is the only code outside the VM that changes VM
- * state, and it only ever touches a fork's own VM, before that VM resumes.
+ * state, and it only ever touches a fork's own VM, before that VM resumes. A local may belong to
+ * any task's frames, and an open cell aliases a slot of its own task's stack (§6.11).
  */
 import type { EditValue, WriteTarget } from './api-types'
 import { functionDisplayName } from './bytecode'
 import { liveLocals } from './inspector'
 import { cellTarget, findReachable, walk } from './inspector-heap'
-import type { CellObj, ListObj, RecordObj, Value, VM } from './runtime-types'
+import type { CellObj, Frame, ListObj, RecordObj, Value, VM } from './runtime-types'
 
 /** A place an edit writes to, with the target its `write` event is recorded under. */
 export type EditSlot = { readonly target: WriteTarget } & (
-  | { readonly kind: 'stack'; readonly index: number }
+  | { readonly kind: 'stack'; readonly stack: readonly Value[]; readonly index: number }
   | { readonly kind: 'global'; readonly name: string }
   | { readonly kind: 'item'; readonly list: ListObj; readonly index: number }
   | { readonly kind: 'field'; readonly record: RecordObj; readonly key: string }
@@ -45,18 +46,32 @@ export function resolveEditTarget(vm: VM, target: WriteTarget, time: number): Ed
   }
 }
 
+/** The stack and frames that hold the frame with `frameUid`: the running task's or another's. */
+function stackWithFrame(
+  vm: VM,
+  frameUid: number,
+): { stack: readonly Value[]; frames: readonly Frame[]; index: number } | null {
+  const candidates = [{ stack: vm.stack, frames: vm.frames }, ...(vm.tasks ?? [])]
+  for (const { stack, frames } of candidates) {
+    const index = frames.findIndex((frame) => frame.uid === frameUid)
+    if (index >= 0) return { stack, frames, index }
+  }
+  return null
+}
+
 function resolveLocal(vm: VM, frameUid: number, slot: number, at: string): EditSlot | string {
-  const frames = vm.frames
-  const index = frames.findIndex((frame) => frame.uid === frameUid)
-  if (index < 0) return `no active call has frame uid ${frameUid} ${at}`
+  const found = stackWithFrame(vm, frameUid)
+  if (found === null) return `no active call has frame uid ${frameUid} ${at}`
+  const { stack, frames, index } = found
   const frame = frames[index]!
-  const regionEnd = index === frames.length - 1 ? vm.stack.length : frames[index + 1]!.base
+  const regionEnd = index === frames.length - 1 ? stack.length : frames[index + 1]!.base
   const proto = frame.closure.proto
   const local = liveLocals(proto.debug.locals, frame, regionEnd).find((l) => l.slot === slot)
   if (local === undefined || local.hidden) {
     return `slot ${slot} of ${functionDisplayName(proto)} holds no variable ${at}`
   }
-  return { kind: 'stack', index: frame.base + slot, target: { kind: 'local', frameUid, slot } }
+  const target: WriteTarget = { kind: 'local', frameUid, slot }
+  return { kind: 'stack', stack, index: frame.base + slot, target }
 }
 
 function resolveElement(vm: VM, objectId: number, index: number, at: string): EditSlot | string {
@@ -80,7 +95,7 @@ function resolveCell(vm: VM, cellId: number, at: string): EditSlot | string {
   if (cell === null) return `no captured variable with cell id ${cellId} is reachable ${at}`
   // An open cell aliases its owner's stack slot (§6.7), so the edit goes there.
   return cell.open
-    ? { kind: 'stack', index: cell.stackIndex, target: cellTarget(cell) }
+    ? { kind: 'stack', stack: cell.stack, index: cell.stackIndex, target: cellTarget(cell) }
     : { kind: 'cell', cell, target: cellTarget(cell) }
 }
 
@@ -99,18 +114,22 @@ function findCell(vm: VM, cellId: number): CellObj | null {
 export function writeEdit(vm: VM, slot: EditSlot, value: EditValue): void {
   switch (slot.kind) {
     case 'stack':
-      ;(vm.stack as Value[])[slot.index] = value
+      // Stacks are snapshot roots, copied in full: no write barrier needed.
+      ;(slot.stack as Value[])[slot.index] = value
       break
     case 'global':
       ;(vm.globals as Map<string, Value>).set(slot.name, value)
       break
     case 'item':
       slot.list.items[slot.index] = value
+      vm.noteEdit(slot.list)
       break
     case 'field':
       slot.record.fields.set(slot.key, value)
+      vm.noteEdit(slot.record)
       break
     case 'cell':
       slot.cell.value = value
+      vm.noteEdit(slot.cell)
   }
 }

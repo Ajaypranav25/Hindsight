@@ -1,0 +1,6 @@
+// Clauses resolve names like the start of the body: parameters, enclosing locals, globals and
+// builtins; the body's locals are out of reach (E020).
+fn f(x) ensures result == y { // expect compile error E020: undefined variable 'y'
+  let y = x
+  y
+}

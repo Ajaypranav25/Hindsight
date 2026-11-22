@@ -101,19 +101,32 @@ function depthOf(recording: Recording, depths: Int32Array, t: number): number {
   return t < recording.length ? depths[t]! : depthAtEnd(recording)
 }
 
+/**
+ * With tasks, only the steps of the task running at `t` count, and when none qualifies the step
+ * after that task's last step (forwards) or before its first (backwards) is the fallback.
+ */
 function expectedStep(recording: Recording, t: number, kind: StepKind, forward: boolean): number {
   const n = recording.length
   const depths = recording.depthSeries()
+  const tasks = recording.taskSeries()
+  const task = recording.taskAt(t)
   const d = depthOf(recording, depths, t)
   let low = d
   const delta = forward ? 1 : -1
   for (let u = t + delta; forward ? u < n : u >= 0; u += delta) {
+    if (tasks !== null && tasks[u] !== task) continue
     low = Math.min(low, depths[u]!)
     if (kind === 'out' && depths[u]! < d) return u
     if (kind === 'into' && isStmtStart(recording, u)) return u
     if (kind === 'over' && isStmtStart(recording, u) && depths[u]! <= d && low >= depths[u]!) {
       return u
     }
+  }
+  if (tasks !== null) {
+    const first = tasks.indexOf(task)
+    const last = tasks.lastIndexOf(task)
+    if (forward && first >= 0 && last + 1 > t) return last + 1
+    if (!forward && first > 0 && first - 1 < t) return first - 1
   }
   return forward ? n : 0
 }

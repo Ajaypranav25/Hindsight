@@ -14,7 +14,7 @@ import type {
 } from '../../core/api-types'
 import type { Program } from '../../core/bytecode'
 import type { Diagnostic } from '../../core/diagnostics'
-import type { Answer, Strategy } from '../../core/index'
+import type { Answer, MappedMoment, MomentPrecision, Strategy } from '../../core/index'
 import type { BugFinderState } from './bug-finder'
 import type { LabState, QueryMarks, SliceMark } from './lab'
 
@@ -32,6 +32,16 @@ export interface Settings {
   readonly theme: ThemeSetting
   /** Statements per second during playback. */
   readonly playbackSpeed: number
+  /** After an edit, move the pen to the same moment of the new run (not the same step number). */
+  readonly keepPlace: boolean
+  /** How tasks interleave in the next run (SPEC §10.6); seed and quantum matter for `random`. */
+  readonly schedule: StudioSchedule
+}
+
+export interface StudioSchedule {
+  readonly policy: 'round-robin' | 'random'
+  readonly seed: number
+  readonly quantum: number
 }
 
 export type RunStatus =
@@ -91,6 +101,16 @@ export interface StudioState {
   readonly bugFinder: BugFinderState
   /** The query marks and the sweep on the strip chart (ARCHITECTURE §7.9, §7.13). */
   readonly lab: LabState
+  /** Set when `recording` re-records an edited program: the run before the edit (§11.3). */
+  readonly editRun: EditRun | null
+}
+
+/** An edited program's new run and the run before the edit, for "Since your edit". */
+export interface EditRun {
+  readonly previous: Recording
+  readonly recording: Recording
+  /** How the pen was carried over, when it was mapped to the same moment. */
+  readonly place: { readonly call: string; readonly precision: MomentPrecision } | null
 }
 
 /** One edit of a what-if, as the studio names it. */
@@ -161,6 +181,11 @@ export interface StudioActions {
    * link's `time` places the pen once it has been recorded.
    */
   openSharedSource(source: string, time?: number | null): void
+  /**
+   * Opens a `.sighttrace` file: its program replaces the editor's (keeping the user's own), is
+   * recorded again with its what-if edits, and the pen lands on the saved step.
+   */
+  openTraceFile(bytes: Uint8Array): Promise<void>
   /** Forks the shown run at the pen with `target` set to `value` (`name` labels the edit). */
   forkWhatIf(target: WriteTarget, value: EditValue, name: string): Promise<void>
   /** Leaves what-if mode: the real run comes back with its pen. */
@@ -181,6 +206,8 @@ export interface StudioActions {
   closeBugFinder(): void
   /** Chooses how interviews pick questions; an open interview starts over that way. */
   setBugFinderStrategy(strategy: Strategy): void
+  /** Lets contracts and assertions answer questions (or not); an open interview starts over. */
+  setBugFinderAuto(auto: boolean): void
   /** Marks a query's matches on the strip chart (null clears them). */
   setQueryMarks(query: QueryMarks | null): void
   /**
@@ -194,7 +221,7 @@ export interface StudioActions {
     text: string,
   ): Promise<void>
   /** Opens run `index` of the sweep as a what-if. */
-  openSweepRun(index: number): void
+  openSweepRun(index: number): Promise<void>
   /** Drops the sweep (stopping it if it is still running). */
   closeSweep(): void
   /** Explains in the editor why `line` did not run (ARCHITECTURE §7.10). */
@@ -202,8 +229,11 @@ export interface StudioActions {
   closeWhyNot(): void
   /** Stores the slice computed for the editor. */
   setSlice(slice: SliceMark | null): void
-  /** "What led here?": traces the causes of step `time` (null: stop). */
-  sliceFrom(time: number | null): void
+  /**
+   * "What led here?": traces the causes of step `time` (null: stop); `label` names the step in the
+   * chip ("output line 3"), else it is called by its number.
+   */
+  sliceFrom(time: number | null, label?: string | null): void
   /** Turns the dimming of lines that did not lead to a runtime error on or off. */
   setDimming(dimming: boolean): void
 }
@@ -216,6 +246,8 @@ export interface Engine {
   recordAsync(program: Program, options: AsyncRecordOptions): Promise<Recording>
   /** Compares the real run `a` with a what-if `b`. */
   compare(a: Recording, b: Recording): RecordingComparison
+  /** The moment of run `b` equivalent to step `t` of run `a` (absent: the step number is kept). */
+  mapMoment?(a: Recording, b: Recording, t: number): MappedMoment
 }
 
 /**

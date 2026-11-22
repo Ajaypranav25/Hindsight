@@ -3,7 +3,14 @@
  * with constant values, names, jump targets and line numbers; nested protos follow their parent.
  */
 import type { Constant, FunctionProto, Program } from './bytecode'
-import { instructionLength, isFunctionProto, isPatternConst, Op, OP_NAMES } from './bytecode'
+import {
+  instructionLength,
+  isContractConst,
+  isFunctionProto,
+  isPatternConst,
+  Op,
+  OP_NAMES,
+} from './bytecode'
 import { BUILTIN_NAMES } from './builtin-names'
 import { LineIndex } from './span'
 
@@ -27,6 +34,7 @@ function constantText(constant: Constant | undefined): string {
     return `${constant.name === null ? '<fn>' : `<fn ${constant.name}>`} #${constant.id}`
   }
   if (isPatternConst(constant)) return constant.text
+  if (isContractConst(constant)) return `${constant.kind} ${constant.text}`
   return '?'
 }
 
@@ -65,7 +73,7 @@ function decodeClosure(proto: FunctionProto, ip: number, length: number): Decode
 
 function commentFor(proto: FunctionProto, op: number, a: number, ip: number): string {
   const { constants, debug } = proto
-  if (op === Op.Const || op === Op.Destructure || NAME_OPS.has(op)) {
+  if (op === Op.Const || op === Op.Destructure || op === Op.Check || NAME_OPS.has(op)) {
     return NAME_OPS.has(op) ? String(constants[a]) : constantText(constants[a])
   }
   if (op === Op.GetBuiltin || op === Op.DefineBuiltin) return BUILTIN_NAMES[a] ?? '?'

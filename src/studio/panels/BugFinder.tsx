@@ -15,12 +15,14 @@ import {
   linesText,
   type Recording,
 } from '../../core/index'
-import { liveSession } from '../state/bug-finder'
+import { failedCheck, liveSession } from '../state/bug-finder'
 import { useStudio, useStudioActions } from '../state/context'
 import { isStale } from '../state/selectors'
+import { AnswerAssertions, AutomaticAnswers, AutoToggle } from './AutomaticAnswers'
 import {
   afterCallTime,
   announcement,
+  automaticSummary,
   callAtPen,
   finderView,
   type FinderView,
@@ -153,8 +155,10 @@ function Intro(props: { recording: Recording }) {
   const { recording } = props
   const time = useStudio((s) => s.time)
   const justMyCode = useStudio((s) => s.settings.justMyCode)
+  const auto = useStudio((s) => s.bugFinder.auto)
   const { startBugFinder, seek } = useStudioActions()
   const error = runError(recording)
+  const fromCheck = auto && failedCheck(recording)
   const penCall = useMemo(
     () => callAtPen(recording, time, justMyCode),
     [recording, time, justMyCode],
@@ -169,7 +173,20 @@ function Intro(props: { recording: Recording }) {
         Answer a few questions about the calls your program made, and Hindsight narrows a wrong
         result down to the one function whose own code is wrong.
       </p>
-      {error ? (
+      {error && fromCheck ? (
+        <div className="bf-error" role="note">
+          <p className="bf-text">
+            This run failed a contract or an assertion on line {error.line}: {error.message}. Your
+            contracts and assertions answer the questions they can.
+          </p>
+          <div className="bf-row">
+            <button type="button" className="ch-button bf-start" onClick={() => startBugFinder()}>
+              Find the bug
+            </button>
+            <AutoToggle />
+          </div>
+        </div>
+      ) : error ? (
         <div className="bf-error" role="note">
           <p className="bf-text">
             This run ended with a runtime error on line {error.line}: {error.message}. The bug
@@ -193,6 +210,7 @@ function Intro(props: { recording: Recording }) {
           <button type="button" className="ch-button bf-start" onClick={() => startBugFinder()}>
             Find the bug
           </button>
+          <AutoToggle />
         </div>
       )}
       {penCall && (
@@ -219,7 +237,7 @@ function Interview(props: { view: FinderView }) {
   } = useStudioActions()
   const strategy = useStudio((s) => s.bugFinder.strategy)
   const start = useStudio((s) => s.bugFinder.session?.finder.start ?? null)
-  const asked = useStudio((s) => s.bugFinder.session?.finder.asked ?? 0)
+  const canUndo = useStudio((s) => (s.bugFinder.session?.finder.previous ?? null) !== null)
   const call = view.details.call
   const id = useId()
   const onKeyDown = (event: KeyboardEvent) => {
@@ -252,6 +270,7 @@ function Interview(props: { view: FinderView }) {
       ) : (
         <VerdictBody view={view} />
       )}
+      <AutomaticAnswers answers={view.automatic} />
       <div className="bf-row bf-tools">
         {view.kind === 'question' ? (
           <button
@@ -274,7 +293,7 @@ function Interview(props: { view: FinderView }) {
           type="button"
           className="ch-button ch-button-small"
           aria-keyshortcuts="U"
-          disabled={asked === 0}
+          disabled={!canUndo}
           onClick={undoBugFinder}
         >
           Undo
@@ -299,6 +318,7 @@ function Interview(props: { view: FinderView }) {
         >
           Halve the suspects
         </button>
+        <AutoToggle />
       </div>
     </section>
   )
@@ -361,14 +381,17 @@ function Question(props: {
 
 function VerdictBody(props: { view: FinderView & { kind: 'verdict' } }) {
   const { view } = props
+  const summary = automaticSummary(view.asked, view.automatic.length)
   return (
     <>
       <p className="bf-found" data-certainty={view.certainty}>
         {view.headline}
       </p>
       <p className="bf-text">{view.reason}</p>
+      {summary && <p className="pn-note bf-auto-summary">{summary}</p>}
       {view.details.call.depth > 0 && <CallLine details={view.details} />}
       <InterviewRepairs />
+      <AnswerAssertions />
     </>
   )
 }

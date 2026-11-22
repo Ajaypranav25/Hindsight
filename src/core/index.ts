@@ -26,7 +26,25 @@ import {
   repairSearch as repairSearchWith,
 } from './repair'
 import { record as recordWith, recordAsync as recordAsyncWith } from './recorder'
+import { type InferOptions, type InferResult, inferContractsWith } from './infer'
+import type { CallTree } from './calls'
+import { type ExploreOptions, exploreSchedulesWith, type ScheduleExploration } from './races'
+import {
+  type ByteCodec,
+  decodeTraceFile,
+  decodeTraceFileSync,
+  type TraceBundle,
+} from './trace-file'
+import {
+  openedTrace,
+  replayTrace,
+  replayTraceAsync,
+  type TraceOpenResult,
+  type TraceReplay,
+  type TraceReplayOptions,
+} from './trace-open'
 import type { RuntimeDeps, VM, VMHooks } from './runtime-types'
+import { finishedOutcome } from './tasks-info'
 import { createVM } from './vm'
 
 export * from './api-types'
@@ -48,6 +66,10 @@ export { compareRecordings } from './compare'
 export { formatLiteral, parseLiteralValue } from './literal'
 export * from './calls'
 export * from './bug-finder'
+export * from './oracle'
+export { contractKeywordStarts } from './contract-tokens'
+export { answerAssertions, insertAssertions } from './answer-assertions'
+export type { AnswerAssertion } from './answer-assertions'
 export type { CallEffect, CallEffects } from './call-effects'
 export { callEffects } from './call-effects'
 export { eventsBetween } from './events'
@@ -68,7 +90,49 @@ export type {
   RepairResult,
   RepairSearch,
 } from './repair'
-export { repairExamples } from './repair'
+export { crashCulprit, repairExample, repairExamples } from './repair'
+export * from './run-diff'
+export type { MapMomentOptions, MappedMoment, MomentPrecision } from './run-map'
+export { lineMap, mapMoment } from './run-map'
+export { normalSchedule, taskWaitText } from './tasks-info'
+export type {
+  ExploreOptions,
+  RaceCandidate,
+  RaceWriter,
+  ScheduleDivergence,
+  ScheduleExploration,
+  ScheduleGroup,
+} from './races'
+export { DEFAULT_SCHEDULE_RUNS, MAX_SCHEDULE_RUNS, raceCandidates } from './races'
+export type { InputResult } from './run-input'
+export { withInput } from './run-input'
+export * from './profile'
+export type {
+  ClauseText,
+  ContractAddition,
+  ContractSuggestion,
+  FunctionContracts,
+  InferOptions,
+  InferResult,
+  InsertedContracts,
+  TemplateKind,
+} from './infer'
+export { clauseTexts, insertContracts, withContracts } from './infer'
+export * from './trace-file'
+export type { StepWindow, TraceCheckpoints, TraceFingerprint } from './trace-hash'
+export { fingerprintRecording } from './trace-hash'
+export type {
+  AsyncTraceDeps,
+  TraceBundleInput,
+  TraceBundleResult,
+  TraceDeps,
+  TraceOpenResult,
+  TraceReplay,
+  TraceReplayErrorCode,
+  TraceReplayOptions,
+  TraceVerification,
+} from './trace-open'
+export { replayTrace, replayTraceAsync, traceBundle, verifyTrace } from './trace-open'
 
 /** The prelude source (SPEC Appendix A). */
 export function getLibrarySource(): string {
@@ -121,6 +185,7 @@ export function run(program: Program, options: RunOptions = {}): RunResult {
     builtins: runtime.builtins,
     libraryProtos: runtime.libraryProtos,
     seed: options.seed ?? DEFAULT_SEED,
+    schedule: options.schedule,
   })
   const outputs: OutputEvent[] = []
   vm.hooks = outputHooks(outputs, options.onOutput)
@@ -137,7 +202,7 @@ function stepLimit(value: number | undefined): number {
 }
 
 function outcomeOf(vm: VM, maxSteps: number): Outcome {
-  if (vm.status === 'finished') return { kind: 'finished' }
+  if (vm.status === 'finished') return finishedOutcome(vm)
   if (vm.status === 'error') {
     if (vm.error === null) throw new InternalError('the VM failed without an error')
     return { kind: 'error', error: vm.error }
@@ -178,10 +243,67 @@ export function repairSearch(
   return repairSearchWith({ compile, record }, recording, request, options)
 }
 
+/**
+ * Likely contracts for the functions of a recorded run (ARCHITECTURE §7.17), each checked by
+ * recording the program again with the clauses written in.
+ */
+export function inferContracts(
+  recording: Recording,
+  tree: CallTree,
+  options: InferOptions = {},
+): InferResult {
+  if (tree.recording !== recording) throw new InternalError('the call tree is of another recording')
+  return inferContractsWith({ compile, record }, tree, options)
+}
+
+/**
+ * Records `program` under many random task schedules and explains how their behaviors differ
+ * (ARCHITECTURE §7.18): the race finder.
+ */
+export function exploreSchedules(
+  program: Program,
+  options: ExploreOptions = {},
+): ScheduleExploration {
+  return exploreSchedulesWith(record, program, options)
+}
+
 /** Records a run in slices, yielding to the host between them. */
 export function recordAsync(
   program: Program,
   options: AsyncRecordOptions = {},
 ): Promise<Recording> {
   return recordAsyncWith(program, runtimeDeps(), options)
+}
+
+/**
+ * Records a trace bundle's program again, re-applies its what-if edits and checks the run against
+ * the saved fingerprint (ARCHITECTURE §7.15).
+ */
+export function openTraceBundle(bundle: TraceBundle): TraceReplay {
+  return replayTrace({ compile, record }, bundle)
+}
+
+/** `openTraceBundle` in slices, abortable through `options.signal`. */
+export function openTraceBundleAsync(
+  bundle: TraceBundle,
+  options: TraceReplayOptions = {},
+): Promise<TraceReplay> {
+  return replayTraceAsync({ compile, recordAsync }, bundle, options)
+}
+
+/** Decodes a `.sighttrace` file and opens it; a compressed file needs `gunzip`. */
+export function openTraceFileSync(bytes: Uint8Array, gunzip?: ByteCodec | null): TraceOpenResult {
+  const decoded = decodeTraceFileSync(bytes, gunzip)
+  if (!decoded.ok) return { ok: false, code: 'format', error: decoded.error }
+  return openedTrace(decoded.bundle, openTraceBundle(decoded.bundle))
+}
+
+/** Decodes a `.sighttrace` file (with the host's DecompressionStream) and opens it in slices. */
+export async function openTraceFile(
+  bytes: Uint8Array,
+  options: TraceReplayOptions = {},
+): Promise<TraceOpenResult> {
+  const decoded = await decodeTraceFile(bytes)
+  if (!decoded.ok) return { ok: false, code: 'format', error: decoded.error }
+  return openedTrace(decoded.bundle, await openTraceBundleAsync(decoded.bundle, options))
 }

@@ -86,14 +86,43 @@ function sort(ctx: NativeContext, args: Args): Value {
     return ctx.fail('R019', "'sort' can only sort a list of all numbers or all strings")
   }
   // Array.prototype.sort is stable (ES2019).
-  return ctx.newList(items.slice().sort(compareAscending))
+  const sorted = ctx.newList(items.slice().sort(compareAscending))
+  ctx.scan(sortWork(items.length))
+  return sorted
+}
+
+/** About the number of comparisons a sort of `n` items makes. */
+function sortWork(n: number): number {
+  return n < 2 ? 0 : n * Math.ceil(Math.log2(n))
+}
+
+/** Scanning text runs natively, much faster than a step per code unit. */
+const CODE_UNITS_PER_SCAN = 16
+
+/** Reports a scan of `items` up to `found` (or all of them for -1). */
+function scanned(ctx: NativeContext, items: readonly Value[], found: number): number {
+  ctx.scan(found < 0 ? items.length : found + 1)
+  return found
 }
 
 function contains(ctx: NativeContext, args: Args): Value {
   const container = args[0] as Value
   const needle = args[1] as Value
-  if (typeof container === 'string') return container.includes(stringArg(ctx, 'contains', args, 2))
-  if (isList(container)) return container.items.some((item) => equals(item, needle))
+  if (typeof container === 'string') {
+    const found = container.includes(stringArg(ctx, 'contains', args, 2))
+    ctx.scan(Math.ceil(container.length / CODE_UNITS_PER_SCAN))
+    return found
+  }
+  if (isList(container)) {
+    const items = container.items
+    return (
+      scanned(
+        ctx,
+        items,
+        items.findIndex((item) => equals(item, needle)),
+      ) >= 0
+    )
+  }
   if (isRecord(container)) return typeof needle === 'string' && container.fields.has(needle)
   if (isRange(container)) return rangeContains(container, needle)
   return badArgument(ctx, 'contains', 'a list, string, record or range', 1, container)
@@ -101,9 +130,18 @@ function contains(ctx: NativeContext, args: Args): Value {
 
 function indexOf(ctx: NativeContext, args: Args): Value {
   const sequence = sequenceArg(ctx, 'index_of', args)
-  if (typeof sequence === 'string') return sequence.indexOf(stringArg(ctx, 'index_of', args, 2))
+  if (typeof sequence === 'string') {
+    const found = sequence.indexOf(stringArg(ctx, 'index_of', args, 2))
+    ctx.scan(Math.ceil(sequence.length / CODE_UNITS_PER_SCAN))
+    return found
+  }
   const needle = args[1] as Value
-  return sequence.items.findIndex((item) => equals(item, needle))
+  const items = sequence.items
+  return scanned(
+    ctx,
+    items,
+    items.findIndex((item) => equals(item, needle)),
+  )
 }
 
 function join(ctx: NativeContext, args: Args): Value {
@@ -153,6 +191,7 @@ function listExtremum(
     }
     result = pick(result, item)
   }
+  ctx.scan(items.length)
   return result
 }
 

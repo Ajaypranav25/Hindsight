@@ -6,7 +6,7 @@
  * away: its last decision is replayed and its operands are explained with `origin` ("total was 75,
  * set at step 810"). A function nobody called is explained through its first call site.
  */
-import type { Recording, StateView, ValueView, WriteTarget } from './api-types'
+import type { Recording, RuntimeErrorInfo, StateView, ValueView, WriteTarget } from './api-types'
 import type * as ast from './ast'
 import { Op } from './bytecode'
 import { PREVIEW_LENGTH, valueText } from './call-values'
@@ -186,7 +186,7 @@ function explain(context: Context, line: number, depth: number): WhyNot {
     const guard = found.guards[i]!
     if (guard.kind === 'fn') {
       if (context.within(guard.node.body.span).count > 0) break
-      return neverCalled(context, line, guard, depth)
+      return stoppedAtEntry(context, line, guard) ?? neverCalled(context, line, guard, depth)
     }
     const decision = decisionOf(guard)
     if (context.within(decision.checked).count === 0) continue
@@ -225,6 +225,18 @@ function locate(context: Context, line: number): Found | null {
     return inExpr(body, guards) ?? { span: body.span, guards }
   }
 
+  /** A contract clause (between the parameters and the body) or the body of a function. */
+  const inFunction = (
+    fn: ast.FunctionExpr,
+    name: string | null,
+    guards: readonly Guard[],
+  ): Found | null => {
+    const inside: Guard[] = [...guards, { kind: 'fn', node: fn, name }]
+    const clause = fn.contracts.find((candidate) => covers(candidate.span))
+    if (clause !== undefined) return { span: clause.expr.span, guards: inside }
+    return inBody(fn.body, inside)
+  }
+
   const inStatement = (statement: ast.Stmt, guards: readonly Guard[]): Found | null => {
     switch (statement.kind) {
       case 'ExprStmt':
@@ -232,10 +244,7 @@ function locate(context: Context, line: number): Found | null {
       case 'Let':
         return inExpr(statement.init, guards)
       case 'FnDecl':
-        return inBody(statement.fn.body, [
-          ...guards,
-          { kind: 'fn', node: statement.fn, name: statement.name },
-        ])
+        return inFunction(statement.fn, statement.name, guards)
       case 'Assign':
         return inExpr(statement.value, guards) ?? inExpr(statement.target, guards)
       case 'Return':
@@ -292,7 +301,7 @@ function locate(context: Context, line: number): Found | null {
       case 'Member':
         return inExpr(expr.object, guards)
       case 'Function':
-        return inBody(expr.body, [...guards, { kind: 'fn', node: expr, name: expr.name }])
+        return inFunction(expr, expr.name, guards)
       case 'If': {
         const here = (branch: 'then' | 'else'): Guard[] => [
           ...guards,
@@ -403,12 +412,22 @@ function wentTheLinesWay(why: WhyNot): boolean {
   return why.construct === 'else' && falsy
 }
 
-/** The first step after `last` back at its depth: the evaluated value is then on the stack. */
+/**
+ * The first step after `last` back at its depth in its own task: the evaluated value is then on
+ * the stack. With tasks, other tasks' steps are skipped (their depths are their own).
+ */
 function decisionTime(recording: Recording, last: number): number {
   const depths = recording.depthSeries()
+  const tasks = recording.taskSeries()
+  const task = tasks?.[last]
   const depth = depths[last]!
   let time = last + 1
-  while (time < recording.length && depths[time]! > depth) time++
+  while (
+    time < recording.length &&
+    (depths[time]! > depth || (tasks !== null && tasks[time] !== task))
+  ) {
+    time++
+  }
   return Math.min(time, recording.length)
 }
 
@@ -592,16 +611,58 @@ function callSites(context: Context, name: string): Span[] {
   return sites
 }
 
+/**
+ * A function whose body never ran although it was called: a precondition failed at its entry
+ * (SPEC §7.16). Null when none of its `requires` clauses ran.
+ */
+function stoppedAtEntry(
+  context: Context,
+  line: number,
+  guard: Extract<Guard, { kind: 'fn' }>,
+): WhyNot | null {
+  const { recording } = context
+  const outcome = recording.outcome
+  const checked = guard.node.contracts.some(
+    (clause) => clause.clause === 'requires' && context.within(clause.expr.span).count > 0,
+  )
+  if (!checked || outcome.kind !== 'error' || outcome.error.code !== 'R026') return null
+  const failure = contractFailure(context, outcome.error)
+  if (failure === null) return null
+  const name = guard.name ?? 'the function'
+  const hint = outcome.error.hint === undefined ? '' : ` (${outcome.error.hint})`
+  const step = recording.length.toLocaleString('en-US')
+  return {
+    kind: 'cut-short',
+    line,
+    time: recording.length,
+    sentence: `Line ${line} never ran: ${name} was called, but at step ${step} ${failure}${hint}, so its body never ran.`,
+  }
+}
+
+/** "the precondition `len(xs) > 0` of average (line 2) failed"; null for other errors. */
+function contractFailure(context: Context, error: RuntimeErrorInfo): string | null {
+  if (error.code !== 'R026' && error.code !== 'R027') return null
+  const kind = error.code === 'R026' ? 'precondition' : 'postcondition'
+  const name = error.stack[0]?.name ?? 'the function'
+  const where = context.lineOf(error.span.start)
+  return `the ${kind} \`${context.text(error.span)}\` of ${name} (line ${where}) failed`
+}
+
 function cutShort(context: Context, line: number): WhyNot {
   const { recording } = context
   const outcome = recording.outcome
   if (outcome.kind === 'error') {
     const errorLine = context.lineOf(outcome.error.span.start)
+    const failure = contractFailure(context, outcome.error)
+    const step = recording.length.toLocaleString('en-US')
     return {
       kind: 'cut-short',
       line,
       time: recording.length,
-      sentence: `Line ${line} never ran: the run stopped with an error on line ${errorLine} before reaching it.`,
+      sentence:
+        failure === null
+          ? `Line ${line} never ran: the run stopped with an error on line ${errorLine} before reaching it.`
+          : `Line ${line} never ran: the run stopped at step ${step}, when ${failure}, before reaching it.`,
     }
   }
   if (outcome.kind !== 'finished') {

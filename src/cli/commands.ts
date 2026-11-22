@@ -2,14 +2,16 @@ import type {
   LocalInfo,
   Program,
   ProvenanceEvent,
+  Outcome,
   Recording,
   StateView,
+  TaskView,
   TracedValue,
   WriteTarget,
 } from '../core/index'
 import { compile, disassemble, LineIndex, record, run } from '../core/index'
 import { checkSource } from '../conformance/check'
-import type { Command } from './args'
+import { type Command, isTraceFile } from './args'
 import {
   codeFrame,
   formatDiagnostic,
@@ -19,8 +21,13 @@ import {
   sanitize,
   type Style,
 } from './format'
+import { diffCommand } from './diff'
+import { inferCommand } from './infer'
 import type { CliIO } from './io'
 import { query, repair, slice, solve, whyNotCommand } from './lab'
+import { profileCommand } from './profile'
+import { racesCommand } from './races'
+import { loadTrace, recordingFor, recordTrace } from './trace'
 import { whatIf } from './whatif'
 
 export type ExitCode = 0 | 1 | 2
@@ -29,10 +36,15 @@ export interface Loaded {
   readonly file: string
   readonly source: string
   readonly program: Program
+  /** The run a trace file holds, recorded again (absent for a program file). */
+  readonly recording?: Recording
+  /** The pen saved in a trace file. */
+  readonly traceTime?: number
 }
 
-/** Reads and compiles a file, printing diagnostics on failure. */
+/** Reads and compiles a file (or opens a trace file), printing diagnostics on failure. */
 export function load(io: CliIO, style: Style, file: string): Loaded | null {
+  if (isTraceFile(file)) return loadTrace(io, style, file)
   let source: string
   try {
     source = io.readFile(file)
@@ -57,7 +69,7 @@ export function runCommand(command: Command, io: CliIO): ExitCode {
   const style = makeStyle(io.color)
   switch (command.kind) {
     case 'run':
-      return runFile(io, style, command.file, command.maxSteps, command.seed)
+      return runFile(io, style, command)
     case 'check': {
       const loaded = load(io, style, command.file)
       if (!loaded) return 1
@@ -71,7 +83,11 @@ export function runCommand(command: Command, io: CliIO): ExitCode {
       return 0
     }
     case 'replay':
-      return replay(io, style, command.file, command.at, command.maxSteps, command.seed)
+      return replay(io, style, command)
+    case 'record': {
+      const loaded = load(io, style, command.file)
+      return loaded ? recordTrace(io, style, loaded, command) : 1
+    }
     case 'why':
       return why(io, style, command)
     case 'test':
@@ -100,49 +116,93 @@ export function runCommand(command: Command, io: CliIO): ExitCode {
       const loaded = load(io, style, command.file)
       return loaded ? repair(io, style, loaded, command) : 1
     }
+    case 'diff':
+      return diffCommand(io, command)
+    case 'profile': {
+      const loaded = load(io, style, command.file)
+      return loaded ? profileCommand(io, style, loaded, command) : 1
+    }
+    case 'infer': {
+      const loaded = load(io, style, command.file)
+      return loaded ? inferCommand(io, style, loaded, command) : 1
+    }
+    case 'races':
+      return racesCommand(io, command)
     default:
       return 0
   }
 }
 
-function runFile(io: CliIO, style: Style, file: string, maxSteps: number, seed: number): ExitCode {
+function runFile(io: CliIO, style: Style, command: Extract<Command, { kind: 'run' }>): ExitCode {
+  const { file, maxSteps, seed, schedule } = command
   const loaded = load(io, style, file)
   if (!loaded) return 1
   // Program output is the program's own: it is passed through raw, like any program's stdout.
-  const result = run(loaded.program, { maxSteps, seed, onOutput: (text) => io.stdout(`${text}\n`) })
+  const print = (text: string) => io.stdout(`${text}\n`)
+  const result = loaded.recording
+    ? replayOutput(loaded.recording, print)
+    : run(loaded.program, { maxSteps, seed, schedule, onOutput: print })
   switch (result.outcome.kind) {
     case 'finished':
+      noteUnfinished(io, style, result.outcome)
       return 0
     case 'error':
       io.stderr(`\n${formatRuntimeError(file, loaded.source, result.outcome.error, style)}\n`)
       return 1
-    default:
+    default: {
+      const advice = loaded.recording ? 'saved in the trace' : '(use --max-steps)'
       io.stderr(
-        `\n${style.error('stopped')}: reached the step limit of ${maxSteps.toLocaleString('en-US')} steps (use --max-steps)\n`,
+        `\n${style.error('stopped')}: reached the step limit of ${result.steps.toLocaleString('en-US')} steps ${advice}\n`,
       )
       return 2
+    }
   }
+}
+
+/** Tasks the main task left waiting or runnable when the program ended (SPEC §10.6). */
+function noteUnfinished(io: CliIO, style: Style, outcome: Outcome): void {
+  if (outcome.kind !== 'finished' || outcome.unfinishedTasks === undefined) return
+  const tasks = outcome.unfinishedTasks
+  const listed = tasks
+    .slice(0, 5)
+    .map((task) => `task ${task.id} (${task.name}) ${waitText(task.wait)}`)
+    .join('; ')
+  const more = tasks.length > 5 ? `; and ${tasks.length - 5} more` : ''
+  const count = `${tasks.length} task${tasks.length === 1 ? ' was' : 's were'} unfinished`
+  io.stderr(
+    `${style.dim(sanitize(`note: the main task ended while ${count}: ${listed}${more}`))}\n`,
+  )
+}
+
+/** What a task waits for, as a clause: `waits to receive from channel #3`, `is runnable`. */
+export function waitText(wait: TaskView['wait']): string {
+  if (wait === null) return 'is runnable'
+  if (wait.kind === 'join') return `waits for task ${wait.task}`
+  return wait.kind === 'send'
+    ? `waits to send to channel #${wait.channelId}`
+    : `waits to receive from channel #${wait.channelId}`
+}
+
+/** A trace's run as `run` reports one: its output, printed line by line, and its outcome. */
+function replayOutput(recording: Recording, print: (text: string) => void) {
+  for (const event of recording.outputs) print(event.text)
+  return { outcome: recording.outcome, steps: recording.length }
 }
 
 // --- replay -------------------------------------------------------------------------------------
 
-function replay(
-  io: CliIO,
-  style: Style,
-  file: string,
-  at: number,
-  maxSteps: number,
-  seed: number,
-): ExitCode {
+function replay(io: CliIO, style: Style, command: Extract<Command, { kind: 'replay' }>): ExitCode {
+  const { file, at, maxSteps, seed, schedule } = command
   const loaded = load(io, style, file)
   if (!loaded) return 1
-  const recording = record(loaded.program, { maxSteps, seed })
-  const time = Math.min(at, recording.length)
+  const recording = recordingFor(loaded, { maxSteps, seed, schedule })
+  const time = Math.min(at ?? loaded.traceTime ?? 0, recording.length)
   const view = recording.stateAt(time)
   const lines = [
     `${style.bold(`step ${time.toLocaleString('en-US')}`)} of ${recording.length.toLocaleString('en-US')} ${style.dim(`(${outcomeText(recording)})`)}`,
     ...describeLocation(view, loaded.source, style),
     ...describeFrames(view, loaded.source, style),
+    ...describeTasks(view, style),
     ...describeGlobals(view, style),
     ...describeOutput(recording, view, style),
   ]
@@ -183,6 +243,28 @@ function describeFrames(view: StateView, source: string, style: Style): string[]
       lines.push(
         `    ${sanitize(capture.name)} = ${formatValueView(capture.value)} ${style.dim('(captured)')}`,
       )
+  }
+  return lines
+}
+
+/** Every task with its status, wait and where it stands (programs with tasks only). */
+function describeTasks(view: StateView, style: Style): string[] {
+  if (view.tasks === undefined) return []
+  const lines = [style.bold('tasks:')]
+  for (const task of view.tasks) {
+    const top = task.frames.at(-1)
+    const where =
+      top === undefined ? '' : ` ${style.dim(`(${sanitize(top.name)}, line ${top.line})`)}`
+    const state =
+      task.status === 'done'
+        ? `done, returned ${task.result === null ? 'nil' : formatValueView(task.result)}`
+        : task.status === 'blocked'
+          ? waitText(task.wait)
+          : 'runnable'
+    const marker = task.current ? style.ok('▶') : ' '
+    lines.push(
+      `  ${marker} task ${task.id} ${sanitize(task.name)}: ${state}${task.status === 'done' ? '' : where}`,
+    )
   }
   return lines
 }
@@ -313,7 +395,7 @@ function historyLines(
 function why(io: CliIO, style: Style, command: Extract<Command, { kind: 'why' }>): ExitCode {
   const loaded = load(io, style, command.file)
   if (!loaded) return 1
-  const recording = record(loaded.program, { maxSteps: command.maxSteps, seed: command.seed })
+  const recording = recordingFor(loaded, command)
   const found = findBindings(recording, loaded.source, command.line, command.name)
   const name = sanitize(command.name)
   if (!found) {

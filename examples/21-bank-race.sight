@@ -1,0 +1,25 @@
+// title: Bank race
+// summary: Two tellers move money between the same two accounts at once. Under the default round-robin schedule the books balance; pick Random in Settings > Task schedule and press Next seed a few times (or run hindsight races) and some interleavings lose a transfer. The swim lanes show who wrote last.
+// pen: end
+
+let accounts = {alice: 100, bob: 100}
+
+fn transfer(from, to, amount) {
+  let a = accounts[from]
+  let b = accounts[to]
+  accounts[from] = a - amount
+  accounts[to] = b + amount
+}
+
+fn teller(from, to, times) {
+  for i in 0..times {
+    transfer(from, to, 10)
+  }
+}
+
+let t1 = spawn(teller, "alice", "bob", 5)
+let t2 = spawn(teller, "bob", "alice", 5)
+wait(t1)
+wait(t2)
+let total = accounts.alice + accounts.bob
+print("alice {accounts.alice}, bob {accounts.bob}, total {total}")

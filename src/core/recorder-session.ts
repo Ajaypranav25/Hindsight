@@ -3,15 +3,21 @@
  * snapshot when the cost-aware cadence says so, then execute the step. Shared by `record`,
  * `recordAsync`, `extend` and `extendAsync`; the async drivers run it in slices.
  */
-import type { Outcome, OutputEvent } from './api-types'
+import type { Outcome, OutputEvent, ScheduleOptions } from './api-types'
 import type { Program } from './bytecode'
 import { InternalError } from './diagnostics'
 import type { RuntimeDeps, VM, VMSnapshot } from './runtime-types'
+import { finishedOutcome } from './tasks-info'
 import type { AllocTimes, EventColumns, StepColumns } from './trace-columns'
 import type { TraceSink } from './trace-sink'
 
 const INITIAL_INTERVAL = 256
-/** Thinning starts when the retained snapshots copied more values than this (§7.1.4). */
+/**
+ * Replay between two snapshots may cost up to this many times what restoring one costs, so a seek
+ * costs at most about three restores while snapshots stay rare for big heaps (§7.1.4).
+ */
+const RESTORE_FACTOR = 2
+/** Thinning starts when the retained snapshots hold more values than this (§7.1.4). */
 export const RETAINED_VALUES_LIMIT = 8_000_000
 
 /**
@@ -28,18 +34,25 @@ export interface Pacer {
 export interface SnapshotEntry {
   readonly time: number
   readonly snapshot: VMSnapshot
+  /** The values the snapshot copied (it drives the cadence). */
   readonly size: number
   /** A what-if fork's edited state at its fork step: never thinned (§7.5). */
   readonly pinned?: boolean
 }
 
-/** The retained snapshots and the cadence state that decides when the next one is due. */
+/**
+ * The retained snapshots and the cadence state that decides when the next one is due. Distances
+ * are measured in work (`VM.work`: steps plus the elements single steps allocate or visit), so a
+ * step that sorts or scans a huge list counts for what it costs to replay (§7.1.4).
+ */
 export class SnapshotSchedule {
   private constructor(
     private entries: SnapshotEntry[],
     readonly budget: number,
     private interval: number,
-    private nextTime: number,
+    /** The work at which the next snapshot is due. */
+    private nextWork: number,
+    /** The values the retained snapshots hold, shared values counted once. */
     private retained: number,
   ) {}
 
@@ -53,23 +66,24 @@ export class SnapshotSchedule {
       this.entries.slice(),
       this.budget,
       this.interval,
-      this.nextTime,
+      this.nextWork,
       this.retained,
     )
   }
 
   /**
    * The schedule of a what-if fork at `time` (§7.5): the snapshots before `time`, then the edited
-   * state at `time`, pinned so that thinning keeps it. Every seek at or after `time` then starts
-   * from the edited state, so a replay never runs the parent's unedited future.
+   * state at `time` (taken from `vm`), pinned so that thinning keeps it. Every seek at or after
+   * `time` then starts from the edited state, so a replay never runs the parent's unedited future.
    */
-  forkAt(time: number, snapshot: VMSnapshot): SnapshotSchedule {
+  forkAt(vm: VM, time: number): SnapshotSchedule {
+    const snapshot = vm.snapshot()
     const entries = this.entries.filter((entry) => entry.time < time)
     entries.push({ time, snapshot, size: snapshot.size, pinned: true })
-    const retained = entries.reduce((sum, entry) => sum + entry.size, 0)
-    const schedule = new SnapshotSchedule(entries, this.budget, this.interval, 0, retained)
+    const schedule = new SnapshotSchedule(entries, this.budget, this.interval, 0, 0)
+    schedule.retained = retainedBy(entries)
     schedule.thin()
-    schedule.scheduleAfter(time, snapshot.size)
+    schedule.scheduleAfter(vm.work, snapshot)
     return schedule
   }
 
@@ -81,30 +95,45 @@ export class SnapshotSchedule {
     return this.interval
   }
 
+  /** The work at which the next snapshot is due (compare with `VM.work`). */
   get next(): number {
-    return this.nextTime
+    return this.nextWork
+  }
+
+  /** The values the retained snapshots hold, counting values they share once. */
+  get retainedValues(): number {
+    return this.retained
   }
 
   /** Snapshots the VM at `time` (unless one exists already) and applies the cadence rules. */
   take(vm: VM, time: number): void {
     const last = this.entries[this.entries.length - 1]
-    if (last !== undefined && last.time === time) this.scheduleAfter(time, last.size)
-    else this.add(time, vm.snapshot())
+    if (last !== undefined && last.time === time) this.scheduleAfter(vm.work, last.snapshot)
+    else this.add(time, vm.snapshot(), vm.work)
   }
 
-  /** Retains `snapshot`, taken at `time`, and schedules the next one. */
-  add(time: number, snapshot: VMSnapshot): void {
+  /** Retains `snapshot`, taken at `time` after `work`, and schedules the next one. */
+  add(time: number, snapshot: VMSnapshot, work: number): void {
     const last = this.entries[this.entries.length - 1]
     if (last === undefined || last.time < time) {
       this.entries.push({ time, snapshot, size: snapshot.size })
-      this.retained += snapshot.size
+      this.retained += retainedSince(snapshot, last)
       this.thin()
     }
-    this.scheduleAfter(time, snapshot.size)
+    this.scheduleAfter(work, snapshot)
   }
 
-  private scheduleAfter(time: number, size: number): void {
-    this.nextTime = nextMultiple(time + Math.max(this.interval, 4 * size), this.interval)
+  /**
+   * The next snapshot is due after at least `interval` work, four times the values this one
+   * copied (so copying costs at most a quarter of the run) and twice what restoring it costs.
+   */
+  private scheduleAfter(work: number, snapshot: VMSnapshot): void {
+    const gap = Math.max(
+      this.interval,
+      4 * snapshot.size,
+      RESTORE_FACTOR * (snapshot.restoreSize ?? snapshot.size),
+    )
+    this.nextWork = nextMultiple(work + gap, this.interval)
   }
 
   /** The latest snapshot at or before `time` (time 0 always exists). */
@@ -136,10 +165,23 @@ export class SnapshotSchedule {
       const kept = this.entries.filter((entry, index) => index % 2 === 0 || entry.pinned === true)
       if (kept.length === this.entries.length) return
       this.entries = kept
-      this.retained = this.entries.reduce((sum, entry) => sum + entry.size, 0)
+      this.retained = retainedBy(kept)
       this.interval *= 2
     }
   }
+}
+
+/** The values `snapshot` holds beyond what the retained snapshot before it shares (§6.8). */
+function retainedSince(snapshot: VMSnapshot, previous: SnapshotEntry | undefined): number {
+  return snapshot.retainedSince?.(previous?.snapshot ?? null) ?? snapshot.size
+}
+
+/** The values a list of snapshots (in time order, each built on the ones before) holds. */
+function retainedBy(entries: readonly SnapshotEntry[]): number {
+  let total = 0
+  for (let i = 0; i < entries.length; i++)
+    total += retainedSince(entries[i]!.snapshot, entries[i - 1])
+  return total
 }
 
 function nextMultiple(value: number, interval: number): number {
@@ -151,6 +193,14 @@ export interface EndLocation {
   readonly protoId: number
   readonly ip: number
   readonly depth: number
+  /** The task that failed or would run next. */
+  readonly task: number
+}
+
+/** What a task that was switched away from does now: 0 runnable, 1 blocked, 2 done. */
+function switchState(vm: VM, task: number): number {
+  const status = vm.tasks?.[task - 1]?.status
+  return status === 'blocked' ? 1 : status === 'done' ? 2 : 0
 }
 
 /** Everything a finished recording needs; shared buffers are read only below its own counts. */
@@ -158,6 +208,8 @@ export interface RecordingCore {
   readonly program: Program
   readonly runtime: RuntimeDeps
   readonly seed: number
+  /** How tasks interleaved (absent: round-robin); every VM replaying this run uses it. */
+  readonly taskSchedule?: ScheduleOptions
   readonly heapLimit: number
   readonly steps: StepColumns
   readonly events: EventColumns
@@ -172,12 +224,18 @@ export interface RecordingCore {
   readonly endSnapshot: VMSnapshot | null
   /** The step limit this recording ran under (reported by `step-limit` outcomes). */
   readonly maxSteps: number
+  /**
+   * Whether any of its steps ran with tasks (`steps.taskIds` may exist for a longer extension
+   * sharing the columns, so this recording's own answer is kept).
+   */
+  readonly hasTasks: boolean
 }
 
 export interface SessionInit {
   readonly program: Program
   readonly runtime: RuntimeDeps
   readonly seed: number
+  readonly taskSchedule?: ScheduleOptions
   readonly heapLimit: number
   readonly steps: StepColumns
   readonly events: EventColumns
@@ -234,12 +292,16 @@ export class RecordingSession {
       const frames = vm.frames
       const top = frames[frames.length - 1]!
       steps.set(t, top.closure.proto.id, top.ip, frames.length - 1)
-      if (t >= schedule.next) schedule.take(vm, t)
+      const tasks = vm.tasks !== null || steps.taskIds !== null
+      const running = vm.taskId
+      if (tasks) steps.setTask(t, running)
+      if (vm.work >= schedule.next) schedule.take(vm, t)
       vm.step()
       if (vm.status === 'error') {
         this.init.sink.discardFrom(t)
         return this.end(t, 'error')
       }
+      if (vm.taskId !== running) steps.addSwitch(t + 1, switchState(vm, running))
       t++
       sinceCheck++
       if (vm.status === 'finished') return this.end(t, 'finished')
@@ -259,7 +321,7 @@ export class RecordingSession {
     let outcome: Outcome
     switch (kind) {
       case 'finished':
-        outcome = { kind: 'finished' }
+        outcome = finishedOutcome(vm)
         break
       case 'error': {
         const error = vm.error
@@ -269,6 +331,7 @@ export class RecordingSession {
           protoId: steps.protoIds[length]!,
           ip: steps.ips[length]!,
           depth: steps.depths[length]!,
+          task: steps.taskIds?.[length] ?? 1,
         }
         break
       }
@@ -279,9 +342,14 @@ export class RecordingSession {
             : { kind: 'aborted' }
         const frames = vm.frames
         const top = frames[frames.length - 1]!
-        end = { protoId: top.closure.proto.id, ip: top.ip, depth: frames.length - 1 }
+        end = {
+          protoId: top.closure.proto.id,
+          ip: top.ip,
+          depth: frames.length - 1,
+          task: vm.taskId,
+        }
         endSnapshot = vm.snapshot()
-        schedule.add(length, endSnapshot)
+        schedule.add(length, endSnapshot, vm.work)
       }
     }
     vm.hooks = null
@@ -289,6 +357,7 @@ export class RecordingSession {
       program: this.init.program,
       runtime: this.init.runtime,
       seed: this.init.seed,
+      taskSchedule: this.init.taskSchedule,
       heapLimit: this.init.heapLimit,
       steps,
       events: this.init.events,
@@ -301,6 +370,7 @@ export class RecordingSession {
       schedule,
       endSnapshot,
       maxSteps: this.init.maxSteps,
+      hasTasks: steps.taskIds !== null,
     }
     return this.core
   }

@@ -6,6 +6,8 @@ export default defineConfig({
   // Relative asset URLs, so the built studio works from any path (GitHub Pages serves it under
   // /<repository>/, not at the site root).
   base: './',
+  // The analysis worker (src/studio/analysis) is an ES module, like the page.
+  worker: { format: 'es' },
   build: {
     outDir: 'dist/studio',
     target: 'es2022',

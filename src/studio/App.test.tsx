@@ -66,6 +66,7 @@ describe('App', () => {
       'Variables',
       'Heap',
       'Bug finder',
+      'Profile',
       'Console',
     ])
     expect(tabs[1]!.getAttribute('aria-selected')).toBe('true')

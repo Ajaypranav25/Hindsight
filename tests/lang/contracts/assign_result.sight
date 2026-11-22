@@ -1,0 +1,2 @@
+// `result` is immutable (E021).
+fn f(x) ensures (fn() { result = 1 })() == nil { x } // expect compile error E021: cannot assign to 'result' because it is the function's result

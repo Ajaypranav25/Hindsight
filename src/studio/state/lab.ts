@@ -7,20 +7,19 @@
  */
 import type { StoreApi } from 'zustand/vanilla'
 import {
-  compareRecordings,
   type EditValue,
   type ForkError,
-  formatLiteral,
   type QueryResult,
   type Recording,
-  sweepAsync,
-  type SweepRun,
+  sliceProblem,
   type WhyNot,
   whyNot,
   type WriteTarget,
 } from '../../core/index'
+import type { CausalLink, SliceSummary, SweepRunSummary, SweepSummary } from '../analysis/protocol'
+import { analyze } from '../analysis/service'
 import type { StudioActions, StudioState, StudioStore } from './types'
-import { PEN_AT_END_NOTICE, whatIfLabel } from './what-if'
+import { PEN_AT_END_NOTICE } from './what-if'
 
 /** A query's answer, marked on the strip chart of the recording it was asked about. */
 export interface QueryMarks {
@@ -43,7 +42,8 @@ export interface SweepState {
   /** Values forked so far (runs and failures). */
   readonly done: number
   readonly running: boolean
-  readonly runs: readonly SweepRun[]
+  /** The runs without their recordings (a row is forked again when it is opened). */
+  readonly runs: readonly SweepRunSummary[]
   readonly failed: readonly { readonly value: EditValue; readonly error: ForkError }[]
 }
 
@@ -54,11 +54,62 @@ export interface WhyNotMark {
   readonly why: WhyNot
 }
 
-/** The lines with a causal path to step `at` (null: the run is too long to analyze). */
+/**
+ * The backward slice of step `at` (ARCHITECTURE §7.8) as the editor and the strip chart show it.
+ * `lines` is null when the run is too long to analyze; the other parts are then empty.
+ */
 export interface SliceMark {
   readonly recording: Recording
   readonly at: number
+  /** The lines with a causal path to step `at`. */
   readonly lines: ReadonlySet<number> | null
+  /** Per step `0..N`: 1 when the step is in the slice (null without a slice). */
+  readonly marks: Uint8Array | null
+  /** The named writes the step was computed from, newest first. */
+  readonly chain: readonly CausalLink[]
+  readonly chainTotal: number
+  /** The line the sliced step ran on (the effect), when it is user code. */
+  readonly effectLine: number | null
+  /** Why there is no slice, when there is none. */
+  readonly problem: string | null
+}
+
+export const SLICE_TOO_LONG = 'This run is too long to trace'
+export const SLICE_FAILED = 'The causes could not be traced'
+
+/**
+ * The mark for a slice summary from the analysis service (null: no slice, for `problem`; by
+ * default the core's reason, such as tasks, else the run's length).
+ */
+export function sliceMark(
+  recording: Recording,
+  at: number,
+  summary: SliceSummary | null,
+  problem?: string,
+): SliceMark {
+  if (summary === null) {
+    problem ??= sliceProblem(recording) ?? SLICE_TOO_LONG
+    return {
+      recording,
+      at,
+      lines: null,
+      marks: null,
+      chain: [],
+      chainTotal: 0,
+      effectLine: null,
+      problem,
+    }
+  }
+  return {
+    recording,
+    at,
+    problem: null,
+    lines: new Set(summary.lines),
+    marks: summary.marks,
+    chain: summary.chain,
+    chainTotal: summary.chainTotal,
+    effectLine: summary.effectLine,
+  }
 }
 
 export interface LabState {
@@ -67,8 +118,15 @@ export interface LabState {
   readonly whyNot: WhyNotMark | null
   /** The slice last computed for the editor. */
   readonly slice: SliceMark | null
-  /** "What led here?": the step the user asked to trace; it lasts while the pen stays there. */
-  readonly sliceAt: { readonly recording: Recording; readonly time: number } | null
+  /**
+   * "What led here?" / "What led to this?": the step the user asked to trace, and what to call it
+   * ("output line 3"); it lasts until it is dismissed.
+   */
+  readonly sliceAt: {
+    readonly recording: Recording
+    readonly time: number
+    readonly label: string | null
+  } | null
   /** Dim the lines that did not lead to a runtime error. */
   readonly dimming: boolean
 }
@@ -91,14 +149,15 @@ export function liveWhyNot(lab: LabState, recording: Recording | null): WhyNotMa
 }
 
 /**
- * The step the editor wants traced: the pen's when the user asked there, else the failure of a
- * run that ended in an error (while dimming is on and the run is short enough); null for none.
+ * The step the editor wants traced: the one the user asked about ("What led here?", "What led to
+ * this?"), which stays traced while the pen explores its causes, else the failure of a run that
+ * ended in an error (while dimming is on and the run is short enough); null for none.
  */
 export function wantedSliceStep(state: StudioState): number | null {
-  const { recording, time, lab } = state
+  const { recording, lab } = state
   if (recording === null || state.recordedSource !== state.source) return null
   const asked = lab.sliceAt
-  if (asked !== null && asked.recording === recording && asked.time === time) return time
+  if (asked !== null && asked.recording === recording) return asked.time
   const failed = recording.outcome.kind === 'error'
   return failed && lab.dimming && recording.length <= MAX_AUTO_SLICE_STEPS ? recording.length : null
 }
@@ -138,14 +197,18 @@ type LabActions = Pick<
   | 'setDimming'
 >
 
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
 export function labActions(
   get: StoreApi<StudioStore>['getState'],
   set: StoreApi<StudioStore>['setState'],
 ): LabActions {
   /** The sweep in flight; aborting it stops its remaining forks. */
-  let pending: { aborted: boolean } | null = null
+  let pending: AbortController | null = null
   const stop = (): void => {
-    if (pending !== null) pending.aborted = true
+    pending?.abort()
     pending = null
   }
   return {
@@ -158,14 +221,8 @@ export function labActions(
       if (recording === null || status.kind === 'recording') return
       if (time >= recording.length) return set({ notice: PEN_AT_END_NOTICE })
       stop()
-      const token = { aborted: false }
-      pending = token
-      // The sweep is about the run on screen: it ends when another run is shown.
-      const signal = {
-        get aborted() {
-          return token.aborted || get().recording !== recording
-        },
-      }
+      const controller = new AbortController()
+      pending = controller
       const started: SweepState = {
         recording,
         time,
@@ -179,23 +236,30 @@ export function labActions(
         failed: [],
       }
       set({ lab: { ...get().lab, sweep: started } })
-      const result = await sweepAsync(recording, time, target, values, {
-        signal,
-        onRun: (done) => {
-          const sweep = get().lab.sweep
-          if (sweep === started || sweep?.recording === recording) {
-            set({ lab: { ...get().lab, sweep: { ...started, done } } })
-          }
-        },
-      })
-      if (pending === token) pending = null
+      // The sweep is about the run on screen: it ends when another run is shown.
+      const progress = (done: number): void => {
+        if (get().recording !== recording) return controller.abort()
+        if (get().lab.sweep?.recording === recording) {
+          set({ lab: { ...get().lab, sweep: { ...started, done } } })
+        }
+      }
+      let result: SweepSummary | null = null
+      let problem: string | null = null
+      try {
+        const request = { kind: 'sweep', time, target, values } as const
+        result = (await analyze(recording, request, controller.signal, progress)).sweep
+      } catch (error) {
+        if (!controller.signal.aborted) problem = errorText(error)
+      }
       // Closed, or replaced by a newer sweep: that already settled the state.
-      if (token.aborted) return
-      const current = get().lab.sweep
-      if (current?.recording !== recording) return
-      if (get().recording !== recording) {
+      if (pending !== controller) return
+      pending = null
+      if (get().lab.sweep?.recording !== recording) return
+      if (result === null || get().recording !== recording) {
         // Another run was shown before every value was tried: half a sweep is not kept.
-        return set({ lab: { ...get().lab, sweep: null } })
+        set({ lab: { ...get().lab, sweep: null } })
+        if (problem !== null) set({ notice: { text: `No sweep: ${problem}`, tone: 'error' } })
+        return
       }
       set({
         lab: {
@@ -211,33 +275,15 @@ export function labActions(
       })
     },
 
-    openSweepRun(index) {
-      const { lab, recording, whatIf } = get()
+    async openSweepRun(index) {
+      const { lab, recording } = get()
       const sweep = liveSweep(lab, recording)
       const run = sweep?.runs[index]
-      if (sweep === null || run === undefined || recording === null) return
-      // The same state a manual what-if at that step with that value leaves behind.
-      const parent = whatIf?.parent ?? recording
-      const earlier = whatIf?.edits.filter((edit) => edit.time <= sweep.time) ?? []
-      const edits = [
-        ...earlier,
-        { time: sweep.time, text: `${sweep.name} = ${formatLiteral(run.value)}` },
-      ]
-      get().stopPlay()
-      set({
-        recording: run.recording,
-        time: sweep.time,
-        selectedFrameUid: null,
-        originMark: null,
-        whatIf: {
-          parent,
-          parentTime: whatIf?.parentTime ?? sweep.time,
-          edits,
-          label: whatIfLabel(edits),
-          comparison:
-            parent === recording ? run.comparison : compareRecordings(parent, run.recording),
-        },
-      })
+      if (sweep === null || run === undefined) return
+      // The run is forked again on this thread (the sweep kept only its summary), leaving the
+      // same state a manual what-if at that step with that value leaves behind.
+      get().seek(sweep.time)
+      await get().forkWhatIf(sweep.target, run.value, sweep.name)
     },
 
     closeSweep() {
@@ -260,9 +306,9 @@ export function labActions(
       set({ lab: { ...get().lab, slice } })
     },
 
-    sliceFrom(time) {
+    sliceFrom(time, label = null) {
       const { recording, lab } = get()
-      const sliceAt = time === null || recording === null ? null : { recording, time }
+      const sliceAt = time === null || recording === null ? null : { recording, time, label }
       set({ lab: { ...lab, sliceAt } })
     },
 

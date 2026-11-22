@@ -730,3 +730,22 @@
     display: none;
   }
 }
+
+.ch-schedule-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.ch-number {
+  width: 7ch;
+  padding: 0.15rem 0.3rem;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+}

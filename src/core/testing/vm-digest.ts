@@ -1,25 +1,47 @@
 /**
  * A complete, id-preserving text digest of a VM's state for tests that compare machines
  * (snapshot/restore, hooks on versus off). Built from a snapshot so it sees every field of the
- * machine record, including the object counter and the generator.
+ * machine record, including the object counter and the generator. Taking the snapshot makes it
+ * the machine's base for later snapshots (§6.8), which only exercises structural sharing more.
  */
-import type { HeapObject, Value, VM } from '../runtime-types'
+import type { HeapObject, Task, Value, VM } from '../runtime-types'
 import { MachineSnapshot } from '../vm-snapshot'
 
 export function digest(vm: VM): string {
   const snapshot = vm.snapshot()
   if (!(snapshot instanceof MachineSnapshot)) throw new Error('not a machine snapshot')
-  const record = snapshot.record
+  const record = snapshot.thaw()
   const seen = new Set<HeapObject>()
   const objects: string[] = []
   const describe = (value: Value): string => describeValue(value, seen, objects)
   const parts = [
     `time=${record.time} status=${record.status} next=${record.nextObjectId}/${record.nextFrameUid}`,
-    `rng=${record.rngState}`,
+    `rng=${record.rngState} allocated=${record.allocated} scanned=${record.scanned}`,
     `stack=${record.stack.map(describe).join(',')}`,
     `frames=${record.frames.map((f) => `${f.uid}:${f.closure.proto.id}@${f.ip}+${f.base}`).join(',')}`,
     `cells=${record.openCells.map((c) => `${c.id}@${c.stackIndex}`).join(',')}`,
     `globals=${Array.from(record.globals, ([k, v]) => `${k}=${describe(v)}`).join(',')}`,
+    `sched=${record.preemptAt}/${record.schedState}`,
+    ...(record.tasks ?? []).map((task) => taskLine(task, task === record.current, describe)),
+  ]
+  return [...parts, ...objects].join('\n')
+}
+
+/**
+ * A digest of the live state through the public `VM` interface only, without taking a snapshot (so
+ * it does not change the machine's base or its delta-restore state). It omits the object counter
+ * and the generator, which only a snapshot sees.
+ */
+export function liveDigest(vm: VM): string {
+  const seen = new Set<HeapObject>()
+  const objects: string[] = []
+  const describe = (value: Value): string => describeValue(value, seen, objects)
+  const parts = [
+    `time=${vm.time} status=${vm.status} work=${vm.work}`,
+    `stack=${vm.stack.map(describe).join(',')}`,
+    `frames=${vm.frames.map((f) => `${f.uid}:${describe(f.closure)}@${f.ip}+${f.base}`).join(',')}`,
+    `cells=${vm.openCells.map((c) => `${describe(c)}@${c.stackIndex}`).join(',')}`,
+    `globals=${Array.from(vm.globals, ([k, v]) => `${k}=${describe(v)}`).join(',')}`,
   ]
   return [...parts, ...objects].join('\n')
 }
@@ -62,5 +84,29 @@ function contents(object: HeapObject, work: Value[]): string {
       return `range ${object.start} ${object.end} ${object.step} ${object.inclusive}`
     case 'native':
       return `native ${object.name}`
+    case 'task':
+      return `task ${object.task} ${object.name}`
+    case 'channel':
+      for (const item of object.items) work.push(item)
+      return `channel ${object.capacity} [${object.items.map(atom).join(',')}] ${object.closed ? 'closed' : 'open'}`
   }
+}
+
+/** One task: status, wait, result and (for tasks other than the running one) its arrays. */
+function taskLine(task: Task, running: boolean, describe: (value: Value) => string): string {
+  const wait =
+    task.wait === null
+      ? '-'
+      : task.wait.kind === 'join'
+        ? `join ${task.wait.task}`
+        : `${task.wait.kind} ${describe(task.wait.channel)}`
+  const object = task.object === null ? '-' : describe(task.object)
+  const head = `task ${task.id} ${task.name} ${task.status} ${wait} since=${task.since} result=${describe(task.result)} object=${object}`
+  if (running) return `${head} running`
+  return [
+    head,
+    `  stack=${task.stack.map(describe).join(',')}`,
+    `  frames=${task.frames.map((f) => `${f.uid}:${f.closure.proto.id}@${f.ip}+${f.base}`).join(',')}`,
+    `  cells=${task.openCells.map((c) => `${c.id}@${c.stackIndex}`).join(',')}`,
+  ].join('\n')
 }

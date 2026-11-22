@@ -6,6 +6,7 @@ import type {
   BinaryOp,
   Block,
   Call,
+  ContractClause,
   Expr,
   FunctionExpr,
   IfExpr,
@@ -425,6 +426,7 @@ export abstract class ExpressionParser extends PatternParser {
       kind: 'Function',
       name: null,
       params,
+      contracts: [],
       body,
       form: 'lambda',
       span: this.spanFrom(bar.start),
@@ -437,22 +439,54 @@ export abstract class ExpressionParser extends PatternParser {
     return this.parseFunctionTail(start, null)
   }
 
-  /** `"(" [ params ] ")" block` of `fn NAME(…)` or `fn(…)`; the current token is `(`. */
+  /**
+   * `"(" [ params ] ")" { contract } block` of `fn NAME(…)` or `fn(…)`; the current token is `(`.
+   */
   protected parseFunctionTail(start: number, name: string | null): FunctionExpr {
     this.enter()
     this.openConstruct(this.next())
     const params = this.parseParams(')')
     this.closeConstruct()
+    const contracts = this.parseContracts()
     const body = this.parseBlock()
     this.leave()
     return this.node({
       kind: 'Function',
       name,
       params,
+      contracts,
       body,
       form: 'fn',
       span: this.spanFrom(start),
     })
+  }
+
+  /**
+   * `{ ( "requires" | "ensures" ) expr }` between a `fn`'s `)` and its body. The words are
+   * contextual keywords: identifiers everywhere else. A keyword may start a new line; the clause
+   * expression follows the newline rules of the enclosing context, like an `if` condition, so a
+   * `{` after a complete operand begins the body (SPEC §3.2).
+   */
+  private parseContracts(): ContractClause[] {
+    const clauses: ContractClause[] = []
+    for (;;) {
+      const keyword = this.peek()
+      const word = keyword.kind === 'Identifier' ? keyword.value : null
+      if (word !== 'requires' && word !== 'ensures') return clauses
+      this.next()
+      this.enter()
+      const expr = this.parseExpr()
+      this.leave()
+      clauses.push(
+        this.node({
+          kind: 'Contract',
+          clause: word,
+          expr,
+          keywordSpan: span(keyword.start, keyword.end),
+          span: this.spanFrom(keyword.start),
+        }),
+      )
+    }
   }
 
   /**
