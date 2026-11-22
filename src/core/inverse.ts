@@ -273,6 +273,10 @@ export function* inverseSearch(
     exhausted: false,
     problem,
   })
+  // Candidates come from the backward slice, which programs with tasks do not have (§7.8).
+  if (recording.taskSeries() !== null) {
+    return nothing('The inverse what-if is not available for programs with tasks yet.')
+  }
   if (typeof found === 'string') return nothing(found)
   // A constant of its own type: the generators below close over it.
   const target: Target = found

@@ -151,12 +151,7 @@ describe('the task series', () => {
 })
 
 describe('seeking with tasks (ARCHITECTURE §10.3)', () => {
-  function referenceView(
-    source: string,
-    schedule: ScheduleOptions,
-    recording: Recording,
-    t: number,
-  ) {
+  function referenceView(schedule: ScheduleOptions, recording: Recording, t: number) {
     const program = recording.program
     const vm = tasksVM(program, schedule)
     vm.runUntil(t)
@@ -193,7 +188,7 @@ describe('seeking with tasks (ARCHITECTURE §10.3)', () => {
           fc.array(fc.integer({ min: 0, max: n }), { minLength: 1, maxLength: 10 }),
           (times) => {
             for (const t of times) {
-              expectSameView(recording.stateAt(t), referenceView(source, RANDOM, recording, t))
+              expectSameView(recording.stateAt(t), referenceView(RANDOM, recording, t))
               const current = recording.stateAt(t).tasks?.find((task) => task.current)
               if (current !== undefined) expect(current.id).toBe(recording.taskAt(t))
             }

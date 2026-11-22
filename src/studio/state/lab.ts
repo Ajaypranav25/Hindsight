@@ -11,6 +11,7 @@ import {
   type ForkError,
   type QueryResult,
   type Recording,
+  sliceProblem,
   type WhyNot,
   whyNot,
   type WriteTarget,
@@ -76,14 +77,18 @@ export interface SliceMark {
 export const SLICE_TOO_LONG = 'This run is too long to trace'
 export const SLICE_FAILED = 'The causes could not be traced'
 
-/** The mark for a slice summary from the analysis service (null: no slice, for `problem`). */
+/**
+ * The mark for a slice summary from the analysis service (null: no slice, for `problem`; by
+ * default the core's reason, such as tasks, else the run's length).
+ */
 export function sliceMark(
   recording: Recording,
   at: number,
   summary: SliceSummary | null,
-  problem = SLICE_TOO_LONG,
+  problem?: string,
 ): SliceMark {
   if (summary === null) {
+    problem ??= sliceProblem(recording) ?? SLICE_TOO_LONG
     return {
       recording,
       at,

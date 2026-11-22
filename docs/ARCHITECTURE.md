@@ -862,8 +862,9 @@ code is wrong. It is built only on the public `Recording` API.
 
 ### 7.7 Events by time (`events.ts`)
 
-`eventsBetween(recording, from, to, limit?)` returns the events with `from <= time < to` in time
-order (the first `limit`, default 10,000, with the total). `Recording.history` answers "what
+`eventsBetween(recording, from, to, limit?, task?)` returns the events with `from <= time < to` in
+time order (the first `limit`, default 10,000, with the total); with `task`, only those of steps
+that task ran. `Recording.history` answers "what
 happened to this target"; this answers "what happened during these steps".
 
 ### 7.8 Dynamic dependence and slices (`dependence*.ts`, `slice.ts`)
@@ -889,6 +890,11 @@ source lines they ran on; `errorSlice` slices the instruction a failed run stopp
 R027 the `Check`, which depends on its clause's value, so the slice holds what the clause read);
 `upstreamWrites` lists the declarations and writes performed by steps of a slice, with names.
 
+**Tasks.** The shadow follows one call stack and does not see values handed over by channels or
+completed blocking calls, so `dependenceOf` returns null for recordings with tasks rather than
+wrong edges; `sliceProblem(recording)` gives the reason a slice is missing (`SLICE_TASKS_PROBLEM`
+or `SLICE_LENGTH_PROBLEM`), and the CLI, MCP tools and studio show it.
+
 ### 7.9 The query language (`query.ts`, `query-eval.ts`)
 
 `queryRecording(recording, text, { limit })` jumps to moments by what was true then:
@@ -908,7 +914,9 @@ value at a moment (a name out of scope) neither starts nor ends a stretch on its
 continues if the condition holds again and ends at that moment if not. `changed` follows objects by
 id, so a record is found whatever it is called where it is written. `calls` judges a call just
 before its `Return` runs (parameters as they are then, `ret` the value on top of the stack); a call
-that did not return has no `ret`.
+that did not return has no `ret`. With tasks, the state at a step is the running task's, so
+conditions read that task's frames and `calls` judges every call in its own task (the call tree,
+§7.6).
 
 ### 7.10 Negative provenance (`why-not.ts`)
 
@@ -924,7 +932,7 @@ source text, so shadowing is not resolved. Contracts: a line in a function whose
 failed at its entry is `cut-short` ("average was called, but at step 90 the precondition
 `len(xs) > 0` of average (line 2) failed (the caller passed xs = []), so its body never ran"); a run
 cut short by R026/R027 names the failed clause; a contract clause's own line is located like a
-body line.
+body line. With tasks, the decision is the next step of the guard's own task at its depth.
 
 ### 7.11 The inverse what-if (`inverse.ts`)
 
@@ -937,7 +945,8 @@ bisection takes over once two values bracket the goal; whole numbers stay whole,
 solution is replaced by the roundest value that still works. Goals with nothing to measure (a
 crash, a text) are probed with nearby values. The search is a generator of fork requests
 (`inverseSearch`) with a sync driver and an async one (`solveInverseAsync`, sliced forks, abort
-signal); it stops at 300 forks, 24 candidates or 3 solutions.
+signal); it stops at 300 forks, 24 candidates or 3 solutions. Programs with tasks have no slices
+(§7.8), so the search refuses them with a `problem`.
 
 ### 7.12 Repair previews (`repair.ts`)
 
@@ -948,13 +957,15 @@ the original run, then checked: with `{kind: 'examples'}` every call judged righ
 again and every call judged wrong must be made again and return something else
 (`repairExamples(tree, finderState)` turns an interview into examples); with `{kind: 'crash'}` the
 run must finish. A passing mutant is a preview, not a proof: it reports what the wrong calls return
-now so the intended fix can be told from one that is merely different.
+now so the intended fix can be told from one that is merely different. Mutants run under the
+original's seed and task schedule (SPEC §10.6).
 
 ### 7.13 Sweeps and heap differences (`sweep.ts`, `heap-diff.ts`)
 
 `parseSweepValues` reads `1..20` (both ends included, also written `1..=20`), `0..100 step 10` or a
 comma list of literals, at most 64 values; `sweep`/`sweepAsync` fork the run once per value at one
-step and report each run with its comparison and deepest call depth. `diffHeaps(a, b)` lists the
+step and report each run with its comparison and deepest call depth (forks keep the task
+schedule). `diffHeaps(a, b)` lists the
 references (from variables into the heap and between objects) that only one of two states has.
 
 ### 7.14 Differential execution (`run-diff*.ts`, `run-input.ts`)

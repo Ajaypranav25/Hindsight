@@ -9,6 +9,8 @@ import {
   diffHeaps,
   type EditValue,
   errorSlice,
+  SLICE_LENGTH_PROBLEM,
+  sliceProblem,
   type Recording,
   solveInverse,
   whyNot,
@@ -305,7 +307,7 @@ function slice(context: ToolContext, args: Args): Json {
     step === recording.length
       ? (errorSlice(recording) ?? backwardSlice(recording, step))
       : backwardSlice(recording, step)
-  if (found === null) throw new ToolError('This run is too long to analyze')
+  if (found === null) throw new ToolError(sliceProblem(recording) ?? SLICE_LENGTH_PROBLEM)
   const ran = [...recording.lineHitCounts().keys()].sort((a, b) => a - b)
   const lines = [...found.lines].sort((a, b) => a - b)
   return {

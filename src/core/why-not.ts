@@ -412,12 +412,22 @@ function wentTheLinesWay(why: WhyNot): boolean {
   return why.construct === 'else' && falsy
 }
 
-/** The first step after `last` back at its depth: the evaluated value is then on the stack. */
+/**
+ * The first step after `last` back at its depth in its own task: the evaluated value is then on
+ * the stack. With tasks, other tasks' steps are skipped (their depths are their own).
+ */
 function decisionTime(recording: Recording, last: number): number {
   const depths = recording.depthSeries()
+  const tasks = recording.taskSeries()
+  const task = tasks?.[last]
   const depth = depths[last]!
   let time = last + 1
-  while (time < recording.length && depths[time]! > depth) time++
+  while (
+    time < recording.length &&
+    (depths[time]! > depth || (tasks !== null && tasks[time] !== task))
+  ) {
+    time++
+  }
   return Math.min(time, recording.length)
 }
 
