@@ -103,6 +103,10 @@ and `result` stay ordinary names everywhere else.
 | **Console line menu**           | Right-click a console line (or press Shift+F10 or the ContextMenu key on it) for Make this print…, What led to this?, Go to this moment and Copy line.                                                                                                                                                                                                                                                      |
 | **Sweeps**                      | Type `1..20` instead of one value in a what-if: the run forks once per value, every run is drawn as a ghost trace on the strip chart and listed with its steps, depth, outcome and output change; a row opens that run.                                                                                                                                                                                     |
 | **Heap ghost edges**            | During a what-if the heap graph draws the references only the what-if has solid and the ones only the real run has dashed.                                                                                                                                                                                                                                                                                  |
+| **Since your edit**             | After each edit the new run is compared with the one before it, call by call: a strip says how the output changed, where the change starts and how many calls behave differently; Show lists them (old result → new result), each a jump into the new run.                                                                                                                                                  |
+| **Keep my place**               | After an edit the pen goes to the same moment of the new run (the same call, the same time round its loop), not just the same step number. A setting turns it off.                                                                                                                                                                                                                                          |
+| **Profile**                     | Where the run spent its steps: a flame chart (hover for steps, calls and share; click to land on the first call of that path) and a table of functions and lines.                                                                                                                                                                                                                                           |
+| **Suggest contracts**           | With the cursor on a `fn` line (or from the call stack), Hindsight proposes `requires`/`ensures` clauses that held in every recorded call and checks them by recording the program with them; "Add to the function" writes the ones you keep into its header.                                                                                                                                               |
 | **Off the main thread**         | Slices, queries, the Make-it-so search, repair previews and sweeps run in a Web Worker, which records the same run again from its description (program, seed, step limit, what-if edits) and sends back plain results; without workers they run on the page in small slices.                                                                                                                                |
 
 ![The heap graph after reversing a linked list, in the light theme](docs/images/heap.png)
@@ -146,6 +150,8 @@ npm run sight -- slice FILE                   # which lines led to the crash (or
 npm run sight -- repair FILE                  # one-token fixes for a crash
 npm run sight -- diff OLD NEW                 # where do two versions start to behave differently?
 npm run sight -- diff FILE --set n=10         # the same program with another input
+npm run sight -- profile FILE --lines         # where did the run spend its steps?
+npm run sight -- infer FILE                   # requires/ensures clauses that held in every call
 npm run sight -- mcp                          # the debugger as an MCP server for AI agents
 ```
 
@@ -243,6 +249,41 @@ the change starts in:
   ✓ average (lines 6–8): given the same inputs, it behaves differently while the calls it makes behave the same
 ```
 
+`profile` counts steps (one step is one instruction, so the numbers are exact and repeatable), with
+library code folded into the user calls that made it; `--folded` prints folded stacks for flame
+graph tools:
+
+```
+5,534 steps · 2 functions · library code folded into its callers
+
+inclusive    share  exclusive  calls  avg/call  max/call  function
+    5,534  100.0 %        164      1     5,534     5,534  <top level>
+    5,370   97.0 %      5,370    453        63     2,118  fib (line 4)
+
+steps    share  line
+2,431   43.9 %     8 | fib(n - 1) + fib(n - 2)
+2,254   40.7 %     5 | if n < 2 {
+```
+
+`infer` suggests contracts the way Daikon finds likely invariants: for every `fn` called with at
+least three different inputs, clause templates (types, signs, order and length relations,
+membership, sortedness, `result == a * x + b`, …) are kept when they held in every call, and the
+survivors are checked by recording the program again with them written in. `--write` adds them to
+the function headers.
+
+```
+quicksort (line 4) · 15 calls, 8 different inputs
+  ensures  result == sort(xs)   8 inputs · e.g. quicksort(xs = [33, 4, 15, 8, 42, 16, 23]) returned [4, 8, 15, 16, 23, 33, 42]
+  requires type(xs) == "list"   8 inputs · e.g. quicksort(xs = [33, 4, 15, 8, 42, 16, 23]) returned [4, 8, 15, 16, 23, 33, 42]
+
+checked: the program runs the same with these 2 clauses written in
+```
+
+The clauses say what the program did, not what it should do. That is the point: infer them on a
+version you trust and add them, and when a later change breaks something, `debug` (and the studio's
+bug finder) answers its own questions from them, an `ensures result == …` vouching for every call
+it covers.
+
 ### Trace files
 
 A moment link stops working once a program passes 60,000 characters. A `.sighttrace` file holds the
@@ -285,6 +326,7 @@ same. From a checkout without a linked build, use `"command": "npx", "args": ["t
 | `seek_state`, `query_provenance`, `query` | the state at a step (with depth, item and frame budgets), where a value came from, moments by condition (in pages, or summarized)                            |
 | `fork_whatif`, `get_divergence`, `solve`  | counterfactuals forwards and backwards                                                                                                                       |
 | `why_not`, `slice`                        | why a line never ran; which lines can have caused a moment                                                                                                   |
+| `profile`, `infer_contracts`              | where a run spent its steps (functions, lines, folded stacks); likely `requires`/`ensures` clauses, checked by a re-run, to add to a trusted version         |
 | `export_trace`, `open_trace`              | a recorded run as a small `.sighttrace` file (base64) to attach to an issue, and back                                                                        |
 
 Results are sized for a context window: long lists come in pages that say how to fetch the next,
