@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import type { Recording } from './api-types'
 import { compile, record } from './index'
-import { foldedText, profile, type ProfileNode } from './profile'
+import { foldedText, MAX_FOLDED_FRAMES, profile, type ProfileNode } from './profile'
 
 function recorded(source: string, maxSteps?: number): Recording {
   const compiled = compile(source)
@@ -176,5 +176,28 @@ describe('profile', () => {
     expect(d.calls).toBe(5001)
     expect(d.inclusive).toBe(d.max)
     expect(result.folded.length).toBeGreaterThan(5000)
+  })
+
+  test('folded stacks of the deepest recursion stay short enough to write out', () => {
+    // Arrange: 10,000 nested calls of a long name made the folded text over 10^9 characters.
+    const name = 'descend_into_the_tree'
+    const recording = recorded(
+      `fn ${name}(n) { if n == 0 { 0 } else { 1 + ${name}(n - 1) } }\nprint(${name}(9999))\n`,
+    )
+
+    // Act
+    const result = profile(recording, { lines: false })
+    const text = foldedText(result.folded)
+
+    // Assert
+    const deepest = result.folded.at(-1)!.stack.split(';')
+    expect(deepest).toHaveLength(MAX_FOLDED_FRAMES + 1)
+    expect(deepest[0]).toBe('<top level>')
+    expect(deepest[64]).toBe('… 9,873 frames …')
+    expect(deepest.at(-1)).toBe(name)
+    expect(result.folded[50]!.stack.split(';')).toHaveLength(51)
+    expect(text.length).toBeLessThan(40_000_000)
+    const steps = result.folded.reduce((total, entry) => total + entry.steps, 0)
+    expect(steps).toBe(recording.length)
   })
 })

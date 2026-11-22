@@ -983,7 +983,10 @@ tree (§7.6) and, for lines, one pass over the trace:
 - **Stack paths** (`ProfileNode`): every call reached through the same chain of functions is
   aggregated (calls, inclusive, self, first entry), children in order of their first call; the root
   is the top level. `folded` lists the paths with self steps in pre-order as Brendan Gregg's folded
-  stacks (`<top level>;main;fib 1234`; `foldedText` joins them) for flame graph tools.
+  stacks (`<top level>;main;fib 1234`; `foldedText` joins them) for flame graph tools. A stack
+  deeper than `MAX_FOLDED_FRAMES` (128) keeps its first and last 64 frames around one
+  `… N frames …` frame, so the text stays linear in the number of paths (10,000 nested calls of
+  one function once made it exceed the engine's longest string).
 
 With just-my-code, library calls are transparent: their steps are the exclusive steps of the user
 call that made them, and the user functions they call (a callback given to `map`) become that
