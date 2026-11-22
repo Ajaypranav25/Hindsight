@@ -163,6 +163,7 @@ function crash(trace: Trace, args: Args): Json {
         : []),
       'query_provenance at the failing step explains where a value in "values" came from.',
       'solve with no_crash: true searches for an earlier value that avoids the crash.',
+      'verify_patch checks a fix you write yourself (the whole patched program) against this run.',
       'seek_state at an earlier step of the causal chain shows the state before it went wrong.',
     ],
   }
@@ -324,6 +325,7 @@ function wrongOutput(trace: Trace, args: Args, index: number): Json {
         : []),
       'find_bug localizes the function whose own code is wrong by asking about its calls.',
       'suggest_repairs with expectations ({"call": "f(1)", "expected": "2"}) proposes verified one-token fixes.',
+      'verify_patch checks a larger fix you write yourself, with the same expectations.',
     ],
   }
 }
