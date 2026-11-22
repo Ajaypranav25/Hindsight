@@ -5,6 +5,7 @@
  * work stack, never recursion.
  */
 import { LineIndex, type Recording, type StateView, type ValueView } from '../core/index'
+import { tasksJson } from './mcp-races'
 import { type Json, valueJson } from './mcp-shared'
 
 export interface ValueLimits {
@@ -149,6 +150,7 @@ export function stateJson(recording: Recording, state: StateView, options: State
       state.globals.map((global) => [global.name, render(global.value)]),
     )
   }
+  if (state.tasks !== undefined) result.tasks = tasksJson(state.tasks)
   result.output_lines_so_far = printed.length
   result.last_output = printed.slice(-10).map((output) => output.text)
   result.error =

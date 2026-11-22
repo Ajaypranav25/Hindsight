@@ -13,6 +13,7 @@
 import { compile, LineIndex, record, type Recording } from '../core/index'
 import { diagnoseTool } from './mcp-diagnose'
 import { diffTool } from './mcp-diff'
+import { exploreTool, scheduleArg } from './mcp-races'
 import { findBugTool } from './mcp-find-bug'
 import { traceFileTools } from './mcp-trace-file'
 import { guardResponse } from './mcp-guard'
@@ -43,7 +44,9 @@ const INSTRUCTIONS =
   'calls (stateless: pass the answers so far); suggest_repairs checks one-token fixes against ' +
   'expected results; diff_runs compares two versions of a program (or two inputs) call by call ' +
   'and names where the difference starts. seek_state, query_provenance, query, why_not, slice, ' +
-  'fork_whatif, get_divergence and solve answer narrower questions. Steps are instruction ' +
+  'fork_whatif, get_divergence and solve answer narrower questions. For programs with tasks, ' +
+  'explore_schedules finds races (different results under different schedules) and run_trace ' +
+  'takes a schedule. Steps are instruction ' +
   'counts; the state at step T is the state before instruction T runs. Long results come in ' +
   'pages: each result says when it was cut and how to fetch more.'
 
@@ -62,6 +65,7 @@ export class McpServer implements ToolContext {
       diagnoseTool(this),
       suggestRepairsTool(this),
       findBugTool(this),
+      exploreTool(this),
       ...traceFileTools(this),
     ]
   }
@@ -185,7 +189,7 @@ export class McpServer implements ToolContext {
         },
       }
     }
-    const recording = record(compiled.program, { maxSteps, seed })
+    const recording = record(compiled.program, { maxSteps, seed, schedule: scheduleArg(args) })
     return { ok: true, trace: this.keep(source, recording, null) }
   }
 

@@ -299,7 +299,7 @@ describe('trace file arguments', () => {
     })
     expect(parseArgs(['run', 't.SightTrace', '--seed', '1'])).toEqual({
       ok: false,
-      error: 'a trace file brings its own step limit and seed: drop --seed',
+      error: 'a trace file brings its own step limit, seed and schedule: drop --seed',
     })
     expect(parseArgs(['record', 't.sighttrace'])).toMatchObject({ ok: false })
   })
