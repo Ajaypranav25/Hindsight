@@ -136,6 +136,47 @@ describe('the task series', () => {
     expect(recording.stateAt(recording.length).tasks![1]!.status).toBe('blocked')
   })
 
+  test('task switches say who ran before and after and whether the first waits', () => {
+    // Arrange
+    const recording = recordTasks(HANDOFF)
+    const series = recording.taskSeries()!
+
+    // Act
+    const switches = recording.taskSwitches()
+
+    // Assert
+    expect(switches.length).toBeGreaterThan(2)
+    for (const each of switches) {
+      expect(each.from).toBe(series[each.time - 1])
+      expect(each.to).toBe(recording.taskAt(each.time))
+      expect(each.from).not.toBe(each.to)
+    }
+    expect(switches[0]).toMatchObject({ from: 1, to: 2, state: 'blocked' })
+    expect(switches.at(-1)).toMatchObject({ from: 2, to: 1, state: 'done' })
+    expect(recordTasks('print(1)').taskSwitches()).toEqual([])
+  })
+
+  test('forks and extensions keep the switches of their own steps', () => {
+    // Arrange
+    const whole = record(compileTasks(PIPELINE), { schedule: RANDOM })
+    const paused = record(compileTasks(PIPELINE), { schedule: RANDOM, maxSteps: 120 })
+
+    // Act
+    const extended = paused.extend(1_000_000)
+    const again = paused.extend(1_000_000)
+    const forked = whole.fork(150, { target: { kind: 'global', name: 'jobs' }, value: 1 })
+
+    // Assert
+    expect(paused.taskSwitches().every((each) => each.time <= 120)).toBe(true)
+    expect(extended.taskSwitches()).toEqual(whole.taskSwitches())
+    expect(again.taskSwitches()).toEqual(whole.taskSwitches())
+    const before = (switches: readonly { time: number }[]) =>
+      switches.filter((each) => each.time <= 150)
+    expect(forked.ok && before(forked.recording.taskSwitches())).toEqual(
+      before(whole.taskSwitches()),
+    )
+  })
+
   test('a what-if fork that never spawns has no task series', () => {
     // Arrange
     const recording = recordTasks('var go = true\nlet x = 1\nif go { spawn(fn() { print(2) }) }')

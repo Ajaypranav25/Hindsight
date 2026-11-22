@@ -39,6 +39,12 @@ export class StepColumns {
    * nothing. Created with every earlier step marked as the main task's (only it ran before).
    */
   taskIds: Int32Array | null = null
+  /**
+   * Task switches in time order: the time of the first step after the switch, and what the task
+   * switched away from does then (0 runnable: it yielded or was preempted; 1 blocked; 2 done).
+   */
+  switchTimes: number[] = []
+  switchStates: number[] = []
 
   set(t: number, protoId: number, ip: number, depth: number): void {
     if (t >= this.protoIds.length) this.ensure(t + 1)
@@ -56,6 +62,30 @@ export class StepColumns {
     this.taskIds[t] = task
   }
 
+  /**
+   * Logs a switch before step `time`. A continuation that runs again over logged times (a second
+   * extension of one recording) logs nothing new: its switches are the same.
+   */
+  addSwitch(time: number, state: number): void {
+    const times = this.switchTimes
+    if (times.length > 0 && times[times.length - 1]! >= time) return
+    times.push(time)
+    this.switchStates.push(state)
+  }
+
+  /** The number of switches at times `<= length`. */
+  switchCount(length: number): number {
+    const times = this.switchTimes
+    let low = 0
+    let high = times.length
+    while (low < high) {
+      const middle = (low + high) >> 1
+      if (times[middle]! <= length) low = middle + 1
+      else high = middle
+    }
+    return low
+  }
+
   /** A copy of steps `0..length`: a what-if fork's shared past (ARCHITECTURE §7.5). */
   copyPrefix(length: number): StepColumns {
     const copy = new StepColumns()
@@ -69,6 +99,9 @@ export class StepColumns {
     if (tasks !== undefined && tasks.some((task) => task !== 1)) {
       copy.taskIds = new Int32Array(copy.protoIds.length)
       copy.taskIds.set(tasks)
+      const switches = this.switchCount(length)
+      copy.switchTimes = this.switchTimes.slice(0, switches)
+      copy.switchStates = this.switchStates.slice(0, switches)
     }
     return copy
   }

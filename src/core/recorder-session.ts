@@ -197,6 +197,12 @@ export interface EndLocation {
   readonly task: number
 }
 
+/** What a task that was switched away from does now: 0 runnable, 1 blocked, 2 done. */
+function switchState(vm: VM, task: number): number {
+  const status = vm.tasks?.[task - 1]?.status
+  return status === 'blocked' ? 1 : status === 'done' ? 2 : 0
+}
+
 /** Everything a finished recording needs; shared buffers are read only below its own counts. */
 export interface RecordingCore {
   readonly program: Program
@@ -286,13 +292,16 @@ export class RecordingSession {
       const frames = vm.frames
       const top = frames[frames.length - 1]!
       steps.set(t, top.closure.proto.id, top.ip, frames.length - 1)
-      if (vm.tasks !== null || steps.taskIds !== null) steps.setTask(t, vm.taskId)
+      const tasks = vm.tasks !== null || steps.taskIds !== null
+      const running = vm.taskId
+      if (tasks) steps.setTask(t, running)
       if (vm.work >= schedule.next) schedule.take(vm, t)
       vm.step()
       if (vm.status === 'error') {
         this.init.sink.discardFrom(t)
         return this.end(t, 'error')
       }
+      if (vm.taskId !== running) steps.addSwitch(t + 1, switchState(vm, running))
       t++
       sinceCheck++
       if (vm.status === 'finished') return this.end(t, 'finished')

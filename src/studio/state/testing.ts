@@ -61,6 +61,7 @@ export function fakeRecording(options: FakeRecordingOptions): Recording {
     depthSeries: () => depths,
     taskSeries: () => null,
     taskAt: () => 1,
+    taskSwitches: () => [],
     stateAt: (t) => ({ time: t }) as unknown as StateView,
     objectAt: () => null,
     outputCountAt: () => 0,

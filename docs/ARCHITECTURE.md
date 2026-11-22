@@ -653,7 +653,10 @@ floor(r · quantum)` after every switch decision. `policy` and `quantum` are VM 
     nothing. `taskSeries()` returns it (null without tasks), `taskAt(t)` reads it (at N: the task
     that failed or would run next, 1 when finished). A what-if fork copies the column only when its
     shared past ran another task, so a fork that never spawns has none either; `hasTasks` keeps an
-    extension's shared columns from changing what the original recording reports.
+    extension's shared columns from changing what the original recording reports. Every switch
+    between tasks is logged once (`StepColumns.switchTimes`/`switchStates`: the first step after
+    it and whether the task left runnable, blocked or done; a second continuation over logged
+    times adds nothing); `taskSwitches()` lists them with the tasks before and after.
 
 ### 7.2 Navigator (`navigator*.ts`)
 

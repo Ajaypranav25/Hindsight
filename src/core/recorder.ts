@@ -25,6 +25,7 @@ import {
   type ScheduleOptions,
   type StateView,
   type StepKind,
+  type TaskSwitch,
   type WhatIfInfo,
   type WriteTarget,
 } from './api-types'
@@ -151,6 +152,8 @@ function extensionSession(
   })
 }
 
+const SWITCH_STATES = ['runnable', 'blocked', 'done'] as const
+
 class RecordedRun implements Recording {
   readonly program: Program
   readonly length: number
@@ -160,6 +163,7 @@ class RecordedRun implements Recording {
   private readonly seeker: Seeker
   private readonly views = new LruCache<number, StateView>(VIEW_CACHE_SIZE)
   private navIndex: NavIndex | null = null
+  private switches: readonly TaskSwitch[] | null = null
   private provenanceIndex: ProvenanceIndex | null = null
 
   constructor(
@@ -206,6 +210,25 @@ class RecordedRun implements Recording {
     this.check(t)
     if (t < this.length) return this.core.hasTasks ? (this.core.steps.taskIds?.[t] ?? 1) : 1
     return this.core.end?.task ?? 1
+  }
+
+  taskSwitches(): readonly TaskSwitch[] {
+    if (this.switches === null) {
+      const { steps, hasTasks } = this.core
+      const count = hasTasks ? steps.switchCount(this.length) : 0
+      const switches: TaskSwitch[] = []
+      for (let i = 0; i < count; i++) {
+        const time = steps.switchTimes[i]!
+        switches.push({
+          time,
+          from: this.taskAt(time - 1),
+          to: this.taskAt(time),
+          state: SWITCH_STATES[steps.switchStates[i]!] ?? 'runnable',
+        })
+      }
+      this.switches = switches
+    }
+    return this.switches
   }
 
   stateAt(t: number): StateView {

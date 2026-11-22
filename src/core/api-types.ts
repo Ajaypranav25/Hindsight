@@ -48,6 +48,18 @@ export type TaskWaitView =
   | { readonly kind: 'send' | 'recv'; readonly channelId: number }
   | { readonly kind: 'join'; readonly task: number }
 
+/**
+ * A switch between tasks: `from` ran step `time - 1`, `to` runs step `time` (at N: would run), and
+ * `state` is what `from` does then: `blocked` (it waits), `runnable` (it yielded or was
+ * preempted) or `done` (its function returned).
+ */
+export interface TaskSwitch {
+  readonly time: number
+  readonly from: number
+  readonly to: number
+  readonly state: 'runnable' | 'blocked' | 'done'
+}
+
 /** A task that had not finished when the main task did (the program ended anyway). */
 export interface UnfinishedTask {
   readonly id: number
@@ -425,6 +437,8 @@ export interface Recording {
   taskSeries(): Int32Array | null
   /** The task that executes step `t`; at N, the failing or paused one (1 when finished). */
   taskAt(t: number): number
+  /** Every switch between tasks, in time order (empty without tasks; do not mutate). */
+  taskSwitches(): readonly TaskSwitch[]
   stateAt(t: number): StateView
   /** A reachable object at `t`, paging long lists and records; null when not reachable at `t`. */
   objectAt(
