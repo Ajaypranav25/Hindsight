@@ -8,6 +8,7 @@ import { PanelTabs } from './chrome/PanelTabs'
 import { useGlobalShortcuts } from './chrome/useGlobalShortcuts'
 import { useLayoutMode } from './chrome/useLayoutMode'
 import { Editor } from './editor/Editor'
+import { EditDiffStrip } from './insight/EditDiffStrip'
 import { ProfilePanel } from './insight/ProfilePanel'
 import { BugFinder } from './panels/BugFinder'
 import { CallStack } from './panels/CallStack'
@@ -81,6 +82,9 @@ export function App() {
       </div>
       <div className="app-hint">
         <Hint />
+        <PanelBoundary name="The behaviour diff">
+          <EditDiffStrip />
+        </PanelBoundary>
       </div>
       <div className="app-transport" role="group" aria-label="Transport">
         <PanelBoundary name="The transport">
