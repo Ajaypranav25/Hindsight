@@ -12,7 +12,8 @@
  *   assertion passed and wrong when it failed (R018 there).
  *
  * A "right" answer only vouches for a result, so it is not given for a call that changed anything
- * outside itself (a person has to judge those effects). An assertion's answer also applies to every
+ * outside itself (a person has to judge those effects), nor for one that ran too long for all of
+ * its changes to be read. An assertion's answer also applies to every
  * call with the same inputs and result (`resultKey`: function, context, arguments, outcome) wherever
  * it was made, and every answer spreads to identical calls through the finder's memo keys. Built
  * only on the public `Recording` API.
@@ -274,7 +275,9 @@ class ContractFacts {
     return this.syntax.pinned.get(spanKey(proto.debug.span)) ?? null
   }
 
+  /** True when the call changed something outside itself, or may have (too long to read all). */
   private changesSomething(call: CallNode): boolean {
-    return changeTexts(this.tree.details(call)).length > 0
+    const details = this.tree.details(call)
+    return details.effectsTruncated || changeTexts(details).length > 0
   }
 }

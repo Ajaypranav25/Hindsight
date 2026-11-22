@@ -214,6 +214,31 @@ print(noted(1) + clean(2))
     expect(oracle(clean!)).toMatchObject({ answer: 'right' })
   })
 
+  test('a call too long to read all its changes is not vouched for by a clause or an assertion', () => {
+    // Arrange: 30,000 loop writes push the global write past the effects reader's limit.
+    const body = `{
+  var i = 0
+  while i < 30000 { i += 1 }
+  seen = 99
+  n
+}`
+    const source = `var seen = 0
+fn pinned(n) ensures result == n ${body}
+fn asserted(n) ${body}
+pinned(1)
+assert(asserted(2) == 2)
+`
+
+    // Act
+    const { tree, oracle } = interview(source)
+    const [pinned, asserted] = tree.children(tree.root)
+
+    // Assert
+    expect(tree.details(pinned!).effectsTruncated).toBe(true)
+    expect(oracle(pinned!)).toBeNull()
+    expect(oracle(asserted!)).toBeNull()
+  })
+
   test('an assertion judges calls with the same inputs and result made elsewhere', () => {
     // Arrange
     const source = `fn total(xs) {

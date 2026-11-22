@@ -39,6 +39,11 @@ export interface CallDetails {
   readonly error: RuntimeErrorInfo | null
   /** What the call changed outside itself and its arguments (globals, captured variables, objects). */
   readonly effects: readonly CallEffect[]
+  /**
+   * True when the call ran too many events to read them all (`callEffects`): `effects` may then
+   * miss changes, so nothing may conclude from it that the call changed nothing.
+   */
+  readonly effectsTruncated: boolean
   /** 1-based first and last line of the function in the main source; null for library code. */
   readonly lines: LineSpan | null
   /**
@@ -61,7 +66,16 @@ export function callDetails(recording: Recording, call: CallNode): CallDetails {
   const error = call.outcome === 'raised' ? runError(recording) : null
   const lines = linesOf(recording.program, call.protoId)
   if (call.depth === 0) {
-    return { call, args: [], result: null, error, effects: [], lines, key: null }
+    return {
+      call,
+      args: [],
+      result: null,
+      error,
+      effects: [],
+      effectsTruncated: false,
+      lines,
+      key: null,
+    }
   }
   const after = call.outcome === 'returned' ? call.exit + 1 : recording.length
   const params = parameters(recording, call)
@@ -78,6 +92,7 @@ export function callDetails(recording: Recording, call: CallNode): CallDetails {
     result: result && { value: result, text: valueText(result) },
     error,
     effects,
+    effectsTruncated: truncated,
     lines,
     key,
   }
