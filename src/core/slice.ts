@@ -40,9 +40,10 @@ export function backwardSlice(
   recording: Recording,
   criteria: number | readonly number[],
 ): Slice | null {
-  const graph = dependenceOf(recording)
   const access = replayAccess(recording)
-  if (graph === null || access === null) return null
+  if (access === null) return null
+  const graph = dependenceOf(recording)
+  if (graph === null) return null
   const list = typeof criteria === 'number' ? [criteria] : [...criteria]
   const marks = graph.slice(list)
   const { steps, end, length } = access.core

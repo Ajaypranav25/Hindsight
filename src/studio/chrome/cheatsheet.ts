@@ -63,6 +63,13 @@ map filter reduce each find any all sum zip enumerate
 min max abs floor round sqrt random_int`,
   },
   {
+    title: 'Tasks and channels',
+    code: `let ch = channel()          // channel(2) holds two values
+let t = spawn(worker, ch)   // runs worker(ch) as a task
+send(ch, 1)   recv(ch)   close(ch)   yield()   wait(t)`,
+    note: 'Settings > Task schedule interleaves them at random',
+  },
+  {
     title: 'Comments',
     code: `// to the end of the line
 /* a block /* that nests */ */`,

@@ -150,7 +150,7 @@
       "patterns": [
         {
           "name": "support.function.builtin.sight",
-          "match": "\\b(?:print|str|repr|type|len|num|list|range|assert|panic|push|pop|insert|remove|slice|reverse|sort|contains|index_of|join|min|max|copy|keys|values|entries|has|get|delete|upper|lower|trim|split|replace|starts_with|ends_with|repeat|chars|char_code|from_char_code|pad_start|pad_end|abs|floor|ceil|sqrt|sin|cos|log|round|atan2|random|random_int|seed|steps|map|filter|reduce|each|find|find_index|any|all|count|sum|sort_by|zip|enumerate|flat_map|flatten|take|drop|uniq|group_by|min_by|max_by|times|chunk)\\b(?!\\s*:)"
+          "match": "\\b(?:print|str|repr|type|len|num|list|range|assert|panic|push|pop|insert|remove|slice|reverse|sort|contains|index_of|join|min|max|copy|keys|values|entries|has|get|delete|upper|lower|trim|split|replace|starts_with|ends_with|repeat|chars|char_code|from_char_code|pad_start|pad_end|abs|floor|ceil|sqrt|sin|cos|log|round|atan2|random|random_int|seed|steps|spawn|channel|send|recv|close|wait|yield|current_task|map|filter|reduce|each|find|find_index|any|all|count|sum|sort_by|zip|enumerate|flat_map|flatten|take|drop|uniq|group_by|min_by|max_by|times|chunk)\\b(?!\\s*:)"
         },
         {
           "name": "support.constant.sight",
