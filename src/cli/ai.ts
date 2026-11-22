@@ -45,7 +45,9 @@ function printUsage(io: CliIO, style: Style, client: LlmClient): void {
 
 /**
  * `debug FILE --llm`: the interview with the model as the second oracle. Lines of input are read
- * one at a time and only while the session waits for a person, so piped answers stay in order.
+ * one at a time and only while the session waits for a person, so piped answers stay in order. The
+ * iterator is taken before anything is awaited: a readline interface only buffers lines for an
+ * iterator that exists, and piped input can arrive while the model is being asked.
  */
 export async function runAiDebug(
   io: CliIO,
@@ -53,6 +55,7 @@ export async function runAiDebug(
   host: LlmHost,
   lines: AsyncIterable<string>,
 ): Promise<DebugExitCode> {
+  const input = lines[Symbol.asyncIterator]()
   const style = makeStyle(io.color)
   const llm = command.llm!
   const client = openLlm(io, style, llm, host)
@@ -70,13 +73,13 @@ export async function runAiDebug(
     return session
   }
   await session.settle()
-  if (!session.finished) {
-    for await (const line of lines) {
-      session.handle(line)
-      await session.settle()
-      if (session.finished) break
-    }
+  while (!session.finished) {
+    const next = await input.next()
+    if (next.done === true) break
+    session.handle(next.value)
+    await session.settle()
   }
+  await input.return?.()
   session.end()
   printUsage(io, style, client)
   return session.exitCode
