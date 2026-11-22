@@ -110,6 +110,25 @@ export function failureOf(recording: Recording): RunFailure | null {
   }
 }
 
+const squeezed = (text: string) => text.replace(/\s+/g, ' ').trim()
+
+/**
+ * The failed assertion or contract clause of `recording` when `patchedSource` no longer contains
+ * it (whitespace aside): deleting a failing check hides the failure, it does not fix it. Null when
+ * the run did not fail a check or the check is still there.
+ */
+export function removedCheck(recording: Recording, patchedSource: string): string | null {
+  const { outcome, program } = recording
+  if (outcome.kind !== 'error') return null
+  const check = CHECKS.get(outcome.error.code)
+  if (check === undefined) return null
+  const { span } = outcome.error
+  const text = squeezed(program.source.slice(span.start, span.end))
+  if (text === '' || squeezed(patchedSource).includes(text)) return null
+  const line = new LineIndex(program.source).lineOf(span.start)
+  return `the ${check} that failed (${text}, line ${line}) is gone from the patched program: the failure is hidden, not fixed`
+}
+
 /** The contract or assertion a run failed, or null. */
 function checkJson(recording: Recording): Json {
   const { outcome } = recording
@@ -145,7 +164,8 @@ export function assess(
 ): Assessment {
   const fixes: string[] = []
   const regressions: string[] = []
-  const remaining: string[] = []
+  const removed = removedCheck(original, patched.program.source)
+  const remaining: string[] = removed === null ? [] : [removed]
   const a = failureOf(original)
   const b = failureOf(patched)
   if (a === null && b !== null) regressions.push(`the patched run ${b.text}; the original finished`)

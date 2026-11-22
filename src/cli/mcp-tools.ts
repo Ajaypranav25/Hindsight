@@ -272,7 +272,7 @@ function fork(context: ToolContext, args: Args): Json {
     value: value as EditValue,
   })
   if (!result.ok) throw new ToolError(result.error.message)
-  const kept = context.keep(trace.source, result.recording, trace.id)
+  const kept = context.keep(trace.source, result.recording, trace.id, trace.base ?? trace.recording)
   return {
     ...traceSummary(kept, args),
     forked_from: trace.id,

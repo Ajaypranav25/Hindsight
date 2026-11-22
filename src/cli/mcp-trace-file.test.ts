@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { McpServer } from './mcp'
+import { MAX_TRACES, McpServer } from './mcp'
 
 function call(server: McpServer, name: string, args: object) {
   const reply = server.handle({
@@ -53,6 +53,30 @@ describe('MCP trace files', () => {
     // Assert
     expect(fork.isError).toBe(false)
     expect(opened).toMatchObject({ verified: true, what_if_edits: 1, title: 'what if' })
+  })
+
+  test('a what-if exports after its real run was dropped, and an opened one saves again', () => {
+    // Arrange: a step limit below the default, so the base's limit must survive the round trips.
+    const server = new McpServer('0.4.0')
+    const run = call(server, 'run_trace', { source: LOOP, max_steps: 5000 }).body
+    const fork = call(server, 'fork_whatif', {
+      trace_id: run.trace_id,
+      step: 6,
+      name: 'total',
+      value: 100,
+    }).body
+    for (let i = 0; i < MAX_TRACES - 1; i++) call(server, 'run_trace', { source: `print(${i})` })
+
+    // Act
+    const exported = call(server, 'export_trace', { trace_id: fork.trace_id })
+    const opened = call(server, 'open_trace', { trace_file: exported.body.trace_file }).body
+    const again = call(server, 'export_trace', { trace_id: opened.trace_id }).body
+
+    // Assert
+    expect(call(server, 'seek_state', { trace_id: run.trace_id, step: 0 }).isError).toBe(true)
+    expect(exported.isError).toBe(false)
+    expect(opened).toMatchObject({ verified: true, what_if_edits: 1 })
+    expect(again.trace_file).toBe(exported.body.trace_file)
   })
 
   test('bad input is a tool error, never a protocol error', () => {

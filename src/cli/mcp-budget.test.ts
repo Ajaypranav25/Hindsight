@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'vitest'
+import type { Recording } from '../core/index'
 import { McpServer } from './mcp'
 import { guardResponse, MAX_RESPONSE_CHARS } from './mcp-guard'
+import { REPAIR_STEP_BUDGET, repairBudget } from './mcp-repair'
 import type { Json } from './mcp-shared'
 import { jsonLiteral } from './mcp-shared'
 
@@ -215,5 +217,43 @@ describe('run_trace output pages and the response size guard', () => {
       ),
     ).toThrow('too large')
     expect(() => jsonLiteral(undefined, 'v')).toThrow('JSON value')
+  })
+})
+
+describe('repair budgets', () => {
+  test('every repair search caps its mutants so they run 40,000,000 steps at most', () => {
+    // Arrange
+    const short = { length: 1_000 } as Recording
+    const long = { length: 2_000_000 } as Recording
+    const huge = { length: 10_000_000 } as Recording
+
+    // Act
+    const budgets = [
+      repairBudget({}, short),
+      repairBudget({ max_mutants: 400 }, short),
+      repairBudget({ max_mutants: 400 }, long),
+      repairBudget({}, huge, { mutants: 120, repairs: 3 }),
+    ]
+
+    // Assert
+    expect(budgets).toEqual([
+      { maxMutants: 150, maxRepairs: 5 },
+      { maxMutants: 400, maxRepairs: 5 },
+      { maxMutants: 10, maxRepairs: 5 },
+      { maxMutants: 10, maxRepairs: 3 },
+    ])
+    expect(REPAIR_STEP_BUDGET).toBe(40_000_000)
+  })
+
+  test('suggest_repairs takes max_mutants through the budget', () => {
+    // Arrange: a short run, so the budget leaves max_mutants as given.
+    const server = new McpServer('0')
+    const source = ['fn last(xs) {', '  xs[len(xs) + 2]', '}', 'print(last([1, 2]))'].join('\n')
+
+    // Act
+    const { body } = call(server, 'suggest_repairs', { source, mode: 'crash', max_mutants: 2 })
+
+    // Assert
+    expect(body.mutants_checked).toBe(2)
   })
 })

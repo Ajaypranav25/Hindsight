@@ -71,7 +71,10 @@ export interface ProfileNode {
 }
 
 export interface FoldedStack {
-  /** Labels from the top level down: `<top level>;main;fib`. */
+  /**
+   * Labels from the top level down: `<top level>;main;fib`. A stack deeper than
+   * `MAX_FOLDED_FRAMES` keeps its first and last 64 frames: `…;fib;… 9,744 frames …;fib;…`.
+   */
   readonly stack: string
   /** Exclusive steps of the calls on that path. */
   readonly steps: number
@@ -323,14 +326,50 @@ function freeze(root: PathBuild): ProfileNode {
 }
 
 /** The paths with exclusive steps, `a;b;c` from the top level down, in pre-order. */
+/**
+ * Stacks deeper than this many frames keep their first and last halves around one `… N frames …`
+ * frame, so that deep recursion (10,000 calls) cannot make the folded text quadratic in size.
+ */
+export const MAX_FOLDED_FRAMES = 128
+const HALF_FOLDED = MAX_FOLDED_FRAMES / 2
+
+/** A frame of a folded stack, linked to its caller; `head` is the first half once that is full. */
+interface FoldLink {
+  readonly label: string
+  readonly up: FoldLink | null
+  readonly depth: number
+  readonly head: string | null
+}
+
+function foldLink(label: string, up: FoldLink | null): FoldLink {
+  const depth = up === null ? 1 : up.depth + 1
+  const link = { label, up, depth, head: up?.head ?? null }
+  return depth === HALF_FOLDED ? { ...link, head: labelsUp(link, HALF_FOLDED) } : link
+}
+
+/** The labels of the `count` innermost frames from `link` up, outermost first, joined by `;`. */
+function labelsUp(link: FoldLink, count: number): string {
+  const labels: string[] = []
+  for (let at: FoldLink | null = link; at !== null && labels.length < count; at = at.up) {
+    labels.push(at.label)
+  }
+  return labels.reverse().join(';')
+}
+
+function stackText(link: FoldLink): string {
+  if (link.depth <= MAX_FOLDED_FRAMES) return labelsUp(link, link.depth)
+  const left = (link.depth - 2 * HALF_FOLDED).toLocaleString('en-US')
+  return `${link.head};… ${left} frames …;${labelsUp(link, HALF_FOLDED)}`
+}
+
 function foldedStacks(root: PathBuild): FoldedStack[] {
   const folded: FoldedStack[] = []
-  const work: { path: PathBuild; prefix: string }[] = [{ path: root, prefix: '' }]
+  const work: { path: PathBuild; up: FoldLink | null }[] = [{ path: root, up: null }]
   for (let item = work.pop(); item !== undefined; item = work.pop()) {
-    const stack = item.prefix === '' ? item.path.label : `${item.prefix};${item.path.label}`
-    if (item.path.self > 0) folded.push({ stack, steps: item.path.self })
+    const link = foldLink(item.path.label, item.up)
+    if (item.path.self > 0) folded.push({ stack: stackText(link), steps: item.path.self })
     const children = [...item.path.children.values()].sort((x, y) => x.firstEntry - y.firstEntry)
-    for (let i = children.length - 1; i >= 0; i--) work.push({ path: children[i]!, prefix: stack })
+    for (let i = children.length - 1; i >= 0; i--) work.push({ path: children[i]!, up: link })
   }
   return folded
 }

@@ -223,6 +223,37 @@ describe('verify_patch', () => {
     expect(body.reasons[0]).toMatch(/^the original fails a postcondition with R027/)
   })
 
+  test('a patch that deletes or rewrites the failing check is not a fix', () => {
+    // Arrange
+    const server = new McpServer('0')
+    const source = 'fn half(n) { n / 3 }\nassert(half(4) == 2)\nprint(half(4))\n'
+    const deleted = source.replace('assert(half(4) == 2)', '')
+    const rewritten = source.replace('== 2', '== 4 / 3')
+    const contract = 'fn half(n)\n  ensures result * 2 == n\n{\n  n / 3\n}\nprint(half(4))\n'
+    const weakened = contract.replace('ensures result * 2 == n', 'ensures true')
+
+    // Act
+    const results = [
+      call(server, 'verify_patch', { source, patched_source: deleted }).body,
+      call(server, 'verify_patch', { source, patched_source: rewritten }).body,
+      call(server, 'verify_patch', { source: contract, patched_source: weakened }).body,
+    ]
+
+    // Assert
+    for (const body of results) {
+      expect(body.verdict).toBe('improved')
+      expect(body.reasons.join('\n')).toMatch(
+        /is gone from the patched program: the failure is hidden/,
+      )
+    }
+    expect(results[0].reasons).toContainEqual(
+      expect.stringMatching(/^the assertion that failed \(assert\(half\(4\) == 2\), line 2\)/),
+    )
+    expect(results[2].reasons).toContainEqual(
+      expect.stringMatching(/^the postcondition that failed \(result \* 2 == n, line 2\)/),
+    )
+  })
+
   test('rejects a missing or non-text patched_source and a missing original', () => {
     // Arrange
     const server = new McpServer('0')

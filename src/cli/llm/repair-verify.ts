@@ -16,6 +16,7 @@ import {
   type CallNode,
   callTree,
   compile,
+  crashCulprit,
   diffRuns,
   LineIndex,
   type LineSpan,
@@ -25,7 +26,7 @@ import {
   type Span,
 } from '../../core/index'
 import { originReason } from '../diff'
-import { failureOf } from '../mcp-verify'
+import { failureOf, removedCheck } from '../mcp-verify'
 import { callWithArguments, resultText, valueText } from './context'
 import { compareValues, evaluatePrediction, type ValueAt } from './values'
 
@@ -69,10 +70,9 @@ export function repairTarget(recording: Recording, goal: RepairGoal): RepairTarg
   let protoId: number
   if (goal.kind === 'crash') {
     if (recording.outcome.kind !== 'error') return 'The run did not crash.'
-    const frame = recording
-      .stateAt(recording.length)
-      .frames.findLast((candidate) => !candidate.library)
-    if (frame === undefined) return 'The crash is not in code of the program itself.'
+    // A failed precondition blames the caller (SPEC §7.16).
+    const frame = crashCulprit(recording)
+    if (frame === null) return 'The crash is not in code of the program itself.'
     protoId = frame.protoId
   } else {
     protoId = goal.protoId
@@ -326,6 +326,8 @@ export function verifyCandidate(context: VerifyContext, given: string): Candidat
 function runProblems(context: VerifyContext, patched: Recording): string[] {
   const before = failureOf(context.recording)
   const after = failureOf(patched)
+  const removed = removedCheck(context.recording, patched.program.source)
+  if (removed !== null) return [removed]
   if (after === null) return []
   if (context.goal.kind === 'crash') {
     return [

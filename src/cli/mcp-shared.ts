@@ -36,6 +36,11 @@ export interface Trace {
   readonly recording: Recording
   /** The trace this one was forked from. */
   readonly parent: string | null
+  /**
+   * The real run behind a what-if (its step limit goes into a saved trace), kept with the trace
+   * because its own trace may already have been dropped; null for a real run.
+   */
+  readonly base: Recording | null
 }
 
 /** A program recorded as a new trace, or why it could not be (compile errors, as JSON). */
@@ -51,8 +56,8 @@ export interface ToolContext {
   trace(args: Args, key?: string): Trace
   /** A step of `trace` from `args[key]` (default `step`): an integer in 0..steps. */
   step(args: Args, trace: Trace, key?: string): number
-  /** Stores a recording as a new trace. */
-  keep(source: string, recording: Recording, parent: string | null): Trace
+  /** Stores a recording as a new trace (`base`: the real run behind a what-if). */
+  keep(source: string, recording: Recording, parent: string | null, base?: Recording | null): Trace
   /** Compiles and records `source` with `args.max_steps` and `args.seed` as a new trace. */
   recordSource(source: unknown, args: Args): RecordedSource
   /**

@@ -49,8 +49,27 @@ export const MUTANTS = {
   type: 'integer',
   minimum: 1,
   maximum: 400,
-  description: 'One-token changes to try at most (default 150); each runs the whole program',
+  description:
+    'One-token changes to try at most (default 150, fewer on long runs: all mutants together run at most 40,000,000 steps); each runs the whole program',
 } as const
+
+/** Steps all repair mutants of one tool call may run together; caps the mutant count on long runs. */
+export const REPAIR_STEP_BUDGET = 40_000_000
+/** A repair mutant runs at most this many steps (four times the run, as `repairSearch` does). */
+const mutantSteps = (steps: number) => Math.max(steps * 4, steps + 50_000)
+
+/** `max_mutants` and `max_repairs`, the mutants capped so they fit `REPAIR_STEP_BUDGET`. */
+export function repairBudget(
+  args: Args,
+  recording: Recording,
+  defaults: { readonly mutants: number; readonly repairs: number } = { mutants: 150, repairs: 5 },
+): { readonly maxMutants: number; readonly maxRepairs: number } {
+  const affordable = Math.max(10, Math.floor(REPAIR_STEP_BUDGET / mutantSteps(recording.length)))
+  return {
+    maxMutants: Math.min(integerArg(args, 'max_mutants', defaults.mutants, 1, 400), affordable),
+    maxRepairs: integerArg(args, 'max_repairs', defaults.repairs, 1, 10),
+  }
+}
 export const REPAIRS = {
   type: 'integer',
   minimum: 1,
@@ -124,10 +143,7 @@ export function suggestRepairsTool(context: ToolContext): Tool {
 
 function suggestRepairs(context: ToolContext, args: Args): Json {
   const trace = context.traceOrSource(args, 'trace_id', 'source')
-  const options = {
-    maxMutants: integerArg(args, 'max_mutants', 150, 1, 400),
-    maxRepairs: integerArg(args, 'max_repairs', 5, 1, 10),
-  }
+  const options = repairBudget(args, trace.recording)
   const given = args.expectations
   const mode = choiceArg(
     args,

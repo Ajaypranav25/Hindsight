@@ -214,6 +214,47 @@ print(noted(1) + clean(2))
     expect(oracle(clean!)).toMatchObject({ answer: 'right' })
   })
 
+  test('a call too long to read all its changes is not vouched for by a clause or an assertion', () => {
+    // Arrange: 30,000 loop writes push the global write past the effects reader's limit.
+    const body = `{
+  var i = 0
+  while i < 30000 { i += 1 }
+  seen = 99
+  n
+}`
+    const source = `var seen = 0
+fn pinned(n) ensures result == n ${body}
+fn asserted(n) ${body}
+pinned(1)
+assert(asserted(2) == 2)
+`
+
+    // Act
+    const { tree, oracle } = interview(source)
+    const [pinned, asserted] = tree.children(tree.root)
+
+    // Assert
+    expect(tree.details(pinned!).effectsTruncated).toBe(true)
+    expect(oracle(pinned!)).toBeNull()
+    expect(oracle(asserted!)).toBeNull()
+  })
+
+  test('an assertion whose expectation or arguments call the judged function vouches for nothing', () => {
+    // Arrange: double is wrong, yet both assertions pass.
+    const source = `fn double(n) { n + 5 }
+assert(double(2) == double(1) + 1)
+assert(double(double(1)) == 11)
+assert(double(3) == 8)
+`
+
+    // Act
+    const { tree, oracle } = interview(source)
+    const answers = tree.children(tree.root).map((call) => oracle(call)?.reason ?? null)
+
+    // Assert: only the plain example on line 4 is taken.
+    expect(answers).toEqual([null, null, null, null, 'the assertion on line 4'])
+  })
+
   test('an assertion judges calls with the same inputs and result made elsewhere', () => {
     // Arrange
     const source = `fn total(xs) {

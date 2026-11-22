@@ -181,6 +181,29 @@ describe('LlmOracle', () => {
     expect(differing).toMatchObject({ kind: 'answer', auto: { answer: 'wrong' } })
   })
 
+  test('a matching result of a call too long to read all its changes is left to the person', async () => {
+    // Arrange: 30,000 loop writes push the global write past the effects reader's limit.
+    const host = fakeHost([say('1')])
+    const client = new LlmClient(CONFIG, host)
+    const tree = treeOf(`var seen = 0
+fn busy() {
+  var i = 0
+  while i < 30000 { i += 1 }
+  seen = 99
+  1
+}
+print(busy())
+`)
+    const llm = new LlmOracle(client, tree, 0.8)
+
+    // Act
+    const consultation = await llm.consult(callOf(tree, 'busy'))
+
+    // Assert
+    expect(consultation).toMatchObject({ kind: 'abstain', expected: '1' })
+    expect((consultation as { reason: string }).reason).toMatch(/too long for all of its changes/)
+  })
+
   test('failed requests and the cap leave calls to the person; nothing is sent past the cap', async () => {
     // Arrange
     const failing = oracle([

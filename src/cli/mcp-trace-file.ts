@@ -44,7 +44,8 @@ function openTrace(context: ToolContext, args: Args): Json {
   if (text === null) throw new ToolError('Give trace_file (a .sighttrace file as base64)')
   const opened = openTraceFileSync(decodeBase64(text), gunzip)
   if (!opened.ok) throw new ToolError(`The trace file cannot be opened: ${opened.error}`)
-  const trace = context.keep(opened.bundle.source, opened.recording, null)
+  const base = opened.recording === opened.base ? null : opened.base
+  const trace = context.keep(opened.bundle.source, opened.recording, null, base)
   return {
     ...traceSummary(trace, args),
     verified: opened.verification.verified,
@@ -58,15 +59,9 @@ function openTrace(context: ToolContext, args: Args): Json {
 function exportTrace(context: ToolContext, args: Args): Json {
   const trace = context.trace(args)
   const time = args.step === undefined ? trace.recording.length : context.step(args, trace)
-  let base = null
-  for (let id = trace.parent; id !== null;) {
-    const parent = context.trace({ trace_id: id })
-    base = parent.recording
-    id = parent.parent
-  }
   const bundled = traceBundle({
     recording: trace.recording,
-    base,
+    base: trace.base,
     time,
     hindsightVersion: context.version,
     title: stringArg(args, 'title'),

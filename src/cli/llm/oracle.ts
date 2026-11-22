@@ -191,11 +191,11 @@ export class LlmOracle {
     if (comparison === 'unknown') {
       return this.abstain(`${model} expected ${shown}, which cannot be compared with the result`)
     }
-    if (comparison === 'equal' && changeTexts(details).length > 0) {
-      return this.abstain(
-        `${model} expected ${shown}, as returned, but the call also changed things outside itself`,
-        shown,
-      )
+    if (comparison === 'equal' && (details.effectsTruncated || changeTexts(details).length > 0)) {
+      const what = details.effectsTruncated
+        ? 'the call ran too long for all of its changes to be read'
+        : 'the call also changed things outside itself'
+      return this.abstain(`${model} expected ${shown}, as returned, but ${what}`, shown)
     }
     const reason = `${model} expected ${shown}, confidence ${percent(prediction.confidence)}`
     return {
