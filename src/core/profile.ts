@@ -1,5 +1,5 @@
 /**
- * The step profiler (ARCHITECTURE §7.15): where a recorded run spent its steps. A step is one
+ * The step profiler (ARCHITECTURE §7.16): where a recorded run spent its steps. A step is one
  * instruction (SPEC §10.1), so the profile is exact and deterministic: per function the steps
  * spent inside its calls (inclusive) and in its own code (exclusive), the number of calls and the
  * average and largest call; per source line the steps of the statements that start on it; and the

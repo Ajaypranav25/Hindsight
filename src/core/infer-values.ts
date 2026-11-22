@@ -1,5 +1,5 @@
 /**
- * Values for contract inference (ARCHITECTURE §7.16): a call's arguments and result read out of a
+ * Values for contract inference (ARCHITECTURE §7.17): a call's arguments and result read out of a
  * recording as plain data, and the few builtins the clause templates use (SPEC §9), evaluated on
  * that data. Only plain data is read in full: lists and records nested at most `MAX_NESTING` deep
  * with at most `MAX_ITEMS` elements; anything else keeps its type and length but not its contents,

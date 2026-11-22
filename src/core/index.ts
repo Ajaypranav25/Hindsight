@@ -231,7 +231,7 @@ export function repairSearch(
 }
 
 /**
- * Likely contracts for the functions of a recorded run (ARCHITECTURE §7.16), each checked by
+ * Likely contracts for the functions of a recorded run (ARCHITECTURE §7.17), each checked by
  * recording the program again with the clauses written in.
  */
 export function inferContracts(

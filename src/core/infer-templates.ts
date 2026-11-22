@@ -1,5 +1,5 @@
 /**
- * Clause templates for contract inference (ARCHITECTURE §7.16), in the manner of Daikon's likely
+ * Clause templates for contract inference (ARCHITECTURE §7.17), in the manner of Daikon's likely
  * invariants: each template is instantiated over a function's parameters and its result, and a
  * candidate survives only when it held in every observed call. The clause texts are Hindsight
  * expressions that use only builtins (SPEC §9), so they can be pasted into a `fn` header.

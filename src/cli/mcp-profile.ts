@@ -1,5 +1,5 @@
 /**
- * The `profile` tool (ARCHITECTURE §7.15, §9.1): where a run spent its steps, for an agent looking
+ * The `profile` tool (ARCHITECTURE §7.16, §9.1): where a run spent its steps, for an agent looking
  * for a slow function or a loop that runs too often. The top functions by inclusive steps, the top
  * lines and, on request, the heaviest folded stacks; each list is cut to `top` with its total.
  */

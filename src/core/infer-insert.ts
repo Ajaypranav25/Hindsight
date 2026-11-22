@@ -1,5 +1,5 @@
 /**
- * Writing contract clauses into a program (ARCHITECTURE §7.16): `insertContracts` adds
+ * Writing contract clauses into a program (ARCHITECTURE §7.17): `insertContracts` adds
  * `requires`/`ensures` clauses to `fn` headers, each on a line of its own between the parameter
  * list (or the last existing clause) and the body, which then opens on its own line:
  *

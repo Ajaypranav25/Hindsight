@@ -894,6 +894,26 @@ Replacing the text instead of forking the run after the declaration (§7.5) lets
 or a record, not just a primitive, and keeps step numbers meaningful within each run; the whole
 initializer is replaced, so calls it made are not made with the new input.
 
+**The equivalent moment** (`run-map.ts`). `mapMoment(a, b, t)` says where step `t` of run `a`
+lands in run `b` (the studio keeps the pen's place with it after an edit, §11.3). The innermost
+user call running at `t` and its user-call ancestors form a path; only the children along that path
+are aligned, one level at a time, with the aligner above (`alignChildren`; child lists longer than
+4,000 calls in both runs together are matched by name and rank among same-named siblings instead),
+until a call has no partner. In the deepest matched pair, the anchor is `t` when it runs in that
+call's own frame, else the step that made the call below it (`entry - 1` of the direct child). The
+anchor's statement line is moved to `b`'s source by `lineMap(before, after)` (common start and end
+matched directly, the middle by a line LCS up to 1,000,000 cells; unmatched lines map to null), and
+the result is the n-th own-frame run of that line in the partner call (own frame: `depthAt` equals
+the call's depth), at the same offset into the statement when that step is still the same statement
+in the same frame; inside a library call of the pen's own call, the pen follows into the callee of
+the same name at the same offset. `precision` says how it was found: `line` (the n-th run),
+`nearest` (the line ran fewer times there: its last run), `beside` (the line was edited: the
+statement after the same run of the nearest earlier statement of the frame, at most 16 back, whose
+line has a partner), `call` (the partner call's first step), `clamped` (nothing matched below the
+top level: `min(t, b.length)`) or `end` (`t = a.length` maps to `b.length`). The work is the
+ancestors' child lists and a few binary searches over `lineHits`; it never throws for steps in
+`a` (others are clamped first).
+
 ### 7.15 Trace files (`trace-file.ts`, `trace-format.ts`, `trace-validate.ts`, `trace-hash.ts`, `trace-open.ts`)
 
 A moment link carries the program and a step in the URL, which stops working past 60,000
@@ -938,6 +958,69 @@ characters, step limits up to 10,000,000, at most 100 edits with literal values 
 integers in range, a well-formed fingerprint), so keys such as `__proto__` are never merged
 anywhere. Every failure is a `{ok: false, error}` result, never an exception.
 
+### 7.16 Step profiler (`profile.ts`)
+
+`profile(recording, {justMyCode?, lines?})` says where a run spent its steps. A step is one
+instruction (SPEC §10.1), so the numbers are exact and the same on every run. Built from the call
+tree (§7.6) and, for lines, one pass over the trace:
+
+- **Functions** (`FunctionProfile`, by proto): calls; **inclusive** steps (a call's span,
+  `exit - entry + 1`, or up to N for a call that did not return), counting only the paths on which
+  the function is not already running further up, so recursion is not counted twice; **exclusive**
+  steps (inclusive minus the callees'); the average and largest call; the first call's entry; the
+  function's lines. Lambdas are labeled `lambda@LINE`. Sorted by inclusive, then exclusive steps.
+- **Lines** (`LineProfile`): each step counts for the statement line of its instruction (with
+  just-my-code, a library step counts for the line the nearest user frame below it is running;
+  without it, those steps are `libraryLineSteps`).
+- **Stack paths** (`ProfileNode`): every call reached through the same chain of functions is
+  aggregated (calls, inclusive, self, first entry), children in order of their first call; the root
+  is the top level. `folded` lists the paths with self steps in pre-order as Brendan Gregg's folded
+  stacks (`<top level>;main;fib 1234`; `foldedText` joins them) for flame graph tools.
+
+With just-my-code, library calls are transparent: their steps are the exclusive steps of the user
+call that made them, and the user functions they call (a callback given to `map`) become that
+call's children. Every walk over the tree uses explicit stacks, so deep recursion never reaches the
+JavaScript stack.
+
+### 7.17 Contract inference (`infer.ts`, `infer-templates.ts`, `infer-values.ts`, `infer-insert.ts`)
+
+`inferContracts(recording, tree, {fn?, minInputs?, maxCalls?, maxPerFunction?, verify?, seed?,
+maxSteps?})` suggests likely `requires`/`ensures` clauses (SPEC §7.16) in the manner of Daikon
+(Ernst et al., 2001): what held in every recorded call, not what the author intended.
+
+- **Targets**: every `fn` (declarations and `fn(...)` expressions with block bodies; `fnFunctions`
+  finds them by start offset, which is their proto's `debug.span.start`) with at least `minInputs`
+  (default 3) returned calls with different argument tuples. Up to `maxCalls` calls (default 200,
+  evenly spaced) are read: each argument at entry and after the call (as the postconditions see the
+  parameters) and the result, as plain values (`infer-values.ts`, from the inspector's views).
+- **Templates** (`infer-templates.ts`) over the identifier parameters and `result`, written with
+  builtins only (SPEC §9): type constancy (`type(x) == "number"`), non-nil, sign and bounds
+  (`x > 0`, `result >= 0`), order between the result and numeric parameters, list lengths
+  (`len(result) == len(xs)`, `len(result) <= len(xs)`, `len(xs) > 0` as a precondition),
+  membership and subset (`all(result, |r| contains(xs, r))`), sortedness (`result == sort(result)`),
+  `result == x`, small-integer linear relations `result == a * x + b` (found from two calls,
+  checked on the rest) and, only when a template fits every call exactly, other pinning
+  postconditions.
+- **Selection**: a clause is kept when it held in every call read and `minInputs` different inputs
+  bore on it; clauses implied by kept ones, trivial ones and clauses the function already has are
+  dropped; the rest are ranked pinning first (at most two per function), then by different inputs,
+  calls and template, at most `maxPerFunction` (default 6) per function. Each suggestion carries its
+  kind, text, template, `pins`, support (calls, different inputs) and an example call with its
+  entry step.
+- **Verification**: the suggestions are written into the source (`insertContracts`: each clause on
+  a line of its own between the parameter list and the body, reporting where every clause landed),
+  compiled and recorded with the run's seed and a generous step limit (20 times the run when it
+  finished, at least 1,000,000, at most 50,000,000). A clause that fails to compile, or that a
+  contract violation names, is withdrawn and the check repeats (at most 24 rounds); `verified`,
+  `withdrawn` and `problem` report the outcome. So what is suggested holds on the whole recorded
+  run, not just on the calls read.
+
+`withContracts(source, picks)` and `clauseTexts` write chosen suggestions into a program. The
+workflow it unlocks: infer contracts on a version you trust and add them; on a later, broken
+version the contract oracle (§7.6) answers the bug finder's questions from them (an
+`ensures result == ...` clause answers every call it covers). `inferContractsWith(tools, tree,
+options)` takes `compile` and `record` as dependencies; `index.ts` binds the core's.
+
 ## 8. Public API (`src/core/index.ts`)
 
 ```ts
@@ -966,6 +1049,10 @@ repairSearch(recording, request, options), repairExamples, repairExample // §7.
 parseSweepValues, sweep, sweepAsync, heapEdges, diffHeaps // §7.13
 diffRuns(a, b, { maxNodes?, maxCompared?, limit? }): RunDiff // §7.14
 withInput(source, name, literal): InputResult             // §7.14
+mapMoment(a, b, t, { lines? }): MappedMoment, lineMap(before, after) // §7.14 the same moment
+profile(recording, { justMyCode?, lines? }): Profile, foldedText, inclusiveSteps // §7.16
+inferContracts(recording, tree, InferOptions): InferResult // §7.17, checked by a re-run
+withContracts(source, picks), insertContracts, clauseTexts // §7.17 writing clauses in
 encodeTraceFile, encodeTraceFileSync, decodeTraceFile,    // §7.15 trace files
   decodeTraceFileSync, validateBundle, traceBundle, fingerprintRecording,
   openTraceFile, openTraceFileSync, openTraceBundle, openTraceBundleAsync,
@@ -1010,6 +1097,8 @@ it with provenance when a `v*` tag matching the package version is pushed.
 | `repair FILE` | repair previews (§7.12) for a run that crashed |
 | `diff A B [--limit N] [--max-steps N] [--seed S]` | differential execution (§7.14): record both files and compare them call by call: both outcomes, the output diff, calls only in A or B, renames, changed calls and the origins (where the difference starts); `--limit` (default 50) caps each list; exit 0 when the runs behave the same, 1 when they differ, 2 for usage or compile trouble (like diff(1)) |
 | `diff FILE --set NAME=VALUE` | the same, B being FILE with the top-level `let`/`var` `NAME` initialized to the literal `VALUE` (§7.14) |
+| `profile FILE [--top N] [--lines] [--folded] [--max-steps N] [--seed S]` | the step profiler (§7.16), library code folded into its callers: the steps and function count, then the top `N` (default 15) functions by inclusive steps with their share, exclusive steps, calls, average and largest call; `--lines` adds the top `N` lines with their source text; `--folded` prints every folded stack instead (`<top level>;main;fib 1234`, for flame graph tools; not with `--lines` or `--top`). A run that did not finish is profiled up to where it stopped, with a note |
+| `infer FILE [--fn NAME] [--write] [--max-steps N] [--seed S]` | contract inference (§7.17): per `fn` (or only `NAME`), its calls and different inputs, then the suggested `requires`/`ensures` clauses with their support and an example call, and whether they were checked by recording the program with them; `--write` adds every suggestion to the function headers in FILE (the only way the file is changed). Exit 1 when `--fn` names no `fn` or the file cannot be written |
 | `mcp` | the MCP server (§9.1) |
 | `record FILE [-o OUT.sighttrace] [--max-steps N] [--seed S]` | record and write a trace file (§7.15; default name: FILE with the `.sighttrace` extension), then print the steps, outcome, output lines and file size; refuses to overwrite FILE |
 | `run`, `replay`, `why`, `whynot`, `slice`, `query` with a `.sighttrace` in place of FILE | the file's program is recorded again with its seed, step limit and what-if edits (the what-if run is shown) and verified; a replay that differs prints `warning: …` on stderr and the command carries on; `replay` without `--at` uses the saved pen; `--max-steps`/`--seed` do not apply |
@@ -1033,8 +1122,9 @@ discarded (so E022 applies across entries).
 2.0, one message per line; `initialize`, `ping`, `tools/list`, `tools/call`). `mcp.ts` is the
 protocol core and the trace store (traces `t1`, `t2`, …; the 16 most recent are kept); the tools
 live beside it: `mcp-tools.ts` (one run), `mcp-query.ts`, `mcp-state.ts` (states within budgets),
-`mcp-diff.ts`, `mcp-diagnose.ts`, `mcp-repair.ts`, `mcp-find-bug.ts`, with argument readers and
-JSON forms in `mcp-shared.ts` and the size guard in `mcp-guard.ts`. Results are JSON text. A
+`mcp-diff.ts`, `mcp-diagnose.ts`, `mcp-repair.ts`, `mcp-find-bug.ts`, `mcp-profile.ts`,
+`mcp-infer.ts`, with argument readers and JSON forms in `mcp-shared.ts` and the size guard in
+`mcp-guard.ts`. Results are JSON text. A
 problem with a call is a tool result with `isError`, never a protocol error; sources are limited
 to 200,000 characters and `max_steps` to 10,000,000. Tools that analyze a run take `trace_id` or
 `source` (recorded as a new trace, with `max_steps` and `seed`). Tool descriptions say what each
@@ -1056,6 +1146,8 @@ tool is for and when to use it, and the `initialize` instructions suggest an ord
 | `suggest_repairs`  | §7.12. `mode: "crash"`, or `"examples"` with `expectations` (`{"call": "average([92, 88, 95])", "expected": "91.66…"}` or `{"function", "args", "returns"}`): each is matched against the recorded user calls by argument texts (both sides in canonical form, by running `repr` on the literal), judged right or wrong (`judged`; `unmatched` lists some recorded calls) and turned into repair examples for the one function judged wrong (or `function`); patches show the line before and after and what the wrong calls return now                                                                                                                                                                                                                                                                              |
 | `find_bug`         | §7.6 as a stateless interview: each call rebuilds the finder, replays `answers` (`[{"question": id, "answer": "right"/"wrong"/"unsure"}]`) and returns the next question (id, call, arguments, result, side effects, lines, suspects remaining) or the verdict (function, lines, certainty, reason, code) with repair previews from the answers; `strategy` `divide` (default) or `top-down`; answers that were never asked are listed in `unused_answers`; `expectations` (as for `suggest_repairs`) answer the questions about the calls they match (`answered_from_expectations`) through the oracle below                                                                                                                                                                                                        |
 | `export_trace`     | §7.15: a trace (a real run or a what-if, with its edit chain) as a `.sighttrace` file in base64, at `step` (default: the end), with its size and fingerprint                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `profile`          | §7.16: `steps`, `outcome`, the top `top` (default 20, at most 200) functions by inclusive steps (function, line, library, calls, inclusive, exclusive, share in percent, average, max, `first_step`) with `functions_total`, the top lines with their text and `lines_total`, and with `folded: true` the heaviest folded stacks; `just_my_code` (default true) folds library calls into their callers                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `infer_contracts`  | §7.17: per `fn` (or only `function`) its calls, `calls_read`, different inputs, existing clauses and the suggestions (kind, clause, template, `pins_result`, support, example call and `example_step`) or a note; `verified`, `withdrawn`, `problem`; `min_inputs` (default 3), `max_per_function` (default 6, at most 20), `include_source` returns the program with every suggestion written in; at most 40 functions are listed (`functions_total`). `seed` must be the trace's seed for the check to repeat the run                                                                                                                                                                                                                                                                                              |
 | `open_trace`       | §7.15: records a `.sighttrace` file (base64 in `trace_file`) again, re-applies its edits, checks the fingerprint and keeps the run as a new trace; returns what `run_trace` does plus `saved_step`, `verified` and the number of what-if edits                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 A question id is the function name and an FNV-1a digest of the call's memo key (`average#3f2a91c0`;
@@ -1304,10 +1396,49 @@ tabbed panels); the page may scroll vertically, never horizontally.
 - **Heap ghost edges** (§7.13): during a what-if, references only the what-if has are drawn solid
   in the ok colour and references only the real run has (at the same step) dashed in the error
   colour, with a legend and a text description.
+- **Profile** (§7.16): an instrument panel (desktop: last in the column, collapsed at first and
+  computed only while open; tablet and phone: a tab) with the run's steps and functions and two
+  views. The flame chart is an icicle drawn on canvas: stack paths aggregated from the call tree
+  (`ProfileNode`, sent flat from the analysis service as `FlameNode`s with their left edges, so a
+  deep recursion never makes `structuredClone` recurse; paths under 1/8,000 of the run and anything
+  past 20,000 paths are left out and counted), the top level spanning the width, each call level a
+  18 px row below its caller, widths by inclusive steps, labels where a box is at least 24 px wide,
+  user and library code in their own token colours (`--marker-soft`/`--surface-sunken`, the hovered
+  box `--pen-soft`), at most 160 rows. Hovering a box shows its name, steps, calls, share and path;
+  clicking it moves the pen to the first call of that path. The table view (the accessible one) lists
+  the functions (calls, inclusive, own, average, largest, share; each name moves the pen to its
+  first call) and the busiest lines. It follows just-my-code.
+- **Suggest contracts** (§7.17): while the editor's cursor is on the line a named `fn` starts on,
+  a chip in the editor's corner offers "Suggest contracts for NAME"; the selected call stack frame
+  of a user function has a "Contracts" button. Either opens a card (non-modal, Escape closes it)
+  that asks the analysis service's search lane for `inferContracts` on the shown run (only a real
+  run of the editor's program) and lists the clauses with checkboxes (all checked), their support
+  ("held in 12 calls with 5 different inputs", "pins the result down") and an example call that
+  moves the pen to it, with the withdrawn count and any problem. "Add to the function" writes the
+  checked clauses into the `fn` header (`withContracts`) through `setSource`, so the program
+  records again and the pen keeps its place; it is disabled while the editor's program differs
+  from the recorded one.
+- **Since your edit** (§7.14): when an edited program has been recorded again (`editRun` in the
+  store: the run before the edit, the new run and how the pen was carried over), the analysis
+  service compares the two runs once the new one is on screen (`diffRuns` with at most 20,000
+  calls aligned and 2,000 pairs compared, lists of 20; skipped when either run is over 300,000
+  steps or while the program is being edited again, and never on the main thread's typing path).
+  A strip above the transport says "output -2 +3 · starts in average · 4 changed calls · pen kept
+  in fib" (or "behaves the same"); Show lists where the change starts (origins, grouped with a
+  count), the changed calls (`average(xs = [1, 2]): returned 1.5 -> returned 1`, or what changed
+  when the results read the same) and the changed output lines, each moving the pen in the new
+  run; the strip can be dismissed for that edit.
+- **Keep my place after edits** (setting, default on): when an edited program lands, the pen goes
+  to the same moment of the new run (`mapMoment`, §7.14: the call it was in, found through the
+  call-tree alignment, and in it the n-th run of the same line, with the fallbacks there) instead
+  of the same step number; runs over 2,000,000 steps, the setting off or an engine without
+  `mapMoment` keep the step number, and a pen at the end stays at the end. Loading an example or a
+  link is not an edit.
 - **Status**: recording progress; "Finished · 56,789 steps · 12 lines"; "Runtime error on line 7 · …"
   (click to jump); "Step limit reached · Record 2M more" (calls `extendAsync`).
-- **Settings**: step budget (500 k / 2 M / 10 M), just-my-code, auto-run, instruction-level
-  stepping (adds a step-instruction button, shows `opName` and operand temps), theme.
+- **Settings**: step budget (500 k / 2 M / 10 M), just-my-code, auto-run, keep my place after
+  edits, instruction-level stepping (adds a step-instruction button, shows `opName` and operand
+  temps), theme. Stored settings saved before a setting existed load with its default.
 - **Sharing**: "Copy link" puts the program in the URL fragment (`#src=` + base64url of the UTF-8
   source, uncompressed; programs over 60,000 characters are not linked) with the pen's step
   (`&t=`), making a moment link: opening it records the program and puts the pen at that step, so a
@@ -1368,6 +1499,7 @@ src/studio/
              settings, watch target; actions) · session.ts (compile/record orchestration, abort,
              debounce) · selectors.ts
              · lab.ts (query marks, sweeps, why-not, slices) · use-search.ts (a search per component)
+             · keep-place.ts (the pen after an edit, the edit behind a run)
   lib/       format.ts · timeline-math.ts (zoom, pan, ticks, envelopes) · heap-layout.ts ·
              share.ts · storage.ts · shortcuts.ts · mark-pyramid.ts (per-pixel step marks) ·
              clipboard.ts      (pure, unit-tested)
@@ -1382,6 +1514,9 @@ src/studio/
              ConsoleLine.tsx · MakeItSo.tsx · RepairPreviews.tsx · History.tsx
   chrome/    Header.tsx · ExamplePicker.tsx · Settings.tsx · HelpDialog.tsx · Status.tsx ·
              ContextMenu.tsx
+  insight/   ProfilePanel.tsx · profile-model.ts · flame-draw.ts · ContractsCard.tsx ·
+             contracts-model.ts · contracts-state.ts · EditDiffStrip.tsx · compute.ts (the
+             analyses, shared by worker and fallback) · insight-protocol.ts · use-insight.ts
   styles/    tokens.css · base.css (+ one CSS file per component folder)
   examples.ts  (loads /examples/*.sight via import.meta.glob with `?raw`; reads `// title:` and
                `// summary:` header comments)
@@ -1399,8 +1534,12 @@ select-the-text fallback, and storage access wrapped in try/catch.
 ### 11.7 Analysis worker (`src/studio/analysis`)
 
 The heavy analyses run off the main thread: backward slices (dependence replay), queries, the
-inverse what-if (Make it so), repair previews (Try one-token fixes and the bug finder's verdict)
-and sweep forks. Components ask one page-wide service (`analysisService()`, or `analyze()`, which
+inverse what-if (Make it so), repair previews (Try one-token fixes and the bug finder's verdict),
+sweep forks, and the insight requests (`insight/insight-protocol.ts`): `profile` (a single pass),
+`infer` (a search: inference records the program again to check its clauses) and `runDiff` (the
+shown run against `previous`, a `RunDescription` of the run before an edit, which the worker
+records again; the main-thread fallback uses the original recording, which `recordingOf` finds
+by description). Components ask one page-wide service (`analysisService()`, or `analyze()`, which
 also checks the answer's kind) with a request, an `AbortSignal` and, for sweeps, a progress
 callback.
 

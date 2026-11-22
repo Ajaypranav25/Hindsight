@@ -1,5 +1,5 @@
 /**
- * The `infer_contracts` tool (ARCHITECTURE §7.16, §9.1): likely `requires`/`ensures` clauses for
+ * The `infer_contracts` tool (ARCHITECTURE §7.17, §9.1): likely `requires`/`ensures` clauses for
  * the functions of a run, each held in every recorded call and checked by recording the program
  * again with the clauses written in. Meant for a version the agent trusts: added to the program,
  * the clauses let `find_bug` answer its own questions on a later, broken version.

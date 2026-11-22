@@ -1,5 +1,5 @@
 /**
- * `hindsight profile` (ARCHITECTURE §7.15, §9): where a run spent its steps, per function (inclusive
+ * `hindsight profile` (ARCHITECTURE §7.16, §9): where a run spent its steps, per function (inclusive
  * and exclusive steps, calls, average and largest call), per line, or as folded stacks for flame
  * graph tools. Library code is folded into the user calls that made it (just-my-code).
  */

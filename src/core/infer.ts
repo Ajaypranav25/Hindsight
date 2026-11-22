@@ -1,5 +1,5 @@
 /**
- * Contract inference (ARCHITECTURE §7.16): likely `requires`/`ensures` clauses for the functions of
+ * Contract inference (ARCHITECTURE §7.17): likely `requires`/`ensures` clauses for the functions of
  * a recorded run, in the manner of Daikon (Ernst et al., 2001). For every `fn` with at least
  * `minInputs` returned calls with different arguments, clause templates are instantiated over its
  * parameters and result (`infer-templates.ts`); a clause is kept when it held in every observed

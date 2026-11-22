@@ -1,5 +1,5 @@
 /**
- * `hindsight infer` (ARCHITECTURE §7.16, §9): likely `requires`/`ensures` clauses for the functions
+ * `hindsight infer` (ARCHITECTURE §7.17, §9): likely `requires`/`ensures` clauses for the functions
  * of a run, each held in every recorded call and checked by recording the program again with the
  * clauses written in. `--write` adds them to the function headers in the file (only then is the
  * file changed). The workflow: infer on a version you trust, add the clauses, and on a later,
