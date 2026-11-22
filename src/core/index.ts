@@ -26,6 +26,7 @@ import {
   repairSearch as repairSearchWith,
 } from './repair'
 import { record as recordWith, recordAsync as recordAsyncWith } from './recorder'
+import { type ExploreOptions, exploreSchedulesWith, type ScheduleExploration } from './races'
 import {
   type ByteCodec,
   decodeTraceFile,
@@ -89,6 +90,15 @@ export type {
 } from './repair'
 export { repairExample, repairExamples } from './repair'
 export * from './run-diff'
+export type {
+  ExploreOptions,
+  RaceCandidate,
+  RaceWriter,
+  ScheduleDivergence,
+  ScheduleExploration,
+  ScheduleGroup,
+} from './races'
+export { DEFAULT_SCHEDULE_RUNS, MAX_SCHEDULE_RUNS, raceCandidates } from './races'
 export type { InputResult } from './run-input'
 export { withInput } from './run-input'
 export * from './trace-file'
@@ -214,6 +224,17 @@ export function repairSearch(
   options: RepairOptions = {},
 ): RepairSearch {
   return repairSearchWith({ compile, record }, recording, request, options)
+}
+
+/**
+ * Records `program` under many random task schedules and explains how their behaviors differ
+ * (ARCHITECTURE §7.16): the race finder.
+ */
+export function exploreSchedules(
+  program: Program,
+  options: ExploreOptions = {},
+): ScheduleExploration {
+  return exploreSchedulesWith(record, program, options)
 }
 
 /** Records a run in slices, yielding to the host between them. */
