@@ -1098,7 +1098,7 @@ that have them; refusals and answers cut off at `max_tokens` are errors. `--llm=
 Studio), optional bearer `HINDSIGHT_LLM_API_KEY`, model required (`--llm-model` or
 `HINDSIGHT_LLM_MODEL`), temperature 0, the JSON shape asked for in the prompt and read leniently
 (`json.ts`: whole text, fenced block, or first `{` to last `}`). Requests time out
-(`HINDSIGHT_LLM_TIMEOUT_MS`, default 180 s), a 429 (not the spend cap) or 5xx is retried once after
+(`HINDSIGHT_LLM_TIMEOUT_MS`, default 300 s: a repair at high effort can think for minutes), a 429 (not the spend cap) or 5xx is retried once after
 `retry-after` (at most 20 s) or 2 s, and error messages mask the key. `--llm-max-calls` (default 40)
 is a hard cap per command; past it the model is not asked. Providers never throw.
 

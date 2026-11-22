@@ -7,7 +7,7 @@ import type { LlmArgs, LlmConfig, ProviderName } from './types'
 
 export const DEFAULT_MAX_CALLS = 40
 export const DEFAULT_MIN_CONFIDENCE = 0.8
-export const DEFAULT_TIMEOUT_MS = 180_000
+export const DEFAULT_TIMEOUT_MS = 300_000
 const MIN_TIMEOUT_MS = 1_000
 const ANTHROPIC_BASE_URL = 'https://api.anthropic.com'
 
