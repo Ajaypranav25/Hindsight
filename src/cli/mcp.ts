@@ -8,8 +8,8 @@
  * process. Traces live in memory, named `t1`, `t2`, …; the oldest are dropped beyond `MAX_TRACES`.
  * Results are compact JSON text, shortened by the size guard when they would not fit an agent's
  * context window (`mcp-guard.ts`). The tools live in `mcp-tools.ts`, `mcp-query.ts`,
- * `mcp-diagnose.ts`, `mcp-repair.ts`, `mcp-find-bug.ts`, `mcp-diff.ts`, `mcp-profile.ts` and
- * `mcp-infer.ts`.
+ * `mcp-diagnose.ts`, `mcp-repair.ts`, `mcp-verify.ts`, `mcp-find-bug.ts`, `mcp-diff.ts`,
+ * `mcp-profile.ts`, `mcp-infer.ts` and `mcp-trace-file.ts`.
  */
 import { compile, LineIndex, record, type Recording } from '../core/index'
 import { diagnoseTool } from './mcp-diagnose'
@@ -21,6 +21,7 @@ import { inferContractsTool } from './mcp-infer'
 import { profileTool } from './mcp-profile'
 import { queryTool } from './mcp-query'
 import { suggestRepairsTool } from './mcp-repair'
+import { verifyPatchTool } from './mcp-verify'
 import {
   type Args,
   integerArg,
@@ -44,11 +45,13 @@ const INSTRUCTIONS =
   'diagnose_failure explains a crash or a wrong output line in one call (stack, values, slice, ' +
   'causal chain, verified one-token repairs); find_bug localizes a wrong result by asking about ' +
   'calls (stateless: pass the answers so far); suggest_repairs checks one-token fixes against ' +
-  'expected results; diff_runs compares two versions of a program (or two inputs) call by call ' +
-  'and names where the difference starts. seek_state, query_provenance, query, why_not, slice, ' +
-  'fork_whatif, get_divergence and solve answer narrower questions; profile shows where the ' +
-  'steps went; infer_contracts suggests requires/ensures clauses from a trusted run, which ' +
-  'find_bug then reads on a broken one. Steps are instruction ' +
+  'expected results; verify_patch checks a fix you wrote (does it compile, is the crash gone, do ' +
+  'the expectations hold, did anything regress) and gives a verdict; diff_runs compares two ' +
+  'versions of a program (or two inputs) call by call and names where the difference starts. ' +
+  'seek_state, query_provenance, query, why_not, slice, fork_whatif, get_divergence and solve ' +
+  'answer narrower questions; profile shows where the steps went; infer_contracts suggests ' +
+  'requires/ensures clauses from a trusted run, which find_bug then reads on a broken one; ' +
+  'export_trace and open_trace carry a run as a .sighttrace file. Steps are instruction ' +
   'counts; the state at step T is the state before instruction T runs. Long results come in ' +
   'pages: each result says when it was cut and how to fetch more.'
 
@@ -66,6 +69,7 @@ export class McpServer implements ToolContext {
       diffTool(this),
       diagnoseTool(this),
       suggestRepairsTool(this),
+      verifyPatchTool(this),
       findBugTool(this),
       profileTool(this),
       inferContractsTool(this),

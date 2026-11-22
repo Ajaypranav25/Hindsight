@@ -220,6 +220,7 @@ describe('hindsight mcp', () => {
       'diff_runs',
       'diagnose_failure',
       'suggest_repairs',
+      'verify_patch',
       'find_bug',
       'profile',
       'infer_contracts',

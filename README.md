@@ -316,18 +316,19 @@ With a global install (`npm i -g hindsight-lang`), `"command": "hindsight", "arg
 same. From a checkout without a linked build, use `"command": "npx", "args": ["tsx", "src/cli/main.ts",
 "mcp"]` with the repository as the working directory.
 
-| tool                                      | for                                                                                                                                                          |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `run_trace`                               | record a program: a trace id, the outcome, the output (in pages)                                                                                             |
-| `diagnose_failure`                        | a crash or a wrong output line in one call: error, stack, the values the failing statement reads, the slice, the causal chain and verified one-token repairs |
-| `find_bug`                                | a stateless interview about calls that ends at the function whose own code is wrong, with repair previews; expected results answer questions by themselves   |
-| `suggest_repairs`                         | one-token patches checked against a crash or against expectations like `{"call": "average([92, 88, 95])", "expected": "91.66666666666667"}`                  |
-| `diff_runs`                               | two versions (or two inputs) compared call by call: where the difference starts, and which expectations a fix meets                                          |
-| `seek_state`, `query_provenance`, `query` | the state at a step (with depth, item and frame budgets), where a value came from, moments by condition (in pages, or summarized)                            |
-| `fork_whatif`, `get_divergence`, `solve`  | counterfactuals forwards and backwards                                                                                                                       |
-| `why_not`, `slice`                        | why a line never ran; which lines can have caused a moment                                                                                                   |
-| `profile`, `infer_contracts`              | where a run spent its steps (functions, lines, folded stacks); likely `requires`/`ensures` clauses, checked by a re-run, to add to a trusted version         |
-| `export_trace`, `open_trace`              | a recorded run as a small `.sighttrace` file (base64) to attach to an issue, and back                                                                        |
+| tool                                      | for                                                                                                                                                                                                                                      |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `run_trace`                               | record a program: a trace id, the outcome, the output (in pages)                                                                                                                                                                         |
+| `diagnose_failure`                        | a crash or a wrong output line in one call: error, stack, the values the failing statement reads, the slice, the causal chain and verified one-token repairs                                                                             |
+| `find_bug`                                | a stateless interview about calls that ends at the function whose own code is wrong, with repair previews; expected results answer questions by themselves                                                                               |
+| `suggest_repairs`                         | one-token patches checked against a crash or against expectations like `{"call": "average([92, 88, 95])", "expected": "91.66666666666667"}`                                                                                              |
+| `diff_runs`                               | two versions (or two inputs) compared call by call: where the difference starts, and which expectations a fix meets                                                                                                                      |
+| `verify_patch`                            | a fix the agent wrote, run and judged: compile errors, crash fixed or not, expectations in both runs, contract failures, what changed call by call, and a verdict (fixed, improved, unchanged, regressed, does-not-compile) with reasons |
+| `seek_state`, `query_provenance`, `query` | the state at a step (with depth, item and frame budgets), where a value came from, moments by condition (in pages, or summarized)                                                                                                        |
+| `fork_whatif`, `get_divergence`, `solve`  | counterfactuals forwards and backwards                                                                                                                                                                                                   |
+| `why_not`, `slice`                        | why a line never ran; which lines can have caused a moment                                                                                                                                                                               |
+| `profile`, `infer_contracts`              | where a run spent its steps (functions, lines, folded stacks); likely `requires`/`ensures` clauses, checked by a re-run, to add to a trusted version                                                                                     |
+| `export_trace`, `open_trace`              | a recorded run as a small `.sighttrace` file (base64) to attach to an issue, and back                                                                                                                                                    |
 
 Results are sized for a context window: long lists come in pages that say how to fetch the next,
 `query` can summarize a loop into one row (`total: line 3 ×1,000, steps 21–9,013, values 1–500500`),
@@ -342,6 +343,58 @@ history of 'total' (declared on line 8, average):
   step 38        write    total = 171  line 10
   ...
 ```
+
+### AI assistance (optional)
+
+`debug` and `repair` can ask a language model for help, and the VM checks everything it says. It is
+off unless you pass `--llm`: without it nothing ever leaves your machine.
+
+```sh
+export ANTHROPIC_API_KEY=...                           # Anthropic (default model claude-opus-5-5)
+hindsight debug examples/17-find-the-bug.sight --llm   # the model answers what it is sure of
+hindsight repair FILE --llm                            # rewrites of the crashed function, verified
+hindsight repair FILE --llm --apply 1                  # ... and write the first verified one
+
+export HINDSIGHT_LLM_BASE_URL=http://localhost:11434/v1   # a local model through Ollama (or any
+hindsight debug FILE --llm=openai --llm-model qwen3:8b     # OpenAI-compatible chat server)
+```
+
+**What is sent where.** With `--llm`, a notice on stderr names the provider, model and URL before
+anything is sent. The model receives the source of the function in question (and of the functions
+it called), the call's argument values, a short description of the language and, for a repair, the
+error, the lines that led to it and the calls you judged. Nothing else of the program, no file
+names, no environment. `--llm-max-calls N` (default 40) caps the requests of one command, and the
+requests and tokens used are printed at the end. Choose the provider with `--llm=anthropic` (or
+`HINDSIGHT_LLM_PROVIDER`), the model with `--llm-model` (or `HINDSIGHT_LLM_MODEL`); a local server
+may need `HINDSIGHT_LLM_API_KEY`. The MCP server never calls a model: an agent connected over MCP
+is the model, and checks its own fixes with `verify_patch`.
+
+**The model as an oracle.** In `debug --llm` the contracts and assertions answer first, then the
+model, then you. The model is asked what a call _should_ return, without being shown what it did
+return (showing it invites agreement). Its prediction is run in the VM and compared with the
+recorded value; only a confident prediction (`--llm-min-confidence`, default 0.8) answers, and a
+call whose result matched but which also changed something outside itself is left to you. Each
+answer shows its evidence, and `u` takes it back like any other:
+
+```
+Question 1: average(xs = [88, 83, 79]) returned 125 — wrong (claude-opus-5-5 expected 83.33333333333333, confidence 0.95)
+  The average of three numbers is their sum divided by 3.
+Question 2: total(xs = [88, 83, 79]) returned 250 — right (claude-opus-5-5 expected 250, confidence 0.97)
+Found it: the bug is in average (lines 8–10).
+```
+
+**Repairs the VM verifies.** After the verdict (or for a crash, with `repair --llm`) the model
+proposes up to three rewrites of the whole function. Each is spliced into the program, compiled and
+run: a crash must go away; after an interview every call you judged right must still return the
+same, every call judged wrong must now return something else (the expected value, when the model
+predicted one), and no contract or assertion may fail. Verified candidates are shown as diffs with
+what changed in the run; rejected ones with the reasons, which go back to the model for one more
+round when nothing passed. Nothing is written unless you pick a candidate (`--apply N`, or the
+number at the prompt after `debug`).
+
+Why the VM checks everything: a model's prediction is a guess and its patch a hypothesis. The
+recorded run is ground truth, so a wrong guess costs you a question, not a wrong verdict, and a
+plausible but broken patch is rejected instead of written.
 
 ## In VS Code
 

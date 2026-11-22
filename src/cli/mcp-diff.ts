@@ -39,7 +39,7 @@ export const DIFF_DEFAULT_LIMIT = 20
 export const DIFF_MAX_LIMIT = 200
 const MAX_OUTPUT_DIFF = 200
 
-interface Sides {
+export interface Sides {
   readonly a: Trace
   readonly b: Trace
   readonly input: JsonObject | null
@@ -151,7 +151,7 @@ export function setting(given: unknown): { readonly name: string; readonly value
 }
 
 /** Each expectation judged in both runs, and whether B meets them all. */
-function expectationsJson(sides: Sides, expectations: readonly Expectation[]): JsonObject {
+export function expectationsJson(sides: Sides, expectations: readonly Expectation[]): JsonObject {
   const inA = checkExpectations(sides.a.recording, expectations)
   const inB = checkExpectations(sides.b.recording, expectations)
   const rows = inB.map((b, i) => {
@@ -242,7 +242,7 @@ function headline(diff: RunDiff, input: JsonObject | null): string {
   return `The difference starts in ${name}${where}: ${originReason(first)}${others}.`
 }
 
-function diffJson(sides: Sides, diff: RunDiff): JsonObject {
+export function diffJson(sides: Sides, diff: RunDiff): JsonObject {
   const changedOutput = diff.output.lines.filter((line) => line.kind !== 'same')
   const run = (trace: Trace, summary: RunDiff['a']): JsonObject => ({
     trace_id: trace.id,

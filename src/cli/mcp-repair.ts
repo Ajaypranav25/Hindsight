@@ -200,10 +200,10 @@ function flatRepairs(result: RepairResult): JsonObject {
     budget_exhausted: json.budget_exhausted!,
     note:
       found > 0
-        ? 'Each patch was verified by re-running the program. Prefer the one whose "now" matches your intent, then confirm it with diff_runs.'
+        ? 'Each patch was verified by re-running the program. Prefer the one whose "now" matches your intent, then check the whole patched program with verify_patch (or diff_runs).'
         : result.exhausted
-          ? 'No one-token change worked within the budget: raise max_mutants, or the fix needs more than one token.'
-          : 'No one-token change works: the fix needs more than one token.',
+          ? 'No one-token change worked within the budget: raise max_mutants, or write a larger fix and check it with verify_patch.'
+          : 'No one-token change works: write a larger fix and check it with verify_patch (same expectations).',
   }
 }
 
