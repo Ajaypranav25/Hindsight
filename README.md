@@ -21,7 +21,7 @@ call stack, every variable, every list and record — in under a millisecond.
 
 ## Try it
 
-**In your browser:** [ajaypranav25.github.io/Hindsight](https://ajaypranav25.github.io/Hindsight/),
+**In your browser:** [hindsight-two.vercel.app](https://hindsight-two.vercel.app),
 nothing to install. Or run it locally:
 
 ```sh
@@ -525,8 +525,8 @@ Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - **Fuzzing** keeps the lexer and parser from throwing on arbitrary input, and a bytecode verifier
   checks the stack discipline of every corpus program, gallery example and generated program.
 - **Playwright** end-to-end tests drive the studio in Chrome.
-- **CI** runs all of it on Linux and Windows, plus the performance budgets, and publishes the
-  studio to GitHub Pages from `main`.
+- **CI** runs all of it on Linux and Windows, plus the performance budgets; Vercel deploys the
+  studio from `main`.
 - About 96 % line coverage, enforced so it cannot drift down; strict TypeScript; zero runtime
   dependencies in the language core.
 
