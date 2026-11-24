@@ -57,7 +57,17 @@ jobs:
       # Trusted publishing needs npm 11.5.1 or later; Node 22 ships npm 10.
       - name: Update npm for trusted publishing
         run: npm install --global npm@11
-      - run: npm publish --provenance --access public
+      # npm never accepts the same version twice, so a re-run of the whole workflow after a
+      # successful publish skips it, and the GitHub release that waits for this job still happens.
+      - name: Publish, unless this version is already on npm
+        run: |
+          name="$(node -p "require('./package.json').name")"
+          version="$(node -p "require('./package.json').version")"
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "$name@$version is already on npm; nothing to publish."
+          else
+            npm publish --provenance --access public
+          fi
 
   # The desktop app's installers, built on each system from the tagged commit once the packed app
   # has passed the same end-to-end tests as in CI.
