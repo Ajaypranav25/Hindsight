@@ -42,7 +42,11 @@ function subscribe<T>(
 async function saveProgram(request: DesktopSaveRequest): Promise<DesktopSaveResult> {
   try {
     // Only the contract's fields cross over; the main process checks them again.
-    const payload = { source: request?.source, path: request?.path }
+    const payload = {
+      source: request?.source,
+      path: request?.path,
+      suggestion: request?.suggestion,
+    }
     return parseSaveResult(await ipcRenderer.invoke(CHANNELS.saveProgram, payload), PLATFORM)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)

@@ -3,9 +3,9 @@
  * studio decodes and checks itself), anything else is a program (UTF-8 text). Files are untrusted:
  * both kinds are size-limited and a program that is not valid UTF-8 is refused, not mangled.
  */
-import { basename, extname, resolve } from 'node:path'
+import { basename, extname, join, resolve } from 'node:path'
 import { MAX_TRACE_FILE_BYTES, TRACE_FILE_EXTENSION } from '../../src/core/trace-format'
-import type { DesktopOpenRequest } from '../../src/studio/desktop/bridge'
+import type { DesktopOpenRequest, DesktopSaveRequest } from '../../src/studio/desktop/bridge'
 import { MAX_PROGRAM_BYTES, parseOpenRequest } from './messages'
 
 export type FileKind = 'program' | 'trace'
@@ -79,6 +79,18 @@ export function pathKey(path: string, platform: string): string {
 
 /** The name the Save dialog suggests for a program that has no file yet. */
 export const DEFAULT_PROGRAM_NAME = 'program.sight'
+
+/**
+ * Where the Save dialog starts: the file the studio asked to write (one this session may not write
+ * without asking), else the file it suggests (Save As on an opened file: that file), else a new
+ * program in `folder` (the user's documents).
+ */
+export function saveDialogStart(
+  request: Pick<DesktopSaveRequest, 'path' | 'suggestion'>,
+  folder: string,
+): string {
+  return request.path ?? request.suggestion ?? join(folder, DEFAULT_PROGRAM_NAME)
+}
 
 export interface FileFilter {
   readonly name: string

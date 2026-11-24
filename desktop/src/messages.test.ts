@@ -79,9 +79,36 @@ describe('save requests from the page', () => {
     const request = parseSaveRequest(payload)
 
     // Assert
-    expect(request).toEqual(payload)
+    expect(request).toEqual({ ...payload, suggestion: null })
     expect(request).not.toBe(payload)
-    expect(parseSaveRequest({ source: '', path: null })).toEqual({ source: '', path: null })
+    expect(parseSaveRequest({ source: '', path: null })).toEqual({
+      source: '',
+      path: null,
+      suggestion: null,
+    })
+  })
+
+  test('a request that asks may suggest where the Save dialog starts', () => {
+    for (const suggestion of [PATH, WINDOWS_PATH])
+      expect(parseSaveRequest({ source: 'x', path: null, suggestion })).toEqual({
+        source: 'x',
+        path: null,
+        suggestion,
+      })
+    for (const none of [undefined, null])
+      expect(parseSaveRequest({ source: 'x', path: null, suggestion: none })).toEqual({
+        source: 'x',
+        path: null,
+        suggestion: null,
+      })
+  })
+
+  test('a suggestion is checked like a path', () => {
+    for (const suggestion of ['fib.sight', '', `${PATH}\u0000`, 7, '/'.repeat(40_000)])
+      expect(
+        parseSaveRequest({ source: 'x', path: null, suggestion }),
+        String(suggestion),
+      ).toBeNull()
   })
 
   test('anything else is refused', () => {

@@ -13,6 +13,7 @@ import {
   clickMenu,
   closeApp,
   closeWindow,
+  DESKTOP_DIR,
   launchApp,
   notice,
   recorded,
@@ -275,6 +276,27 @@ test('a program the studio loads over a file leaves it, so Save never overwrites
   expect(await windowTitle(app)).toBe('Hindsight')
   expect(readFileSync(b, 'utf8')).toBe('print("b")\n')
   expect(readFileSync(a, 'utf8')).toBe('print("a")\n')
+})
+
+/** Whether the studio sends Save As a starting file yet (src/studio/desktop/connect.ts). */
+const STUDIO_SUGGESTS = readFileSync(
+  join(DESKTOP_DIR, '..', 'src', 'studio', 'desktop', 'connect.ts'),
+  'utf8',
+).includes('suggestion')
+
+test('File > Save As on an opened file starts the Save dialog at that file', async () => {
+  test.skip(!STUDIO_SUGGESTS, 'the studio does not send a suggestion with Save As yet')
+
+  // Arrange
+  const path = programFile('suggested.sight')
+  const { app } = await startWith(path)
+  await stubSaveDialog(app, null)
+
+  // Act
+  await clickMenu(app, MENU_IDS.saveAs)
+
+  // Assert
+  await expect.poll(() => recorded(app, 'save')).toEqual([path])
 })
 
 // --- View > Reload -----------------------------------------------------------------------------

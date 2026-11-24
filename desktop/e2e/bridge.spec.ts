@@ -112,6 +112,31 @@ test('saveProgram asks before writing to a file the user never chose', async () 
   expect(() => readFileSync(unknown)).toThrow()
 })
 
+test('saveProgram starts the Save dialog at the file the studio suggests', async () => {
+  // Arrange
+  const suggested = join(folder, 'suggested.sight')
+  await stubSaveDialog(desktop.app, null)
+  const saveSuggesting = (suggestion: unknown) =>
+    desktop.page.evaluate(
+      (start) =>
+        (window as unknown as BridgeWindow).hindsightDesktop.saveProgram({
+          source: 'print(5)\n',
+          path: null,
+          suggestion: start as string,
+        }),
+      suggestion,
+    )
+
+  // Act
+  const asked = await saveSuggesting(suggested)
+  const refused = await saveSuggesting('relative.sight')
+
+  // Assert: the dialog started at the suggestion; a suggestion that is no path refuses the save.
+  expect(asked).toEqual({ ok: false, reason: 'cancelled' })
+  expect(await recorded(desktop.app, 'save')).toEqual([suggested])
+  expect(refused).toMatchObject({ ok: false, reason: 'failed' })
+})
+
 test('saveProgram reports a write that fails, and refuses a malformed request', async () => {
   // Arrange
   await stubSaveDialog(desktop.app, join(folder, 'missing-folder', 'x.sight'))

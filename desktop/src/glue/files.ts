@@ -4,16 +4,16 @@
  * app by the system); for any other path it asks with a Save dialog first.
  */
 import { readFile, stat, writeFile } from 'node:fs/promises'
-import { basename, join } from 'node:path'
+import { basename } from 'node:path'
 import { app, dialog, type BrowserWindow } from 'electron'
 import type { DesktopSaveRequest, DesktopSaveResult } from '../../../src/studio/desktop/bridge'
 import {
-  DEFAULT_PROGRAM_NAME,
   describeFileError,
   OPEN_FILTERS,
   openRequestFor,
   pathKey,
   SAVE_FILTERS,
+  saveDialogStart,
   sizeProblem,
   type OpenResult,
 } from '../open-files'
@@ -66,7 +66,7 @@ export class UserFiles {
   /** Writes the program where the studio asked, or where the user chooses. */
   async save(window: BrowserWindow, request: DesktopSaveRequest): Promise<DesktopSaveResult> {
     const known = request.path !== null && this.isGranted(request.path)
-    const target = known ? request.path : await this.chooseSaveTarget(window, request.path)
+    const target = known ? request.path : await this.chooseSaveTarget(window, request)
     if (target === null) return { ok: false, reason: 'cancelled' }
     try {
       await writeFile(target, request.source, 'utf8')
@@ -82,11 +82,11 @@ export class UserFiles {
 
   private async chooseSaveTarget(
     window: BrowserWindow,
-    suggested: string | null,
+    request: DesktopSaveRequest,
   ): Promise<string | null> {
     const { canceled, filePath } = await dialog.showSaveDialog(window, {
       title: 'Save Program',
-      defaultPath: suggested ?? join(app.getPath('documents'), DEFAULT_PROGRAM_NAME),
+      defaultPath: saveDialogStart(request, app.getPath('documents')),
       filters: [...SAVE_FILTERS],
       properties: ['createDirectory', 'showOverwriteConfirmation'],
     })

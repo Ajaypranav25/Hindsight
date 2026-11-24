@@ -8,6 +8,7 @@ import {
   OPEN_FILTERS,
   openRequestFor,
   pathKey,
+  saveDialogStart,
   SAVE_FILTERS,
   sizeLimitOf,
   sizeProblem,
@@ -123,6 +124,19 @@ describe('dialogs and errors', () => {
       ['*'],
     ])
     expect(SAVE_FILTERS).toEqual([{ name: 'Hindsight programs', extensions: ['sight'] }])
+  })
+
+  test('Save starts at the file asked for, then the suggestion, then a new program', () => {
+    const documents = resolve('Documents')
+    const opened = resolve('code', 'fib.sight')
+    const other = resolve('code', 'other.sight')
+
+    expect(saveDialogStart({ path: null, suggestion: opened }, documents)).toBe(opened)
+    expect(saveDialogStart({ path: other, suggestion: opened }, documents)).toBe(other)
+    for (const suggestion of [null, undefined])
+      expect(saveDialogStart({ path: null, suggestion }, documents)).toBe(
+        resolve('Documents', 'program.sight'),
+      )
   })
 
   test('file errors read as plain reasons', () => {

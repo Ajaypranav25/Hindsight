@@ -99,11 +99,17 @@ export function isFileName(value: unknown, platform: string): value is string {
 
 // --- page to main ----------------------------------------------------------------------------
 
+/**
+ * A save request: the program, the file to write (null asks for one) and, when asking, the file
+ * the Save dialog starts at (absent, undefined and null all mean none).
+ */
 export function parseSaveRequest(value: unknown): DesktopSaveRequest | null {
   const fields = fieldsOf(value)
   if (fields === null || !isProgramText(fields.source)) return null
   if (fields.path !== null && !isFilePath(fields.path)) return null
-  return { source: fields.source, path: fields.path }
+  const suggestion = fields.suggestion ?? null
+  if (suggestion !== null && !isFilePath(suggestion)) return null
+  return { source: fields.source, path: fields.path, suggestion }
 }
 
 export function parseDocumentState(value: unknown, platform: string): DesktopDocumentState | null {
