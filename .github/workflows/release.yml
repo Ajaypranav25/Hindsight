@@ -4,6 +4,11 @@ name: Release
 # version in package.json; the package carries a provenance statement linking it to this run.
 # It signs in to npm with trusted publishing (OIDC, the id-token permission below): npm trusts this
 # workflow file in this repository, so there is no npm token to store or renew.
+#
+# The same tag also builds the desktop app's installers on Windows, macOS and Linux (the tag must
+# match desktop/package.json too) and publishes them, with SHA256SUMS.txt, as the tag's GitHub
+# release. No signing secrets are involved: Windows and Linux builds are unsigned, macOS builds are
+# signed ad hoc (desktop/README.md).
 on:
   push:
     tags: ['v*']
@@ -47,3 +52,105 @@ jobs:
       - name: Update npm for trusted publishing
         run: npm install --global npm@11
       - run: npm publish --provenance --access public
+
+  # The desktop app's installers, built on each system from the tagged commit.
+  desktop:
+    name: Desktop installers (${{ matrix.os }})
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
+      - name: Check that the tag matches desktop/package.json
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="v$(node -p "require('./desktop/package.json').version")"
+          if [ "$TAG" != "$version" ]; then
+            echo "::error::tag $TAG does not match desktop/package.json ($version)"
+            exit 1
+          fi
+      - run: npm ci
+      - run: npm run build:studio
+      - run: npm ci
+        working-directory: desktop
+      - run: npm run dist
+        working-directory: desktop
+      - name: Check the ad hoc signatures (Intel and Apple Silicon)
+        if: runner.os == 'macOS'
+        working-directory: desktop
+        run: |
+          for app in release/mac/Hindsight.app release/mac-arm64/Hindsight.app; do
+            codesign --verify --deep --strict --verbose=2 "$app"
+            codesign -dv "$app" 2>&1 | tee signature.txt
+            grep -q '^Signature=adhoc$' signature.txt
+          done
+      # The download site links to these exact names; a missing one fails the release.
+      - name: Collect the installers
+        run: |
+          case "$RUNNER_OS" in
+            Windows) files='Hindsight-Setup-x64.exe' ;;
+            macOS) files='Hindsight-mac-arm64.dmg Hindsight-mac-x64.dmg Hindsight-mac-arm64.zip Hindsight-mac-x64.zip' ;;
+            Linux) files='Hindsight-linux-x86_64.AppImage Hindsight-linux-amd64.deb' ;;
+          esac
+          mkdir installers
+          for file in $files; do
+            if [ ! -f "desktop/release/$file" ]; then
+              echo "::error::desktop/release/$file was not built"
+              exit 1
+            fi
+            cp "desktop/release/$file" installers/
+          done
+      - uses: actions/upload-artifact@v7
+        with:
+          name: installers-${{ runner.os }}
+          path: installers/
+          if-no-files-found: error
+          retention-days: 14
+
+  # One GitHub release per tag, with every installer and their checksums. The download site links
+  # to releases/latest/download/<name>, so the release is published, not a draft.
+  github-release:
+    name: GitHub release
+    needs: desktop
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: installers-*
+          path: installers
+          merge-multiple: true
+      - name: Write SHA256SUMS.txt
+        working-directory: installers
+        run: |
+          sha256sum Hindsight-* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          # A re-run replaces the assets of the release the first run made.
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" installers/* --clobber
+          else
+            gh release create "$TAG" --verify-tag --generate-notes --title "Hindsight $TAG" installers/*
+          fi
