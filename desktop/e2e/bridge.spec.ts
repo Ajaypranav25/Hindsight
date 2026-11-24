@@ -155,6 +155,32 @@ test('File > Open reads the chosen program and hands it to the studio', async ()
     .toEqual([{ kind: 'program', source: 'print("opened")\n', path, name: 'opened.sight' }])
 })
 
+test('an opened program may be saved over, an opened trace never', async () => {
+  // Arrange
+  const program = join(folder, 'mine.sight')
+  const trace = join(folder, 'run.sighttrace')
+  writeFileSync(program, 'print("old")\n')
+  writeFileSync(trace, 'SIGHTTRC')
+  await stubSaveDialog(desktop.app, null)
+  await listenOnBridge(desktop.page)
+  for (const path of [program, trace]) {
+    await stubOpenDialog(desktop.app, [path])
+    await clickMenu(desktop.app, MENU_IDS.open)
+  }
+  await expect.poll(async () => (await received(desktop.page)).length).toBe(2)
+
+  // Act
+  const overProgram = await save('print("new")\n', program)
+  const overTrace = await save('print("new")\n', trace)
+
+  // Assert: the trace's path only got a Save dialog, which the user cancelled.
+  expect(overProgram).toEqual({ ok: true, path: program, name: 'mine.sight' })
+  expect(readFileSync(program, 'utf8')).toBe('print("new")\n')
+  expect(overTrace).toEqual({ ok: false, reason: 'cancelled' })
+  expect(readFileSync(trace, 'utf8')).toBe('SIGHTTRC')
+  expect(await recorded(desktop.app, 'save')).toEqual([trace])
+})
+
 test('a second launch hands its file and link to the running app and exits', async () => {
   // Arrange
   const path = join(folder, 'second.sight')

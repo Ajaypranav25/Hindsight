@@ -5,6 +5,7 @@ import {
   closePrompt,
   closeStep,
   INITIAL_CLOSE_STATE,
+  reloadPrompt,
   representedFilename,
   SAVE_AND_CLOSE_WINDOW_MS,
   windowTitle,
@@ -46,6 +47,19 @@ describe('the unsaved-changes prompt', () => {
       expect(answerOf(prompt, prompt.buttons.indexOf("Don't Save"))).toBe('discard')
       expect(answerOf(prompt, 99)).toBe('cancel')
     }
+  })
+})
+
+describe('the reload prompt', () => {
+  test('names what would be lost, and Cancel is the default', () => {
+    const named = reloadPrompt('fib.sight')
+
+    expect(named.message).toBe('Reload Hindsight?')
+    expect(named.detail).toBe('Your unsaved changes to fib.sight will be lost.')
+    expect(named.buttons[0]).toBe('Reload')
+    expect(named.buttons[named.defaultId]).toBe('Cancel')
+    expect(named.buttons[named.cancelId]).toBe('Cancel')
+    expect(reloadPrompt(null).detail).toContain('this program')
   })
 })
 

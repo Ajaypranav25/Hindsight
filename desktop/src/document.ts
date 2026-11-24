@@ -70,6 +70,17 @@ export function closePrompt(name: string | null, platform: string): ClosePrompt 
   }
 }
 
+/** Asked before a reload would throw unsaved changes away; button 0 reloads. */
+export function reloadPrompt(name: string | null): Omit<ClosePrompt, 'answers'> {
+  return {
+    message: `Reload ${APP_NAME}?`,
+    detail: `Your unsaved changes to ${name ?? 'this program'} will be lost.`,
+    buttons: ['Reload', 'Cancel'],
+    defaultId: 1,
+    cancelId: 1,
+  }
+}
+
 /** The answer for the button the user pressed (Cancel for anything unexpected). */
 export function answerOf(prompt: ClosePrompt, response: number): PromptAnswer {
   return prompt.answers[response] ?? 'cancel'

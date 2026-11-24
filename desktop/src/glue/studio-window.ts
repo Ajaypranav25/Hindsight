@@ -22,6 +22,7 @@ import {
   closePrompt,
   closeStep,
   INITIAL_CLOSE_STATE,
+  reloadPrompt,
   representedFilename,
   windowTitle,
   type CloseEffect,
@@ -41,6 +42,8 @@ const BACKGROUND = { light: '#e9eee8', dark: '#0e1319' } as const
 
 export interface StudioWindowOptions {
   readonly preload: string
+  /** The window icon on Linux; Windows and macOS take theirs from the executable and bundle. */
+  readonly linuxIcon: string
   readonly version: string
   /** Where the window's size and position are kept between runs. */
   readonly stateFile: string
@@ -81,6 +84,7 @@ export class StudioWindow {
       minHeight: MIN_SIZE.height,
       show: false,
       title: APP_NAME,
+      icon: process.platform === 'linux' ? options.linuxIcon : undefined,
       backgroundColor: nativeTheme.shouldUseDarkColors ? BACKGROUND.dark : BACKGROUND.light,
       webPreferences: {
         preload: options.preload,
@@ -145,6 +149,22 @@ export class StudioWindow {
     if (this.window.isMinimized()) this.window.restore()
     this.window.show()
     this.window.focus()
+  }
+
+  /** Reloads the studio; with unsaved changes, only once the user agrees to lose them. */
+  async reload(): Promise<void> {
+    if (!this.alive) return
+    if (this.closeState.dirty) {
+      const prompt = reloadPrompt(this.document.name)
+      const { response } = await dialog.showMessageBox(this.window, {
+        type: 'warning',
+        ...prompt,
+        buttons: [...prompt.buttons],
+        noLink: true,
+      })
+      if (response !== 0 || !this.alive) return
+    }
+    this.window.webContents.reload()
   }
 
   toggleFullScreen(): void {

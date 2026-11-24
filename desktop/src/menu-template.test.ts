@@ -15,6 +15,7 @@ function actions(): MenuActions {
     open: vi.fn(),
     save: vi.fn(),
     saveAs: vi.fn(),
+    reload: vi.fn(),
     toggleFullScreen: vi.fn(),
     openExternal: vi.fn(),
     showAbout: vi.fn(),
@@ -135,6 +136,20 @@ describe('the application menu', () => {
     expect(full('win32').role).toBeUndefined()
     expect(full('linux').accelerator).toBeUndefined()
     expect(full('darwin').role).toBe('togglefullscreen')
+  })
+
+  test("Reload is the app's own item, so it can ask about unsaved changes first", () => {
+    // Arrange
+    const handlers = actions()
+    const reload = find(menuTemplate('darwin', 'Hindsight', handlers), MENU_IDS.reload)
+
+    // Act
+    reload.click?.()
+
+    // Assert
+    expect(reload.role).toBeUndefined()
+    expect(reload.accelerator).toBe('CmdOrCtrl+R')
+    expect(handlers.reload).toHaveBeenCalledOnce()
   })
 
   test('full screen on Windows and Linux runs its action', () => {

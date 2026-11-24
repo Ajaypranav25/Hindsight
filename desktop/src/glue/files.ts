@@ -23,9 +23,9 @@ export class UserFiles {
 
   constructor(private readonly platform: string) {}
 
+  /** Lets the studio save to `path` from now on: only programs, so a trace is never overwritten. */
   private grant(path: string): void {
     this.granted.add(pathKey(path, this.platform))
-    app.addRecentDocument(path)
   }
 
   private isGranted(path: string): boolean {
@@ -40,7 +40,9 @@ export class UserFiles {
       const tooLarge = sizeProblem(path, info.size)
       if (tooLarge !== null) return { ok: false, message: tooLarge }
       const result = openRequestFor(path, new Uint8Array(await readFile(path)))
-      if (result.ok) this.grant(path)
+      if (!result.ok) return result
+      app.addRecentDocument(path)
+      if (result.request.kind === 'program') this.grant(path)
       return result
     } catch (error) {
       const reason = describeFileError(error)
@@ -74,6 +76,7 @@ export class UserFiles {
       return { ok: false, reason: 'failed', message }
     }
     this.grant(target)
+    app.addRecentDocument(target)
     return { ok: true, path: target, name: basename(target) }
   }
 

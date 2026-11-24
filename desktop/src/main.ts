@@ -30,6 +30,7 @@ import { HELP_LINKS } from './menu-template'
 
 const STUDIO_ROOT = join(__dirname, 'studio')
 const PRELOAD = join(__dirname, 'preload.js')
+const LINUX_ICON = join(__dirname, 'icon.png')
 const WINDOW_STATE_FILE = 'window-state.json'
 
 function currentLaunch(): LaunchContext {
@@ -99,7 +100,8 @@ class DesktopApp {
     })
     // Windows and Linux: a second launch hands its files and links to this one.
     app.on('second-instance', (_event, argv, cwd, data) => {
-      const launch = parseInstanceData(data) ?? { argv, cwd, defaultApp: process.defaultApp }
+      const defaultApp = process.defaultApp === true
+      const launch = parseInstanceData(data) ?? { argv, cwd, defaultApp }
       for (const target of launchTargets(launch)) this.openTarget(target)
       if (app.isReady()) this.window().focus()
     })
@@ -124,6 +126,7 @@ class DesktopApp {
       open: () => void this.chooseAndOpen(),
       save: () => this.studio?.command('save'),
       saveAs: () => this.studio?.command('save-as'),
+      reload: () => void this.studio?.reload(),
       toggleFullScreen: () => this.studio?.toggleFullScreen(),
       openExternal: openExternally,
       showAbout: () => void this.showAbout(),
@@ -145,6 +148,7 @@ class DesktopApp {
     const studio = new StudioWindow(
       {
         preload: PRELOAD,
+        linuxIcon: LINUX_ICON,
         version: app.getVersion(),
         stateFile: join(app.getPath('userData'), WINDOW_STATE_FILE),
       },

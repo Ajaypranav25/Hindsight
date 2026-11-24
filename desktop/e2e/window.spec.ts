@@ -8,7 +8,9 @@ import { join } from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
 import { editorContent } from '../../e2e/fixtures'
 import type { DesktopDocumentState } from '../../src/studio/desktop/bridge'
+import { MENU_IDS } from '../src/menu-template'
 import {
+  clickMenu,
   closeApp,
   closeWindow,
   launchApp,
@@ -252,6 +254,49 @@ test.describe('before the studio reports its document itself', () => {
     await page.waitForTimeout(500)
     expect(await windowCount(app)).toBe(1)
     expect(await windowTitle(app)).toBe('\u25cf kept.sight \u2014 Hindsight')
+  })
+
+  test('View > Reload asks first when there are unsaved changes', async () => {
+    // Arrange: a mark on the page that a reload would wipe.
+    const { app, page } = await start()
+    const marked = () => page.evaluate(() => 'reloadMark' in window)
+    await page.evaluate(() => Object.assign(window, { reloadMark: true }))
+    await setDocument(page, { name: 'fib.sight', dirty: true })
+    await stubMessageBox(app, 'Cancel')
+
+    // Act: Cancel keeps the page.
+    await clickMenu(app, MENU_IDS.reload)
+
+    // Assert
+    await expect.poll(() => recorded(app, 'message')).toEqual(['Reload Hindsight?'])
+    expect(await marked()).toBe(true)
+
+    // Act: Reload reloads it. (Waiting for the new page's load, not polling the old one, whose
+    // context the reload destroys mid-call.)
+    await stubMessageBox(app, 'Reload')
+    const reloaded = page.waitForEvent('load')
+    await clickMenu(app, MENU_IDS.reload)
+    await reloaded
+
+    // Assert
+    expect(await marked()).toBe(false)
+    await waitForStudio(page)
+  })
+
+  test('View > Reload reloads at once without unsaved changes', async () => {
+    // Arrange
+    const { app, page } = await start()
+    await page.evaluate(() => Object.assign(window, { reloadMark: true }))
+    await stubMessageBox(app, 'Cancel')
+
+    // Act
+    const reloaded = page.waitForEvent('load')
+    await clickMenu(app, MENU_IDS.reload)
+    await reloaded
+
+    // Assert
+    expect(await page.evaluate(() => 'reloadMark' in window)).toBe(false)
+    expect(await recorded(app, 'message')).toEqual([])
   })
 })
 

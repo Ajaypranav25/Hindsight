@@ -1,6 +1,6 @@
 // Builds the desktop app into dist/: the main process (dist/main.js), the preload script
-// (dist/preload.js) and a copy of the built studio (dist/studio/, from the repository's
-// dist/studio: run `npm run build:studio` at the repository root first).
+// (dist/preload.js), the window icon (dist/icon.png) and a copy of the built studio (dist/studio/,
+// from the repository's dist/studio: run `npm run build:studio` at the repository root first).
 //
 // Both bundles are CommonJS with only `electron` left to require at run time. The preload runs in
 // a sandbox, where `electron` is the only module require() can load, so the build fails if
@@ -55,3 +55,5 @@ if (preloadImports.length > 0) {
 
 cpSync(studio, join(out, 'studio'), { recursive: true })
 console.log(`Copied the studio from ${studio}`)
+// The window icon on Linux; electron-builder makes the other systems' icons from the same file.
+cpSync(join(desktop, 'build', 'icon.png'), join(out, 'icon.png'))

@@ -24,8 +24,6 @@ export type MenuRole =
   | 'pasteAndMatchStyle'
   | 'delete'
   | 'selectAll'
-  | 'reload'
-  | 'forceReload'
   | 'toggleDevTools'
   | 'resetZoom'
   | 'zoomIn'
@@ -56,6 +54,8 @@ export interface MenuActions {
   open(): void
   save(): void
   saveAs(): void
+  /** Reloads the studio, asking first when that would lose unsaved changes. */
+  reload(): void
   toggleFullScreen(): void
   openExternal(url: string): void
   showAbout(): void
@@ -74,6 +74,7 @@ export const MENU_IDS = {
   open: 'file-open',
   save: 'file-save',
   saveAs: 'file-save-as',
+  reload: 'view-reload',
   fullScreen: 'view-full-screen',
   about: 'help-about',
 } as const
@@ -83,6 +84,7 @@ export const ACCELERATORS = {
   open: 'CmdOrCtrl+O',
   save: 'CmdOrCtrl+S',
   saveAs: 'CmdOrCtrl+Shift+S',
+  reload: 'CmdOrCtrl+R',
 } as const
 
 const SEPARATOR: MenuSpec = { type: 'separator' }
@@ -159,8 +161,13 @@ function viewMenu(mac: boolean, actions: MenuActions): MenuSpec {
   return {
     label: 'View',
     submenu: [
-      { role: 'reload' },
-      { role: 'forceReload' },
+      // Not the reload role, which would drop unsaved changes without asking.
+      {
+        id: MENU_IDS.reload,
+        label: 'Reload',
+        accelerator: ACCELERATORS.reload,
+        click: actions.reload,
+      },
       { role: 'toggleDevTools' },
       SEPARATOR,
       { role: 'resetZoom' },
