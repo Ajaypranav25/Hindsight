@@ -1,6 +1,7 @@
 # Hindsight
 
 [![CI](https://github.com/Ajaypranav25/Hindsight/actions/workflows/ci.yml/badge.svg)](https://github.com/Ajaypranav25/Hindsight/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/hindsight-lang)](https://www.npmjs.com/package/hindsight-lang)
 
 **A tiny programming language with a time machine built in.**
 
@@ -457,7 +458,15 @@ the program every time you save, then shows what the run did: compile and runtim
 dims everything outside the crash's backward slice, **Hindsight: Run File** prints the output, and
 **Hindsight: Open in Studio** opens the program in the studio with the pen on the cursor's line.
 
-It is not on the Marketplace yet; build and install the `.vsix` from a checkout:
+Install it from the
+[Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=ajaypranav25.hindsight-vscode):
+search for **Hindsight** in the Extensions view, or run
+
+```sh
+code --install-extension ajaypranav25.hindsight-vscode
+```
+
+To build and install the `.vsix` from a checkout instead:
 
 ```sh
 cd editors/vscode

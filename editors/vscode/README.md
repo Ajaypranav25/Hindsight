@@ -34,9 +34,20 @@ run is still recording aborts it and starts over.
 | `hindsight.codeLens`  | `true`                             | Show call counts and never-ran lenses            |
 | `hindsight.studioUrl` | `https://hindsight-two.vercel.app` | The studio "Open in Studio" links to             |
 
-## Install from a .vsix
+## Install
 
-The extension is not on the Marketplace yet. Build the package from a checkout of the repository:
+Search for **Hindsight** in the Extensions view (publisher `ajaypranav25`), or run:
+
+```sh
+code --install-extension ajaypranav25.hindsight-vscode
+```
+
+Open any `.sight` file and save it; the run's results appear in the editor. There is nothing else
+to install: the extension carries Hindsight's VM with it.
+
+### From a .vsix
+
+To build the package yourself from a checkout of the repository:
 
 ```sh
 cd editors/vscode
