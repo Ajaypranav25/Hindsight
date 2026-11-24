@@ -1235,7 +1235,8 @@ list `tasks` (§7.4), and `NavOptions.allTasks` lets steps cross tasks (§7.2).
 The npm package `hindsight-lang` ships the bundle `dist/cli/hindsight.mjs` alone and has no runtime
 dependencies: `scripts/build-cli.mjs` fails if anything but a Node built-in is left unbundled, and the
 studio's libraries are devDependencies (Vite bundles them). `.github/workflows/release.yml` publishes
-it with provenance when a `v*` tag matching the package version is pushed.
+it with provenance when a `v*` tag matching the package version is pushed. It signs in to npm
+with trusted publishing (OIDC), so the repository holds no npm token.
 
 | command                               | behavior                                                                                                                                                                                                                                        |
 | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
