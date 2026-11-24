@@ -6,9 +6,14 @@ name: Release
 # workflow file in this repository, so there is no npm token to store or renew.
 #
 # The same tag also builds the desktop app's installers on Windows, macOS and Linux (the tag must
-# match desktop/package.json too) and publishes them, with SHA256SUMS.txt, as the tag's GitHub
-# release. No signing secrets are involved: Windows and Linux builds are unsigned, macOS builds are
-# signed ad hoc (desktop/README.md).
+# match desktop/package.json too), after running the desktop end-to-end tests against the packed
+# app on each system, and publishes them, with SHA256SUMS.txt, as the tag's GitHub release. No
+# signing secrets are involved: Windows and Linux builds are unsigned, macOS builds are signed ad
+# hoc (desktop/README.md).
+#
+# Nothing becomes public until everything has built and passed: npm publishing waits for the
+# desktop builds, and the GitHub release waits for both. A tag with a hyphen (v0.6.0-rc.1) makes a
+# prerelease, which never becomes the "latest" release the download links point to.
 on:
   push:
     tags: ['v*']
@@ -23,6 +28,7 @@ concurrency:
 jobs:
   publish:
     name: Publish to npm
+    needs: desktop
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -53,12 +59,20 @@ jobs:
         run: npm install --global npm@11
       - run: npm publish --provenance --access public
 
-  # The desktop app's installers, built on each system from the tagged commit.
+  # The desktop app's installers, built on each system from the tagged commit once the packed app
+  # has passed the same end-to-end tests as in CI.
   desktop:
     name: Desktop installers (${{ matrix.os }})
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            app: release/linux-unpacked/hindsight-desktop
+          - os: windows-latest
+            app: release/win-unpacked/Hindsight.exe
+          # macos-latest runs on Apple Silicon.
+          - os: macos-latest
+            app: release/mac-arm64/Hindsight.app/Contents/MacOS/Hindsight
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
@@ -89,6 +103,31 @@ jobs:
       - run: npm run build:studio
       - run: npm ci
         working-directory: desktop
+      - run: npm run typecheck
+        working-directory: desktop
+      # The unpacked app keeps the debugger switch Playwright drives it through; the installers
+      # do not, so the tests run here, before they are built.
+      - run: npm run pack
+        working-directory: desktop
+      - name: Install the libraries Electron needs
+        if: runner.os == 'Linux'
+        run: npx playwright install-deps chromium
+      - name: End-to-end tests against the packed app
+        working-directory: desktop
+        env:
+          HINDSIGHT_DESKTOP_APP: ${{ matrix.app }}
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            xvfb-run --auto-servernum --server-args='-screen 0 1920x1080x24' npm run e2e
+          else
+            npm run e2e
+          fi
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-e2e-results-${{ runner.os }}
+          path: desktop/test-results/
+          retention-days: 7
       - run: npm run dist
         working-directory: desktop
       - name: Check the ad hoc signatures (Intel and Apple Silicon)
@@ -124,10 +163,11 @@ jobs:
           retention-days: 14
 
   # One GitHub release per tag, with every installer and their checksums. The download site links
-  # to releases/latest/download/<name>, so the release is published, not a draft.
+  # to releases/latest/download/<name>, so the release is published, not a draft; a prerelease
+  # (a tag with a hyphen) is marked so, and never becomes the latest.
   github-release:
     name: GitHub release
-    needs: desktop
+    needs: [desktop, publish]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -152,5 +192,9 @@ jobs:
           if gh release view "$TAG" > /dev/null 2>&1; then
             gh release upload "$TAG" installers/* --clobber
           else
-            gh release create "$TAG" --verify-tag --generate-notes --title "Hindsight $TAG" installers/*
+            # A tag with a hyphen (v0.6.0-rc.1) is a prerelease, never the latest.
+            prerelease=()
+            case "$TAG" in *-*) prerelease=(--prerelease) ;; esac
+            gh release create "$TAG" --verify-tag --generate-notes "${prerelease[@]}" \
+              --title "Hindsight $TAG" installers/*
           fi
