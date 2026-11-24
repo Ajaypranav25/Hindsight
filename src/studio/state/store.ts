@@ -316,8 +316,8 @@ class Controller {
   }
 
   /**
-   * Puts a whole new program in the editor (example, link or restore) and saves it; then records
-   * it, or (when `run` is false) only compiles it.
+   * Puts a whole new program in the editor (example, link, file, trace, new or restore) and saves
+   * it; then records it, or (when `run` is false) only compiles it.
    */
   private replaceProgram(source: string, how: { delivered: boolean; run: boolean }): void {
     this.leaveWhatIf()
@@ -327,6 +327,7 @@ class Controller {
     this.delivered = how.delivered
     this.set({
       source,
+      programLoads: this.get().programLoads + 1,
       exampleId: this.deps.examples.find((example) => example.source === source)?.id ?? null,
       breakpoints: new Set(),
       watch: null,

@@ -6,7 +6,7 @@
  */
 import type { StoreApi } from 'zustand/vanilla'
 import { momentFromFragment } from '../lib/share'
-import type { Notice, StudioStore } from '../state/types'
+import type { Notice, StudioState, StudioStore } from '../state/types'
 import type {
   DesktopBridge,
   DesktopCommand,
@@ -68,7 +68,7 @@ class DesktopConnection {
     const stops = [
       this.bridge.onOpen((request) => this.open(request)),
       this.bridge.onCommand((command) => this.command(command)),
-      this.store.subscribe((state, previous) => this.sourceChanged(state.source, previous.source)),
+      this.store.subscribe((state, previous) => this.changed(state, previous)),
     ]
     this.report()
     this.bridge.ready()
@@ -129,14 +129,28 @@ class DesktopConnection {
     }
   }
 
-  private sourceChanged(source: string, previous: string): void {
-    if (source === previous) return
-    if (this.traceReplaces !== null && source !== this.traceReplaces) {
-      this.traceReplaces = null
-      this.replacements++
-      this.document = null
+  /**
+   * Edits keep the program's file. A whole program the studio puts in the editor itself (a gallery
+   * example, Restore, a trace from its own menu) is not the file's text, so the program leaves it.
+   */
+  private changed(state: StudioState, previous: StudioState): void {
+    const loaded = state.programLoads !== previous.programLoads
+    const edited = state.source !== previous.source
+    if (!loaded && !edited) return
+    if (this.traceReplaces !== null) {
+      if (edited && state.source !== this.traceReplaces) {
+        this.traceReplaces = null
+        this.leaveFile()
+      }
+    } else if (loaded && this.holds === 0) {
+      this.leaveFile()
     }
     this.report()
+  }
+
+  private leaveFile(): void {
+    this.replacements++
+    this.document = null
   }
 
   // --- menu commands ------------------------------------------------------------------------

@@ -262,6 +262,19 @@ describe('opening a trace', () => {
     expect(documents.at(-1)).toEqual({ name: 'fib.sight', dirty: false })
   })
 
+  test('a trace opened from the studio’s own menu leaves the file too', async () => {
+    // Arrange
+    const { store, open, documents } = setup({ engine: realEngine })
+    open(program('print(1)\n'))
+
+    // Act
+    await store.getState().openTraceFile(traceOf(COUNTER))
+
+    // Assert
+    expect(store.getState().source).toBe(COUNTER)
+    expect(documents.at(-1)).toEqual({ name: null, dirty: false })
+  })
+
   test('an unexpected failure is shown, not swallowed', async () => {
     const { store, open } = setup()
     store.setState({ openTraceFile: () => Promise.reject(new Error('worker died')) })
@@ -441,5 +454,52 @@ describe('a new program', () => {
     expect(store.getState().previousSource).toBe('print("unsaved")\n')
     expect(store.getState().notice).toEqual(KEPT_AFTER_NEW_NOTICE)
     expect(documents.at(-1)).toEqual({ name: null, dirty: false })
+  })
+})
+
+describe('programs the studio puts in the editor itself', () => {
+  test('a gallery example loaded over a file leaves the file, so Save asks for one', async () => {
+    // Arrange
+    const { store, open, command, saves, documents } = setup()
+    open(program('print("fib")\n'))
+
+    // Act
+    store.getState().loadExample('hello')
+    command('save')
+    await settle()
+
+    // Assert: the example is not the file's text, edited.
+    expect(store.getState().source).toBe('print(1)\n')
+    expect(documents.at(-1)).toEqual({ name: null, dirty: false })
+    expect(saves.map((save) => save.request)).toEqual([{ source: 'print(1)\n', path: null }])
+  })
+
+  test('Restore brings back a replaced file’s edits without making them another file’s', async () => {
+    // Arrange: a.sight edited, then b.sight opened over it (which keeps the edits).
+    const { store, open, command, saves, documents } = setup()
+    open(program('print("a")\n', 'a.sight'))
+    store.getState().setSource('print("a, edited")\n')
+    open(program('print("b")\n', 'b.sight'))
+
+    // Act
+    store.getState().restorePreviousSource()
+    command('save')
+    await settle()
+
+    // Assert: b.sight is never written with a.sight's edits.
+    expect(store.getState().source).toBe('print("a, edited")\n')
+    expect(documents.at(-1)).toEqual({ name: null, dirty: false })
+    expect(saves.map((save) => save.request)).toEqual([
+      { source: 'print("a, edited")\n', path: null },
+    ])
+  })
+
+  test('typing over the whole program is an edit: the program keeps its file', () => {
+    const { store, open, documents } = setup()
+    open(program('print("fib")\n'))
+
+    store.getState().setSource('print(1)\n')
+
+    expect(documents.at(-1)).toEqual({ name: 'fib.sight', dirty: true })
   })
 })

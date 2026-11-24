@@ -66,6 +66,11 @@ export interface OriginMark {
 
 export interface StudioState {
   readonly source: string
+  /**
+   * Counts the whole programs put in the editor (an example, a link, a file, a trace, Restore,
+   * New); edits never change it, so it tells a replaced program from an edited one.
+   */
+  readonly programLoads: number
   /** The gallery example the source came from, if unchanged since loading. */
   readonly exampleId: string | null
   /** Latest compile of `source`. */
