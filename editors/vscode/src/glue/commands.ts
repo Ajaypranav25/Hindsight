@@ -111,8 +111,9 @@ async function openInStudio(context: CommandContext, argument: unknown): Promise
     void vscode.window.showErrorMessage(`Hindsight: ${link.error}`)
     return
   }
-  // A Uri would percent-encode the fragment's `=` and `&`, which the studio reads literally;
-  // openExternal also accepts the URL as a string and passes it through unchanged.
+  // A Uri would percent-encode the fragment's `=` and `&`, which the desktop app and the studio
+  // read literally; openExternal also accepts the URL as a string and passes it through unchanged
+  // whatever its scheme (it parses a copy only to check the scheme).
   await vscode.env.openExternal(link.url as unknown as vscode.Uri)
 }
 

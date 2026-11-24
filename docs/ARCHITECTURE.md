@@ -1875,8 +1875,10 @@ that bundles the core; it is never published from CI.
   `analyze` compiles and records with `recordAsync` (slices, an abort flag) and turns diagnostics
   and the runtime error into 1-based problems; call counts come from one pass over the depth series
   (a call begins where the depth rises, the call tree's rule, §7.6); never-ran lenses group the
-  consecutive statement lines with no `lineHits`; `crashSlice` uses `errorSlice`; studio links reuse
-  the studio's `shareFragment` (60,000-character limit). `RunScheduler` debounces saves per
+  consecutive statement lines with no `lineHits`; `crashSlice` uses `errorSlice`. Open in Studio
+  links (`studio-link.ts`) are `hindsight://open` links built with the desktop app's `appLink`
+  (30,000 characters, §13) unless `hindsight.studioUrl` names an http(s) studio, whose links reuse
+  the studio's `shareFragment` (60,000 characters); any other setting is an error. `RunScheduler` debounces saves per
   document (300 ms) and aborts the run in flight when a newer one starts; a superseded run's result
   is dropped. The root `npm run typecheck`, `lint` and `test` cover these modules.
 - **Glue** (`src/glue/`, the only code importing `vscode`; checked by `editors/vscode/tsconfig.json`

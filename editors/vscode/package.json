@@ -1,12 +1,12 @@
 {
   "name": "hindsight-vscode",
   "displayName": "Hindsight",
-  "description": "The Hindsight language (.sight) in VS Code: syntax highlighting, run on save, call counts, never-ran lines with why-not explanations, crash slices and links into Hindsight Studio.",
+  "description": "The Hindsight language (.sight) in VS Code: syntax highlighting, run on save, call counts, never-ran lines with why-not explanations, crash slices, and Open in Studio for the Hindsight desktop app.",
   "version": "0.4.1",
   "publisher": "ajaypranav25",
   "icon": "icon.png",
   "license": "MIT",
-  "homepage": "https://hindsight-two.vercel.app",
+  "homepage": "https://github.com/Ajaypranav25/Hindsight#readme",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Ajaypranav25/Hindsight.git",
@@ -147,8 +147,8 @@
         },
         "hindsight.studioUrl": {
           "type": "string",
-          "default": "https://hindsight-two.vercel.app",
-          "description": "The Hindsight Studio that \"Open in Studio\" links to."
+          "default": "hindsight://open",
+          "description": "Where \"Open in Studio\" opens programs: hindsight://open opens them in the Hindsight desktop app; an http(s) URL opens them in a studio served some other way, such as npm run dev in a checkout (http://localhost:5173)."
         }
       }
     }

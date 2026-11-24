@@ -7,7 +7,7 @@ import { describe, expect, test } from 'vitest'
 import { BUILTIN_NAMES } from '../../../src/core/builtin-names'
 import { KEYWORDS } from '../../../src/core/tokens'
 import { DEFAULT_MAX_STEPS } from './analysis'
-import { DEFAULT_STUDIO_URL } from './studio-link'
+import { APP_LINK_BASE } from './studio-link'
 import { COMMANDS, LANGUAGE_ID, MAX_STEPS, MIN_STEPS } from './view'
 
 type Json = Record<string, unknown>
@@ -92,7 +92,7 @@ describe('package.json', () => {
       minimum: MIN_STEPS,
       maximum: MAX_STEPS,
     })
-    expect(properties['hindsight.studioUrl']!.default).toBe(DEFAULT_STUDIO_URL)
+    expect(properties['hindsight.studioUrl']!.default).toBe(APP_LINK_BASE)
     expect(properties['hindsight.runOnSave']!.default).toBe(true)
     expect(properties['hindsight.codeLens']!.default).toBe(true)
   })
