@@ -2,6 +2,8 @@ name: Release
 
 # Publishes hindsight-lang to npm when a version tag (v0.4.0, …) is pushed. The tag must match the
 # version in package.json; the package carries a provenance statement linking it to this run.
+# It signs in to npm with trusted publishing (OIDC, the id-token permission below): npm trusts this
+# workflow file in this repository, so there is no npm token to store or renew.
 on:
   push:
     tags: ['v*']
@@ -41,6 +43,7 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run build
+      # Trusted publishing needs npm 11.5.1 or later; Node 22 ships npm 10.
+      - name: Update npm for trusted publishing
+        run: npm install --global npm@11
       - run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
