@@ -2,6 +2,8 @@
  * Share links carry the program in the URL fragment: `#src=` + base64url(UTF-8 source). Encoding is
  * synchronous so a "Copy link" click can write to the clipboard inside its own event handler.
  */
+import { normalizeLineEndings } from './line-endings'
+
 const PREFIX = 'src='
 const TIME_PREFIX = 't='
 
@@ -53,7 +55,11 @@ export function momentFromFragment(fragment: string): SharedMoment | null {
   const source = decodeSource(encoded)
   if (source === null) return null
   const time = params.find((param) => /^t=\d{1,15}$/.test(param))
-  return { source, time: time === undefined ? null : Number(time.slice(TIME_PREFIX.length)) }
+  // The editor keeps LF line breaks; a link made from a CRLF file (VS Code on Windows) must match.
+  return {
+    source: normalizeLineEndings(source),
+    time: time === undefined ? null : Number(time.slice(TIME_PREFIX.length)),
+  }
 }
 
 /** The program carried by a location fragment (`#src=...`), or null. */

@@ -6,6 +6,7 @@
  * way (`npm run dev` in a checkout), whose links hold programs up to 60,000 characters.
  */
 import { APP_LINK_BASE, appLink, MAX_APP_LINK_LENGTH } from '../../../src/studio/desktop/bridge'
+import { normalizeLineEndings } from '../../../src/studio/lib/line-endings'
 import { MAX_SHARED_SOURCE_LENGTH, shareFragment } from '../../../src/studio/lib/share'
 
 export { APP_LINK_BASE }
@@ -27,8 +28,10 @@ export function studioLink(
   base: string = APP_LINK_BASE,
 ): StudioLink {
   const page = base.trim().replace(/#.*$/, '')
-  if (/^hindsight:\/\/open\/?$/i.test(page)) return desktopLink(source, step)
-  if (/^https?:\/\/[^/?#\s]+/i.test(page)) return pageLink(source, step, page)
+  // The studio keeps LF line breaks (it normalizes links too); a CRLF file's link is shorter so.
+  const text = normalizeLineEndings(source)
+  if (/^hindsight:\/\/open\/?$/i.test(page)) return desktopLink(text, step)
+  if (/^https?:\/\/[^/?#\s]+/i.test(page)) return pageLink(text, step, page)
   return { ok: false, error: STUDIO_URL_ERROR }
 }
 

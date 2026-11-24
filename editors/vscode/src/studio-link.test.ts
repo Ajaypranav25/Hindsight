@@ -28,6 +28,13 @@ describe('links to the desktop app (the default)', () => {
     expect(link.url).not.toContain('&t=')
   })
 
+  test('carry a CRLF file (VS Code on Windows) with the LF line breaks the studio keeps', () => {
+    const crlf = studioLink('let x = 1\r\nprint(x)\r\n', 4)
+    const lf = studioLink('let x = 1\nprint(x)\n', 4)
+
+    expect(crlf).toEqual(lf)
+  })
+
   test('accept the setting written with a slash, in any case, with spaces around it', () => {
     for (const base of ['hindsight://open/', ' HINDSIGHT://open ', 'hindsight://open#old']) {
       const link = studioLink('print(1)\n', 3, base)

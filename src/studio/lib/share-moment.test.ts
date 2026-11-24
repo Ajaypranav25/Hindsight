@@ -26,6 +26,14 @@ describe('moment links', () => {
     expect(shareFragment('x', 12.7)).toBe(`#src=${encodeSource('x')}&t=12`)
   })
 
+  test('a program with CRLF or CR line breaks arrives with LF, as the editor keeps it', () => {
+    const fragment = shareFragment('let x = 1\r\nprint(x)\rprint(2)\n', 7)!
+    expect(momentFromFragment(fragment)).toEqual({
+      source: 'let x = 1\nprint(x)\nprint(2)\n',
+      time: 7,
+    })
+  })
+
   test('a plain link has no moment; a malformed step is ignored', () => {
     expect(momentFromFragment(shareFragment('x')!)).toEqual({ source: 'x', time: null })
     expect(momentFromFragment(shareFragment('x', null)!)).toEqual({ source: 'x', time: null })

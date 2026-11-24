@@ -102,7 +102,12 @@ describe('documentState', () => {
   })
 
   test('a program with a file is dirty while it differs from the saved text', () => {
-    const document = { path: '/a.sight', name: 'a.sight', savedSource: 'print(1)' }
+    const document = {
+      path: '/a.sight',
+      name: 'a.sight',
+      savedSource: 'print(1)',
+      lineEnding: '\n' as const,
+    }
     expect(documentState(document, 'print(1)')).toEqual({ name: 'a.sight', dirty: false })
     expect(documentState(document, 'print(2)')).toEqual({ name: 'a.sight', dirty: true })
   })
@@ -303,7 +308,11 @@ describe('saving', () => {
     await settle()
 
     // Assert
-    expect(saves[0]!.request).toEqual({ source: 'print(2)\n', path: '/work/fib.sight' })
+    expect(saves[0]!.request).toEqual({
+      source: 'print(2)\n',
+      path: '/work/fib.sight',
+      suggestion: null,
+    })
     expect(documents.at(-1)).toEqual({ name: 'fib.sight', dirty: false })
   })
 
@@ -332,7 +341,7 @@ describe('saving', () => {
     await settle()
 
     // Assert
-    expect(saves[0]!.request).toEqual({ source: 'print("mine")', path: null })
+    expect(saves[0]!.request).toEqual({ source: 'print("mine")', path: null, suggestion: null })
     expect(documents.at(-1)).toEqual({ name: 'mine.sight', dirty: false })
   })
 
@@ -360,7 +369,7 @@ describe('saving', () => {
     await settle()
 
     expect(saves.map((save) => save.request)).toEqual([
-      { source: 'print(1)\n', path: '/work/fib.sight' },
+      { source: 'print(1)\n', path: '/work/fib.sight', suggestion: null },
     ])
   })
 
@@ -439,6 +448,62 @@ describe('saving', () => {
   })
 })
 
+describe('line endings and Save As', () => {
+  test('a CRLF file opens with LF line breaks, unedited, and saves back with CRLF', async () => {
+    // Arrange
+    const { store, open, command, saves, documents } = setup()
+
+    // Act
+    open(program('let x = 1\r\nprint(x)\r\n', 'crlf.sight'))
+    const opened = { source: store.getState().source, document: documents.at(-1) }
+    store.getState().setSource('let x = 2\nprint(x)\n')
+    command('save')
+    await settle()
+    saves[0]!.resolve({ ok: true, path: '/work/crlf.sight', name: 'crlf.sight' })
+    await settle()
+
+    // Assert
+    expect(opened).toEqual({
+      source: 'let x = 1\nprint(x)\n',
+      document: { name: 'crlf.sight', dirty: false },
+    })
+    expect(saves[0]!.request.source).toBe('let x = 2\r\nprint(x)\r\n')
+    expect(documents.at(-1)).toEqual({ name: 'crlf.sight', dirty: false })
+  })
+
+  test('Save As keeps the file’s line endings in the new file', async () => {
+    const { open, command, saves } = setup()
+    open(program('print(1)\r\n', 'crlf.sight'))
+
+    command('save-as')
+    await settle()
+    saves[0]!.resolve({ ok: true, path: '/work/copy.sight', name: 'copy.sight' })
+    await settle()
+    command('save')
+    await settle()
+
+    expect(saves.map((save) => save.request.source)).toEqual(['print(1)\r\n', 'print(1)\r\n'])
+  })
+
+  test('Save As on an open file suggests that file; with no file there is no suggestion', async () => {
+    // Arrange
+    const { open, command, saves } = setup({ stored: 'print("mine")' })
+
+    // Act: Save As with no file (cancelled), then open a file and Save As again.
+    command('save-as')
+    await settle()
+    saves[0]!.resolve({ ok: false, reason: 'cancelled' })
+    await settle()
+    open(program('print(1)\n'))
+    command('save-as')
+    await settle()
+
+    // Assert
+    expect(saves.map((save) => save.request.suggestion)).toEqual([null, '/work/fib.sight'])
+    expect(saves[1]!.request.path).toBeNull()
+  })
+})
+
 describe('a new program', () => {
   test('empties the editor, keeps the user’s program and belongs to no file', () => {
     // Arrange
@@ -471,7 +536,9 @@ describe('programs the studio puts in the editor itself', () => {
     // Assert: the example is not the file's text, edited.
     expect(store.getState().source).toBe('print(1)\n')
     expect(documents.at(-1)).toEqual({ name: null, dirty: false })
-    expect(saves.map((save) => save.request)).toEqual([{ source: 'print(1)\n', path: null }])
+    expect(saves.map((save) => save.request)).toEqual([
+      { source: 'print(1)\n', path: null, suggestion: null },
+    ])
   })
 
   test('Restore brings back a replaced file’s edits without making them another file’s', async () => {
@@ -490,7 +557,7 @@ describe('programs the studio puts in the editor itself', () => {
     expect(store.getState().source).toBe('print("a, edited")\n')
     expect(documents.at(-1)).toEqual({ name: null, dirty: false })
     expect(saves.map((save) => save.request)).toEqual([
-      { source: 'print("a, edited")\n', path: null },
+      { source: 'print("a, edited")\n', path: null, suggestion: null },
     ])
   })
 

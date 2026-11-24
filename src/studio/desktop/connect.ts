@@ -5,6 +5,12 @@
  * program belongs to and whether it has unsaved changes, for the title bar and the close prompt.
  */
 import type { StoreApi } from 'zustand/vanilla'
+import {
+  lineEndingOf,
+  normalizeLineEndings,
+  withLineEnding,
+  type LineEnding,
+} from '../lib/line-endings'
 import { momentFromFragment } from '../lib/share'
 import type { Notice, StudioState, StudioStore } from '../state/types'
 import type {
@@ -20,8 +26,10 @@ import type {
 export interface DesktopDocument {
   readonly path: string
   readonly name: string
-  /** The text last read from or written to the file. */
+  /** The text last read from or written to the file, with LF line breaks (as the editor has it). */
   readonly savedSource: string
+  /** The file's own line breaks, which saving writes back. */
+  readonly lineEnding: LineEnding
 }
 
 export const BAD_LINK_NOTICE: Notice = {
@@ -80,8 +88,11 @@ class DesktopConnection {
   private open(request: DesktopOpenRequest): void {
     switch (request.kind) {
       case 'program': {
-        const { source, path, name } = request
-        return this.replace({ path, name, savedSource: source }, (actions) =>
+        const { path, name } = request
+        // The editor keeps LF line breaks, so a CRLF file is shown (and compared) as LF.
+        const source = normalizeLineEndings(request.source)
+        const lineEnding = lineEndingOf(request.source)
+        return this.replace({ path, name, savedSource: source, lineEnding }, (actions) =>
           actions.openProgramFile(source, name),
         )
       }
@@ -176,16 +187,24 @@ class DesktopConnection {
   /** Writes the program to its file (or, with `ask` or without a file, to one the user picks). */
   private async save(ask: boolean): Promise<void> {
     const source = this.store.getState().source
-    const path = ask ? null : (this.document?.path ?? null)
+    const current = this.document
+    const path = ask ? null : (current?.path ?? null)
+    // A file keeps its own line breaks; a program that never had a file gets LF.
+    const lineEnding = current?.lineEnding ?? '\n'
     const replacements = this.replacements
-    const result = await this.saveProgram({ source, path })
+    const result = await this.saveProgram({
+      source: withLineEnding(source, lineEnding),
+      path,
+      // Save As on an open file starts the dialog at that file.
+      suggestion: path === null ? (current?.path ?? null) : null,
+    })
     if (!result.ok) {
       if (result.reason === 'failed') this.saveFailed(result.message)
       return
     }
     // A program opened while the dialog was up is not the one that was saved.
     if (this.replacements !== replacements) return
-    this.document = { path: result.path, name: result.name, savedSource: source }
+    this.document = { path: result.path, name: result.name, savedSource: source, lineEnding }
     this.report()
   }
 
