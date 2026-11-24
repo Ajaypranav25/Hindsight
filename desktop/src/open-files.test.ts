@@ -8,6 +8,7 @@ import {
   OPEN_FILTERS,
   openRequestFor,
   pathKey,
+  saveDialogStart,
   SAVE_FILTERS,
   sizeLimitOf,
   sizeProblem,
@@ -43,7 +44,7 @@ describe('openRequestFor', () => {
     const bytes = new Uint8Array([0xef, 0xbb, 0xbf, ...new TextEncoder().encode('print("Zoë")\n')])
 
     // Act
-    const result = openRequestFor(PROGRAM, bytes)
+    const result = openRequestFor(PROGRAM, bytes, process.platform)
 
     // Assert
     expect(result).toEqual({
@@ -53,7 +54,7 @@ describe('openRequestFor', () => {
   })
 
   test('a program that is not UTF-8 is refused rather than garbled', () => {
-    const result = openRequestFor(PROGRAM, new Uint8Array([0x70, 0xff, 0xfe, 0x41]))
+    const result = openRequestFor(PROGRAM, new Uint8Array([0x70, 0xff, 0xfe, 0x41]), 'linux')
 
     expect(result).toEqual({
       ok: false,
@@ -64,14 +65,33 @@ describe('openRequestFor', () => {
   test('a trace is passed on as bytes for the studio to check', () => {
     const bytes = new TextEncoder().encode('SIGHTTRC')
 
-    expect(openRequestFor(TRACE, bytes)).toEqual({
+    expect(openRequestFor(TRACE, bytes, process.platform)).toEqual({
       ok: true,
       request: { kind: 'trace', bytes, name: 'run.sighttrace' },
     })
   })
 
+  test('a name legal on the system opens; one the studio would refuse is an error', () => {
+    // Arrange: a newline or a tab is part of a name on Linux, never on Windows.
+    const bytes = new TextEncoder().encode('print(1)\n')
+
+    // Act
+    const linux = openRequestFor('/home/ada/line\nbreak.sight', bytes, 'linux')
+    const windows = openRequestFor('C:/code/tab\t.sighttrace', bytes, 'win32')
+
+    // Assert
+    expect(linux).toMatchObject({
+      ok: true,
+      request: { kind: 'program', name: 'line\nbreak.sight' },
+    })
+    expect(windows).toEqual({
+      ok: false,
+      message: '"tab\\t.sighttrace" could not be opened because its name is not supported.',
+    })
+  })
+
   test('files over the limit are refused', () => {
-    const result = openRequestFor(PROGRAM, new Uint8Array(MAX_PROGRAM_BYTES + 1))
+    const result = openRequestFor(PROGRAM, new Uint8Array(MAX_PROGRAM_BYTES + 1), 'win32')
 
     expect(result.ok).toBe(false)
   })
@@ -104,6 +124,19 @@ describe('dialogs and errors', () => {
       ['*'],
     ])
     expect(SAVE_FILTERS).toEqual([{ name: 'Hindsight programs', extensions: ['sight'] }])
+  })
+
+  test('Save starts at the file asked for, then the suggestion, then a new program', () => {
+    const documents = resolve('Documents')
+    const opened = resolve('code', 'fib.sight')
+    const other = resolve('code', 'other.sight')
+
+    expect(saveDialogStart({ path: null, suggestion: opened }, documents)).toBe(opened)
+    expect(saveDialogStart({ path: other, suggestion: opened }, documents)).toBe(other)
+    for (const suggestion of [null, undefined])
+      expect(saveDialogStart({ path: null, suggestion }, documents)).toBe(
+        resolve('Documents', 'program.sight'),
+      )
   })
 
   test('file errors read as plain reasons', () => {

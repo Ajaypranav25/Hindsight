@@ -28,7 +28,8 @@ call stack, every variable, every list and record — in under a millisecond.
 - Windows: `Hindsight-Setup-x64.exe` (installs for your user only, no administrator needed)
 - macOS on Apple silicon: `Hindsight-mac-arm64.dmg` (or `Hindsight-mac-arm64.zip`)
 - macOS on Intel: `Hindsight-mac-x64.dmg` (or `Hindsight-mac-x64.zip`)
-- Linux: `Hindsight-linux-x86_64.AppImage`, or `Hindsight-linux-amd64.deb` for Debian and Ubuntu
+- Linux: `Hindsight-linux-amd64.deb` for Debian and Ubuntu (the better choice there), or
+  `Hindsight-linux-x86_64.AppImage` for any distribution
 
 `SHA256SUMS.txt` beside them lists each file's checksum. The app is not signed yet, so the first
 launch needs one extra step:
@@ -36,7 +37,13 @@ launch needs one extra step:
 - **Windows** SmartScreen says it protected your PC: click **More info**, then **Run anyway**.
 - **macOS** says it cannot check the app: open **System Settings > Privacy & Security** and click
   **Open Anyway** beside the message about Hindsight.
-- **Linux**: make the AppImage executable first: `chmod +x Hindsight-linux-x86_64.AppImage`.
+- **Linux**: install the `.deb` with `sudo apt install ./Hindsight-linux-amd64.deb`. It brings an
+  AppArmor profile, so the app keeps Chromium's sandbox on Ubuntu 24.04, and it registers the
+  `.sight` files and `hindsight://` links. The AppImage needs to be made executable
+  (`chmod +x Hindsight-linux-x86_64.AppImage`) and needs FUSE 2, which Ubuntu 22.04 and later
+  leave out: `sudo apt install libfuse2` (on 24.04, `sudo apt install libfuse2t64`), or run it
+  with `--appimage-extract-and-run`. Where AppArmor blocks unprivileged user namespaces (Ubuntu
+  24.04), the AppImage starts without Chromium's sandbox.
 
 **From a checkout**, run the studio in your browser:
 
@@ -171,13 +178,18 @@ On a console line, **Shift+F10** opens its menu instead of stepping back over.
 The desktop app is the studio in a window of its own, with what a browser tab cannot do:
 
 - **Files.** **File > Open**, **Save** and **Save As** read and write `.sight` programs. The title
-  bar shows the file's name and whether it has unsaved changes, and closing a window with unsaved
-  changes asks first. **File > New** starts an empty program. As with links and examples, the
-  program a file or a new program replaces is kept, and **Restore** brings it back.
+  bar shows the file's name and whether it has unsaved changes; closing the window, or opening
+  something else over a file with unsaved changes, asks whether to save them first. A save
+  replaces the file in one step, so a full disk never leaves it half-written. **File > New**
+  starts an empty program. As with links and examples, the program a file or a new program
+  replaces is kept, and **Restore** brings it back.
 - **Double-click** a `.sight` file to open it, or a `.sighttrace` file to open the run it holds.
+  On Linux this comes with the `.deb`; an AppImage needs a desktop-integration tool such as
+  AppImageLauncher for it.
 - **`hindsight://` links.** In the app, **Copy link** copies a `hindsight://open/#src=…` link that
-  opens the program, at the pen's step, in the app on any machine that has it. Links hold up to
-  30,000 characters; save longer programs as files. **Hindsight: Open in Studio** in the VS Code
+  opens the program, at the pen's step, in the app on any machine that has it (on Linux, one where
+  the `.deb` is installed, or an AppImage integrated as above). Links hold up to 30,000
+  characters; save longer programs as files. **Hindsight: Open in Studio** in the VS Code
   extension opens programs in the app the same way.
 - **Offline.** The studio and its fonts ship inside the app.
 

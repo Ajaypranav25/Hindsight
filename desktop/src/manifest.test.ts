@@ -2,7 +2,7 @@
  * The desktop app's declarative files kept in step with the code, the language package and the
  * download site: the version, the app's identity, and the installer names the site links to.
  */
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { describe, expect, test } from 'vitest'
 import { APP_LINK_SCHEME } from '../../src/studio/desktop/bridge'
@@ -21,6 +21,12 @@ const builder = createRequire(import.meta.url)('../electron-builder.cjs') as Jso
 
 function section(name: string): Json {
   return builder[name] as Json
+}
+
+/** The width and height of a PNG in the desktop folder, from its header. */
+function pngSize(relative: string): readonly [number, number] {
+  const bytes = readFileSync(new URL(`../${relative}`, import.meta.url))
+  return [bytes.readUInt32BE(16), bytes.readUInt32BE(20)]
 }
 
 describe('the desktop package', () => {
@@ -88,6 +94,25 @@ describe('the installers', () => {
     ])
     expect(associations.map((association) => association.role)).toEqual(['Editor', 'Viewer'])
     expect(protocols.flatMap((protocol) => protocol.schemes)).toEqual([APP_LINK_SCHEME])
+  })
+
+  test('name the Linux launcher entry as Electron names the window', () => {
+    // Electron takes app_id / WM_CLASS and the xdg-settings handler name from desktopName.
+    expect(desktop.desktopName).toBe(`${String(section('linux').executableName)}.desktop`)
+    expect(section('linux').syncDesktopName).toBe(true)
+  })
+
+  test('give Linux a full icon set, and Windows and macOS the large icon', () => {
+    const sizes = [16, 24, 32, 48, 64, 128, 256, 512]
+
+    expect(builder.icon).toBe('build/icon.png')
+    expect(pngSize('build/icon.png')).toEqual([1024, 1024])
+    expect(section('linux').icon).toBe('build/icons')
+    expect(readdirSync(new URL('../build/icons', import.meta.url)).sort()).toEqual(
+      sizes.map((size) => `${size}x${size}.png`).sort(),
+    )
+    for (const size of sizes)
+      expect(pngSize(`build/icons/${size}x${size}.png`)).toEqual([size, size])
   })
 
   test('ship with the fuses that let code run through the app switched off', () => {

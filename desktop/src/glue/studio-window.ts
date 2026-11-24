@@ -1,6 +1,7 @@
 /**
- * The studio's window: its placement, title, open requests and the unsaved-changes prompt. The
- * rules live in pure modules (ready-queue, document, window-state); this class carries them out.
+ * The studio's window: its placement, title, what it opens, and the unsaved-changes prompts (before
+ * closing, and before something replaces the program). The rules live in pure modules
+ * (ready-queue, document, replace-guard, window-state); this class carries them out.
  */
 import { readFileSync, writeFileSync } from 'node:fs'
 import {
@@ -19,26 +20,47 @@ import type {
 } from '../../../src/studio/desktop/bridge'
 import {
   answerOf,
+  closeBusy,
   closePrompt,
   closeStep,
   INITIAL_CLOSE_STATE,
+  offersReload,
   reloadPrompt,
   representedFilename,
+  SAVE_AND_CLOSE_WINDOW_MS,
   windowTitle,
   type CloseEffect,
   type CloseEvent,
   type CloseState,
+  type PromptAnswer,
 } from '../document'
 import { APP_NAME } from '../identity'
 import { CHANNELS, versionSwitch } from '../messages'
 import { isAppUrl, STUDIO_ENTRY_URL } from '../origin'
 import { ReadyQueue } from '../ready-queue'
+import {
+  INITIAL_REPLACE_STATE,
+  replaceStep,
+  replacesProgram,
+  replacing,
+  SAVE_BEFORE_REPLACING_MS,
+  type ReplaceEvent,
+  type ReplaceState,
+} from '../replace-guard'
 import { MIN_SIZE, parseWindowState, placeWindow, serializeWindowState } from '../window-state'
 
 const NO_DOCUMENT: DesktopDocumentState = { name: null, dirty: false }
 
 /** The studio's page background (src/studio/styles/tokens.css), so the window never flashes white. */
 const BACKGROUND = { light: '#e9eee8', dark: '#0e1319' } as const
+
+/** A save's time-limit timer fires this much after the limit, so the limit has surely passed. */
+const DEADLINE_MARGIN_MS = 50
+
+/** What replaces the studio's program: an open request (and the file it was read from), or New. */
+type Replacement =
+  | { readonly kind: 'open'; readonly request: DesktopOpenRequest; readonly path: string | null }
+  | { readonly kind: 'new' }
 
 export interface StudioWindowOptions {
   readonly preload: string
@@ -50,7 +72,7 @@ export interface StudioWindowOptions {
 }
 
 export interface StudioWindowHooks {
-  /** The user chose to keep the window open with unsaved changes: a quit in progress stops. */
+  /** The window stays open with unsaved changes after all: a quit in progress stops. */
   onStay(): void
 }
 
@@ -64,10 +86,15 @@ function loadState(file: string): string {
 
 export class StudioWindow {
   readonly window: BrowserWindow
-  private readonly requests = new ReadyQueue<DesktopOpenRequest>()
+  /** What waits for the page to be ready: open requests and New. */
+  private readonly deliveries = new ReadyQueue<Replacement>()
   private closeState: CloseState = INITIAL_CLOSE_STATE
+  private replaceState: ReplaceState<Replacement> = INITIAL_REPLACE_STATE
   private document: DesktopDocumentState = NO_DOCUMENT
   private knownPath: string | null = null
+  /** The window or its page is gone (closed, destroyed). */
+  private ended = false
+  private readonly timers = new Set<ReturnType<typeof setTimeout>>()
 
   constructor(
     private readonly options: StudioWindowOptions,
@@ -109,7 +136,7 @@ export class StudioWindow {
   }
 
   get alive(): boolean {
-    return !this.window.isDestroyed()
+    return !this.ended && !this.window.isDestroyed()
   }
 
   /** True when an IPC message comes from the studio page in this window's main frame. */
@@ -119,29 +146,39 @@ export class StudioWindow {
     return frame !== null && frame.parent === null && isAppUrl(frame.url)
   }
 
-  /** Delivers an open request now, or once the studio is ready for it. */
+  /**
+   * Opens `request` (read from the file at `path`, if any) in the studio: now, once the page is
+   * ready, or once the user has said what to do with unsaved changes.
+   */
   open(request: DesktopOpenRequest, path: string | null): void {
-    if (path !== null) this.knownPath = path
-    for (const ready of this.requests.push(request)) this.send(CHANNELS.open, ready)
+    this.replace({ kind: 'open', request, path })
   }
 
-  /** Sends a menu command; dropped while the studio is not listening (it is still loading). */
+  /**
+   * Carries out a menu command. New replaces the program, so it is asked about and waits for the
+   * page like an open request; the saves are dropped while the page is not listening.
+   */
   command(command: DesktopCommand): void {
-    if (this.requests.isReady) this.send(CHANNELS.command, command)
+    if (replacesProgram(command)) this.replace({ kind: 'new' })
+    else if (this.deliveries.isReady) this.send(CHANNELS.command, command)
   }
 
   markReady(): void {
-    for (const request of this.requests.markReady()) this.send(CHANNELS.open, request)
+    for (const item of this.deliveries.markReady()) this.dispatch(item)
   }
 
   setDocument(state: DesktopDocumentState): void {
     this.showDocument(state)
-    this.step({ type: 'document', dirty: state.dirty })
+    const now = Date.now()
+    this.closeEvent({ type: 'document', dirty: state.dirty, now })
+    this.replaceEvent({ type: 'document', dirty: state.dirty, now })
   }
 
   saveFinished(result: DesktopSaveResult): void {
     if (result.ok) this.knownPath = result.path
-    this.step({ type: 'save-finished', ok: result.ok, now: Date.now() })
+    const now = Date.now()
+    this.closeEvent({ type: 'save-finished', ok: result.ok, now })
+    this.replaceEvent({ type: 'save-finished', ok: result.ok, now })
   }
 
   focus(): void {
@@ -183,10 +220,15 @@ export class StudioWindow {
     // The title is the document's (setDocument), not the page's <title>.
     this.window.on('page-title-updated', (event) => event.preventDefault())
     this.window.on('close', (event) => {
-      const effect = this.step({ type: 'close-requested', now: Date.now() })
-      if (effect === 'prevent' || effect === 'prompt') event.preventDefault()
-      else this.saveState()
+      const effect = this.closeEvent({
+        type: 'close-requested',
+        now: Date.now(),
+        replacing: replacing(this.replaceState),
+      })
+      if (effect === 'none') this.saveState()
+      else event.preventDefault()
     })
+    this.window.on('closed', () => this.end())
   }
 
   private wirePage(): void {
@@ -195,15 +237,24 @@ export class StudioWindow {
     contents.on('did-navigate', () => this.resetPage())
     // The unsaved-changes prompt is the app's; a page's beforeunload never blocks closing.
     contents.on('will-prevent-unload', (event) => event.preventDefault())
+    contents.on('destroyed', () => this.end())
+    // Whatever the reason: on Linux, a page Chromium killed can even report a clean exit.
     contents.on('render-process-gone', (_event, details) => {
-      if (details.reason === 'clean-exit') return
+      if (!this.alive || !offersReload(this.closeState)) return
       this.resetPage()
       void this.offerReload(details.reason)
     })
   }
 
+  private end(): void {
+    this.ended = true
+    for (const timer of this.timers) clearTimeout(timer)
+    this.timers.clear()
+  }
+
   private showDocument(state: DesktopDocumentState): void {
     this.document = state
+    if (!this.alive) return
     this.window.setTitle(windowTitle(state))
     if (process.platform !== 'darwin') return
     this.window.setDocumentEdited(state.dirty)
@@ -211,22 +262,78 @@ export class StudioWindow {
   }
 
   private resetPage(): void {
-    this.requests.reset()
+    this.deliveries.reset()
     this.showDocument(NO_DOCUMENT)
-    this.step({ type: 'page-reset' })
+    // The guard first, so what it holds for the close finds the new page's clean document.
+    this.replaceEvent({ type: 'page-reset', now: Date.now() })
+    this.closeEvent({ type: 'page-reset' })
   }
 
-  private step(event: CloseEvent): CloseEffect {
+  // --- replacing the program ------------------------------------------------------------------
+
+  private replace(item: Replacement): void {
+    this.replaceEvent({ type: 'request', request: item, held: closeBusy(this.closeState) })
+  }
+
+  private replaceEvent(event: ReplaceEvent<Replacement>): void {
+    const { state, effect } = replaceStep(this.replaceState, event)
+    this.replaceState = state
+    if (effect.type === 'prompt') void this.askBeforeReplacing()
+    else if (effect.type === 'save') {
+      this.send(CHANNELS.command, 'save')
+      this.armDeadline(SAVE_BEFORE_REPLACING_MS)
+    } else if (effect.type === 'deliver') {
+      for (const item of effect.requests) this.deliver(item)
+    }
+  }
+
+  /** Hands `item` to the studio now, or once its page is ready. */
+  private deliver(item: Replacement): void {
+    if (item.kind === 'open' && item.path !== null) this.knownPath = item.path
+    for (const ready of this.deliveries.push(item)) this.dispatch(ready)
+  }
+
+  private dispatch(item: Replacement): void {
+    if (item.kind === 'open') this.send(CHANNELS.open, item.request)
+    else this.send(CHANNELS.command, 'new')
+  }
+
+  private async askBeforeReplacing(): Promise<void> {
+    const answer = await this.askToSave()
+    this.replaceEvent({ type: 'answer', answer, now: Date.now() })
+  }
+
+  // --- closing --------------------------------------------------------------------------------
+
+  private closeEvent(event: CloseEvent): CloseEffect {
     const { state, effect } = closeStep(this.closeState, event)
     this.closeState = state
-    if (effect === 'prompt') void this.prompt()
-    else if (effect === 'save-and-close') this.send(CHANNELS.command, 'save-and-close')
-    else if (effect === 'close') setImmediate(() => this.alive && this.window.close())
+    if (effect === 'prompt') void this.askBeforeClosing()
+    else if (effect === 'save-and-close') {
+      this.send(CHANNELS.command, 'save-and-close')
+      this.armDeadline(SAVE_AND_CLOSE_WINDOW_MS)
+    } else if (effect === 'close') setImmediate(() => this.alive && this.window.close())
     else if (effect === 'stay') this.hooks.onStay()
+    this.resumeReplacing()
     return effect
   }
 
-  private async prompt(): Promise<void> {
+  /** Requests held while the window was busy closing are taken up once it stays open. */
+  private resumeReplacing(): void {
+    if (this.replaceState.phase !== 'held') return
+    if (closeBusy(this.closeState)) return
+    this.replaceEvent({ type: 'resume' })
+  }
+
+  private async askBeforeClosing(): Promise<void> {
+    const answer = await this.askToSave()
+    this.closeEvent({ type: 'answer', answer, now: Date.now() })
+  }
+
+  // --- prompts and timers ---------------------------------------------------------------------
+
+  /** Save / Don't Save / Cancel, for the document's unsaved changes. */
+  private async askToSave(): Promise<PromptAnswer> {
     const prompt = closePrompt(this.document.name, process.platform)
     const { response } = await dialog.showMessageBox(this.window, {
       type: 'warning',
@@ -237,7 +344,19 @@ export class StudioWindow {
       cancelId: prompt.cancelId,
       noLink: true,
     })
-    this.step({ type: 'answer', answer: answerOf(prompt, response), now: Date.now() })
+    return answerOf(prompt, response)
+  }
+
+  /** Tells both rule sets when a save chosen in a prompt has run past `limit`. */
+  private armDeadline(limit: number): void {
+    const timer = setTimeout(() => {
+      this.timers.delete(timer)
+      if (!this.alive) return
+      const now = Date.now()
+      this.closeEvent({ type: 'deadline', now })
+      this.replaceEvent({ type: 'deadline', now })
+    }, limit + DEADLINE_MARGIN_MS)
+    this.timers.add(timer)
   }
 
   private async offerReload(reason: string): Promise<void> {

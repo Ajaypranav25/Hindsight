@@ -1912,7 +1912,8 @@ browser tab cannot: files on disk, file associations and `hindsight://` links. I
   requests (`program`: a file's text, path and name; `trace`: a file's bytes; `link`: a validated
   `#src=…` fragment) and menu commands (`save`, `save-as`, `new`, `save-and-close`). The studio
   asks the app to write the program (`saveProgram`, answered with `ok` and the path and name,
-  `cancelled`, or `failed` with a message) and reports `{name, dirty}` (`setDocument`) for the
+  `cancelled`, or `failed` with a message; when it asks for a file, an optional `suggestion` is
+  where the Save dialog starts) and reports `{name, dirty}` (`setDocument`) for the
   title bar and the "unsaved changes" prompt. `ready()` says the studio is listening: requests that
   arrived before it (files and links passed at launch) are delivered after it.
 - **The studio's side** (`src/studio/desktop/connect.ts`, wired in `state/studio.ts` only when the
@@ -1933,6 +1934,21 @@ browser tab cannot: files on disk, file associations and `hindsight://` links. I
   does nothing; a program opened while a save dialog was up does not take the saved file. `dirty`
   is `path !== null && source !== savedSource`; `setDocument` is called only when `{name, dirty}`
   changes, once per replacement and never with its intermediate states.
+- **The app's side** (`desktop/src`; the rules are pure modules with unit tests, the Electron glue
+  in `desktop/src/glue` only carries them out). Closing or quitting a window whose document is
+  dirty asks Save / Don't Save / Cancel; so does anything that would replace the program (an open
+  request of any kind, or `new`), and requests that come while that question is open, or while
+  the window's own close question is, wait with it (`replace-guard.ts`). Save sends the studio
+  `save-and-close` or `save`, and the window closes, or the waiting requests go through, only once
+  a save has succeeded and the studio then reports the document clean: an older save that was
+  already under way may finish first. A save that fails, is cancelled or takes more than 10 s
+  keeps the window and the program, and ends a quit in progress (`document.ts`). `new` waits for a
+  page that is still loading as open requests do. Saves are atomic (`atomic-write.ts`: a new file
+  beside the target, flushed, then renamed over it, following symbolic links and keeping
+  permissions). File names are checked by the rules of the system the app runs on (macOS and
+  Linux allow anything but `/` and NUL), and a file that cannot be handed to the studio is an
+  error message, never dropped in silence. A page that ends while its window lives (crashed,
+  killed, or reported as a "clean exit", as Linux does for a killed renderer) is offered a reload.
 - **`hindsight://` links**: `hindsight://open/#src=<base64url of the UTF-8 source>[&t=N]`, the
   share link's fragment (§11.3) behind a fixed scheme and host. `appLink` builds them;
   `fragmentOfAppLink` accepts only scheme `hindsight`, host `open`, no path, query, credentials or
@@ -1944,16 +1960,24 @@ browser tab cannot: files on disk, file associations and `hindsight://` links. I
   second launch's command line on Windows and Linux, `open-file` and `open-url` events on macOS)
   instead of starting another copy.
 - **File associations.** `.sight` files open as programs and `.sighttrace` files as traces, and the
-  app registers the `hindsight` scheme with the OS.
+  app registers the `hindsight` scheme with the OS. The Windows and macOS installers set these up;
+  on Linux the `.deb` does (its `.desktop` entry, named after `desktopName`, which Electron also
+  uses as the window's app_id), while an AppImage needs a desktop-integration tool such as
+  AppImageLauncher.
 - **Packaging.** electron-builder writes the installers to `desktop/release/` under names without
   a version, so `https://github.com/Ajaypranav25/Hindsight/releases/latest/download/<name>` always
-  serves the newest: `Hindsight-Setup-x64.exe` (NSIS, installed per user),
-  `Hindsight-mac-arm64.dmg` and `Hindsight-mac-x64.dmg` (each also as a `.zip`),
-  `Hindsight-linux-x86_64.AppImage` and `Hindsight-linux-amd64.deb`, plus `SHA256SUMS.txt`. The
-  app is not signed with a developer certificate: macOS builds are signed ad hoc (Apple silicon
-  runs no unsigned code at all), so Gatekeeper asks once (System Settings > Privacy & Security >
-  Open Anyway), and Windows SmartScreen warns once (More info > Run anyway).
+  serves the newest: `Hindsight-Setup-x64.exe` (NSIS, installed per user in
+  `%LOCALAPPDATA%\Programs\hindsight-desktop`), `Hindsight-mac-arm64.dmg` and
+  `Hindsight-mac-x64.dmg` (each also as a `.zip`), `Hindsight-linux-amd64.deb` and
+  `Hindsight-linux-x86_64.AppImage`, plus `SHA256SUMS.txt`. The app is not signed with a developer
+  certificate: macOS builds are signed ad hoc (Apple silicon runs no unsigned code at all), so
+  Gatekeeper asks once (System Settings > Privacy & Security > Open Anyway), and Windows
+  SmartScreen warns once (More info > Run anyway). On Linux the `.deb` is preferred: it installs an
+  AppArmor profile, so Chromium's sandbox works on Ubuntu 24.04; the AppImage needs FUSE 2
+  (`libfuse2`, `libfuse2t64` on 24.04, or `--appimage-extract-and-run`), and where unprivileged
+  user namespaces are blocked its launcher starts the app with `--no-sandbox`.
 - **CI and releases.** CI builds the studio and the app and runs the desktop end-to-end tests
-  (Playwright driving the packed app) on Windows, macOS and Linux. The release workflow builds the
-  installers on each system and creates the GitHub Release that carries them and
-  `SHA256SUMS.txt`.
+  (Playwright driving the packed app) on Windows, macOS and Linux. The release workflow runs the
+  same tests before it builds the installers on each system; npm publishing waits for those
+  builds, and the GitHub Release that carries the installers and `SHA256SUMS.txt` waits for both.
+  A tag with a hyphen makes a prerelease, which never becomes the latest.

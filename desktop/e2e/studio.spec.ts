@@ -15,9 +15,12 @@ test.afterEach(async () => {
 })
 
 test('the studio runs its program with no console errors', async () => {
-  // Arrange: listen from the very first request, which a reload makes certain.
+  // Arrange: listen from the very first request, which a reload makes certain. The first run ends
+  // before the reload: a page reloaded mid-run says the last run did not finish (the studio's own
+  // guard), which is right, but not this test's subject.
   const { page } = desktop
   const errors = collectErrors(page)
+  await waitForStudio(page)
   await page.reload()
 
   // Act

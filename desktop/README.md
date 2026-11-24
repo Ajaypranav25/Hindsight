@@ -13,14 +13,16 @@ the same code, and packaged with [electron-builder](https://www.electron.build).
 Each release on GitHub carries the installers, under names that never change, so
 `https://github.com/Ajaypranav25/Hindsight/releases/latest/download/<name>` is always the newest:
 
-| System                | File                                                              |
-| --------------------- | ----------------------------------------------------------------- |
-| Windows 10 and 11     | `Hindsight-Setup-x64.exe`                                         |
-| macOS (Apple Silicon) | `Hindsight-mac-arm64.dmg` (or `.zip`)                             |
-| macOS (Intel)         | `Hindsight-mac-x64.dmg` (or `.zip`)                               |
-| Linux                 | `Hindsight-linux-x86_64.AppImage`, or `Hindsight-linux-amd64.deb` |
+| System                 | File                                                                      |
+| ---------------------- | ------------------------------------------------------------------------- |
+| Windows 10 and 11      | `Hindsight-Setup-x64.exe`                                                 |
+| macOS (Apple Silicon)  | `Hindsight-mac-arm64.dmg` (or `.zip`)                                     |
+| macOS (Intel)          | `Hindsight-mac-x64.dmg` (or `.zip`)                                       |
+| Linux (Debian, Ubuntu) | `Hindsight-linux-amd64.deb` (see [below](#linux-the-deb-or-the-appimage)) |
+| Linux (any)            | `Hindsight-linux-x86_64.AppImage`                                         |
 
 `SHA256SUMS.txt` lists the checksum of each (`sha256sum -c SHA256SUMS.txt --ignore-missing`).
+Releases from a tag with a hyphen (`v0.6.0-rc.1`) are prereleases: they never become the latest.
 
 ### The warnings you will see
 
@@ -28,15 +30,31 @@ The app is not yet signed with a paid certificate, so each system warns before i
 
 - **Windows:** SmartScreen says "Windows protected your PC". Choose **More info**, then **Run
   anyway**. The installer needs no administrator rights: it installs for you alone, in
-  `%LOCALAPPDATA%\Programs\Hindsight`, and Settings > Apps removes it.
+  `%LOCALAPPDATA%\Programs\hindsight-desktop` (named after the package), and Settings > Apps
+  removes it.
 - **macOS:** the app is signed ad hoc, not by an identified developer, so macOS says it "cannot be
   opened" (or that Apple "could not verify" it). Drag it to Applications, try to open it once, then
   open **System Settings > Privacy & Security** and choose **Open Anyway**. Or clear the quarantine
   flag in Terminal: `xattr -dr com.apple.quarantine /Applications/Hindsight.app`.
-- **Linux:** make the AppImage executable first: `chmod +x Hindsight-linux-x86_64.AppImage`. On
-  Ubuntu 24.04 and later, AppArmor stops unpackaged apps from setting up Chromium's sandbox, so the
-  AppImage may exit at once. The `.deb` brings an AppArmor profile for the app, so install that
-  instead: `sudo apt install ./Hindsight-linux-amd64.deb`.
+
+### Linux: the `.deb` or the AppImage
+
+On Debian and Ubuntu, prefer the `.deb`: `sudo apt install ./Hindsight-linux-amd64.deb`. It
+installs an AppArmor profile for the app, so Chromium's sandbox works on Ubuntu 24.04 too, and it
+registers the app for `.sight` and `.sighttrace` files and `hindsight://` links.
+
+The AppImage runs on any distribution, with some caveats:
+
+- Make it executable first: `chmod +x Hindsight-linux-x86_64.AppImage`.
+- It needs FUSE 2, which Ubuntu 22.04 and later do not install: `sudo apt install libfuse2` (on
+  Ubuntu 24.04, `sudo apt install libfuse2t64`). Or run it without FUSE:
+  `./Hindsight-linux-x86_64.AppImage --appimage-extract-and-run`.
+- Where AppArmor blocks unprivileged user namespaces (Ubuntu 24.04 and later), Chromium cannot set
+  up its sandbox, and the AppImage's launcher then starts the app with `--no-sandbox`: it runs, but
+  without Chromium's sandbox.
+- Double-clicking files and opening `hindsight://` links need the app registered with the desktop,
+  which an AppImage does not do by itself; a desktop-integration tool such as AppImageLauncher
+  does it.
 
 ## Commands
 
@@ -91,28 +109,42 @@ main process (src/main.ts, src/glue/)                  renderer (sandboxed, cont
   it is listening (`ready`). Underneath are five IPC channels (`src/messages.ts`):
   `hindsight:open` and `hindsight:command` to the page, `hindsight:save-program` (an invoke),
   `hindsight:set-document` and `hindsight:ready` from it.
-- **Security**, following Electron's checklist: the window is sandboxed and context-isolated with
-  Node.js off; it cannot open windows or navigate away from the studio (web links open in the
-  default browser); every permission but writing to the clipboard is denied; every IPC message must
-  come from the studio page in the app's window and is validated in both directions; the app writes
-  only to files the user chose in this session. The installers switch off Electron's run-as-node,
-  `NODE_OPTIONS` and `--inspect` fuses and check the app archive's integrity at start.
+- **Security**, following Electron's checklist: the page runs in Chromium's sandbox (except where
+  an AppImage has to start without it, above) and is context-isolated with Node.js off; it cannot
+  open windows or navigate away from the studio (web links open in the default browser); every
+  permission but writing to the clipboard is denied; every IPC message must come from the studio
+  page in the app's window and is validated in both directions; the app writes only to files the
+  user chose in this session. The installers switch off Electron's run-as-node, `NODE_OPTIONS` and
+  `--inspect` fuses; on Windows and macOS they also check the app archive's integrity at start
+  (Electron has no such check on Linux).
 - **Opening things.** Files and links arrive on the command line (Windows and Linux, and a second
   launch hands them to the running app), as macOS `open-file` and `open-url` events, or from File >
   Open. Programs are read as UTF-8 (at most 5 MB), traces as bytes (at most 32 MB), and requests
-  wait until the studio calls `ready()`. Electron itself refuses to start when anything follows a
+  wait until the studio calls `ready()`. A file whose name the studio could not be handed is an
+  error message, never dropped in silence. Electron itself refuses to start when anything follows a
   URL on its command line, so a crafted link cannot smuggle in switches.
-- **The window** remembers its size and place, and names its document in the title, marked with a
-  dot while it has unsaved changes (`● fib.sight — Hindsight`). Closing or quitting with unsaved
-  changes asks Save / Don't Save / Cancel; Save closes once the studio's save has succeeded.
+- **Unsaved changes.** The window names its document in the title, marked with a dot while it has
+  unsaved changes (`● fib.sight — Hindsight`). Closing or quitting with unsaved changes asks Save /
+  Don't Save / Cancel, and so does anything that would replace the program (File > Open, File >
+  New, a file or link handed to the app); requests that come while the question is open wait with
+  it. Save closes the window, or lets the new program in, once the studio's save has succeeded and
+  it reports the document clean; a save that fails or takes over 10 seconds keeps the window and
+  the program as they are (and ends a quit in progress). The rules are pure state machines
+  (`src/document.ts`, `src/replace-guard.ts`), tested without a window.
+- **Saving** is atomic (`src/atomic-write.ts`): the program goes to a new file beside the target,
+  which then replaces it in one rename, so a full disk or an I/O error never leaves a half-written
+  file. Symbolic links are followed and the file's permissions are kept.
+- **The window** remembers its size and place, and offers to reload a page that stopped working.
 
 ## Releases
 
 Pushing a version tag (`v0.5.0`) runs `.github/workflows/release.yml`. Besides publishing the
-`hindsight-lang` package to npm, it checks that the tag matches `desktop/package.json`, builds the
-installers on Windows, macOS and Linux, and publishes them with `SHA256SUMS.txt` as the tag's GitHub
-release. The app's version always equals the language package's (a root test checks it), so bump
-both together.
+`hindsight-lang` package to npm, it checks that the tag matches `desktop/package.json`, packs the
+app and runs the end-to-end tests on Windows, macOS and Linux, builds the installers there, and
+publishes them with `SHA256SUMS.txt` as the tag's GitHub release. Nothing is published until
+everything has built and passed: npm waits for the installers, and the GitHub release for both. A
+tag with a hyphen makes a prerelease. The app's version always equals the language package's (a
+root test checks it), so bump both together.
 
 CI (`.github/workflows/ci.yml`) packs the app and runs the end-to-end tests on all three systems for
 every change, checks the macOS signatures, and on `main` also keeps the installers as workflow

@@ -21,6 +21,8 @@ import {
   versionFromArgv,
 } from './messages'
 
+const PLATFORM = process.platform
+
 function subscribe<T>(
   channel: string,
   parse: (payload: unknown) => T | null,
@@ -40,8 +42,12 @@ function subscribe<T>(
 async function saveProgram(request: DesktopSaveRequest): Promise<DesktopSaveResult> {
   try {
     // Only the contract's fields cross over; the main process checks them again.
-    const payload = { source: request?.source, path: request?.path }
-    return parseSaveResult(await ipcRenderer.invoke(CHANNELS.saveProgram, payload))
+    const payload = {
+      source: request?.source,
+      path: request?.path,
+      suggestion: request?.suggestion,
+    }
+    return parseSaveResult(await ipcRenderer.invoke(CHANNELS.saveProgram, payload), PLATFORM)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     return { ok: false, reason: 'failed', message: `The program could not be saved: ${message}` }
@@ -53,10 +59,10 @@ function setDocument(state: DesktopDocumentState): void {
 }
 
 const bridge: DesktopBridge = Object.freeze({
-  platform: platformOf(process.platform),
+  platform: platformOf(PLATFORM),
   version: versionFromArgv(process.argv),
   onOpen: (listener: Parameters<DesktopBridge['onOpen']>[0]) =>
-    subscribe(CHANNELS.open, parseOpenRequest, listener),
+    subscribe(CHANNELS.open, (payload) => parseOpenRequest(payload, PLATFORM), listener),
   onCommand: (listener: Parameters<DesktopBridge['onCommand']>[0]) =>
     subscribe(CHANNELS.command, parseCommand, listener),
   saveProgram,

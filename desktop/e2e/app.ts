@@ -266,14 +266,38 @@ export function received(page: Page): Promise<unknown[]> {
   return page.evaluate(() => [...(window as unknown as { __bridgeLog: unknown[] }).__bridgeLog])
 }
 
+/** How long a test's app gets for each step of quitting before it is killed. */
+const QUIT_TIMEOUT_MS = 15_000
+
+/** True when `promise` settles (either way) within `ms`, false when the time runs out first. */
+async function settlesWithin(promise: Promise<unknown>, ms: number): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<boolean>((done) => {
+    timer = setTimeout(() => done(false), ms)
+  })
+  const settled = promise.then(
+    () => true,
+    () => true,
+  )
+  try {
+    return await Promise.race([settled, timeout])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 /**
  * Quits the app without its unsaved-changes prompt (which would wait for an answer). A closed
- * window may already have taken the app with it, on Windows and Linux.
+ * window may already have taken the app with it, on Windows and Linux. An app that does not quit
+ * in time (after a crashed page, say) is killed, so one test never hangs the ones after it.
  */
 export async function closeApp(desktop: DesktopApp | undefined): Promise<void> {
   if (desktop === undefined) return
-  await desktop.app
-    .evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.destroy())
-    .catch(() => undefined)
-  await desktop.app.close()
+  const child = desktop.app.process()
+  const destroyed = desktop.app.evaluate(({ BrowserWindow }) => {
+    for (const window of BrowserWindow.getAllWindows()) window.destroy()
+  })
+  await settlesWithin(destroyed, QUIT_TIMEOUT_MS)
+  const quit = await settlesWithin(desktop.app.close(), QUIT_TIMEOUT_MS)
+  if (!quit && child.exitCode === null) child.kill('SIGKILL')
 }

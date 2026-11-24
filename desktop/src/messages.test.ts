@@ -42,12 +42,25 @@ describe('paths and names', () => {
       expect(isAbsolutePath(path), path).toBe(false)
   })
 
-  test('file names have no folders or control characters', () => {
-    expect(isFileName('fib.sight')).toBe(true)
-    expect(isFileName('Zoë – notes.sight')).toBe(true)
-    for (const name of ['', 'a/b.sight', 'a\\b.sight', 'a\nb', 'a\u0000b', 'x'.repeat(256), 3])
-      expect(isFileName(name), String(name)).toBe(false)
-    expect(isFileName('x'.repeat(MAX_NAME_LENGTH))).toBe(true)
+  test('file names have no folders, on any system', () => {
+    for (const platform of ['win32', 'darwin', 'linux']) {
+      expect(isFileName('fib.sight', platform)).toBe(true)
+      expect(isFileName('Zoë – notes.sight', platform)).toBe(true)
+      expect(isFileName('x'.repeat(MAX_NAME_LENGTH), platform)).toBe(true)
+      for (const name of ['', 'a/b.sight', 'a\u0000b', 'x'.repeat(MAX_NAME_LENGTH + 1), 3, null])
+        expect(isFileName(name, platform), `${platform}: ${String(name)}`).toBe(false)
+    }
+  })
+
+  test('macOS and Linux names may hold backslashes, colons and control characters', () => {
+    for (const platform of ['darwin', 'linux'])
+      for (const name of ['a\\b.sight', 'a:b.sight', 'line\nbreak.sight', 'tab\t.sight', 'x\u007f'])
+        expect(isFileName(name, platform), `${platform}: ${JSON.stringify(name)}`).toBe(true)
+  })
+
+  test('Windows names may not', () => {
+    for (const name of ['a\\b.sight', 'a:b.sight', 'line\nbreak.sight', 'tab\t.sight', '\u001f'])
+      expect(isFileName(name, 'win32'), JSON.stringify(name)).toBe(false)
   })
 
   test('UTF-8 length counts multi-byte characters', () => {
@@ -66,9 +79,36 @@ describe('save requests from the page', () => {
     const request = parseSaveRequest(payload)
 
     // Assert
-    expect(request).toEqual(payload)
+    expect(request).toEqual({ ...payload, suggestion: null })
     expect(request).not.toBe(payload)
-    expect(parseSaveRequest({ source: '', path: null })).toEqual({ source: '', path: null })
+    expect(parseSaveRequest({ source: '', path: null })).toEqual({
+      source: '',
+      path: null,
+      suggestion: null,
+    })
+  })
+
+  test('a request that asks may suggest where the Save dialog starts', () => {
+    for (const suggestion of [PATH, WINDOWS_PATH])
+      expect(parseSaveRequest({ source: 'x', path: null, suggestion })).toEqual({
+        source: 'x',
+        path: null,
+        suggestion,
+      })
+    for (const none of [undefined, null])
+      expect(parseSaveRequest({ source: 'x', path: null, suggestion: none })).toEqual({
+        source: 'x',
+        path: null,
+        suggestion: null,
+      })
+  })
+
+  test('a suggestion is checked like a path', () => {
+    for (const suggestion of ['fib.sight', '', `${PATH}\u0000`, 7, '/'.repeat(40_000)])
+      expect(
+        parseSaveRequest({ source: 'x', path: null, suggestion }),
+        String(suggestion),
+      ).toBeNull()
   })
 
   test('anything else is refused', () => {
@@ -95,11 +135,14 @@ describe('save requests from the page', () => {
 
 describe('document state from the page', () => {
   test('a named or unnamed document is accepted', () => {
-    expect(parseDocumentState({ name: 'fib.sight', dirty: true })).toEqual({
+    expect(parseDocumentState({ name: 'fib.sight', dirty: true }, 'linux')).toEqual({
       name: 'fib.sight',
       dirty: true,
     })
-    expect(parseDocumentState({ name: null, dirty: false })).toEqual({ name: null, dirty: false })
+    expect(parseDocumentState({ name: null, dirty: false }, 'win32')).toEqual({
+      name: null,
+      dirty: false,
+    })
   })
 
   test('a name with folders, or a missing flag, is refused', () => {
@@ -110,7 +153,8 @@ describe('document state from the page', () => {
       { name: 7, dirty: false },
       undefined,
     ])
-      expect(parseDocumentState(payload)).toBeNull()
+      for (const platform of ['win32', 'linux'])
+        expect(parseDocumentState(payload, platform)).toBeNull()
   })
 })
 
@@ -129,14 +173,20 @@ describe('messages to the page', () => {
 
     // Act and assert
     expect(
-      parseOpenRequest({ kind: 'program', source: 'print(1)', path: PATH, name: 'fib.sight' }),
+      parseOpenRequest(
+        { kind: 'program', source: 'print(1)', path: PATH, name: 'fib.sight' },
+        'linux',
+      ),
     ).toEqual({ kind: 'program', source: 'print(1)', path: PATH, name: 'fib.sight' })
-    expect(parseOpenRequest({ kind: 'trace', bytes, name: 'run.sighttrace' })).toEqual({
+    expect(parseOpenRequest({ kind: 'trace', bytes, name: 'run.sighttrace' }, 'win32')).toEqual({
       kind: 'trace',
       bytes,
       name: 'run.sighttrace',
     })
-    expect(parseOpenRequest({ kind: 'link', fragment })).toEqual({ kind: 'link', fragment })
+    expect(parseOpenRequest({ kind: 'link', fragment }, 'darwin')).toEqual({
+      kind: 'link',
+      fragment,
+    })
   })
 
   test('malformed open requests never reach the studio', () => {
@@ -152,24 +202,26 @@ describe('messages to the page', () => {
       { kind: 'file', path: PATH },
       null,
     ])
-      expect(parseOpenRequest(payload)).toBeNull()
+      expect(parseOpenRequest(payload, 'linux')).toBeNull()
   })
 
   test('save results are checked, and anything unexpected reads as a failed save', () => {
-    expect(parseSaveResult({ ok: true, path: PATH, name: 'fib.sight' })).toEqual({
+    expect(parseSaveResult({ ok: true, path: PATH, name: 'fib.sight' }, 'linux')).toEqual({
       ok: true,
       path: PATH,
       name: 'fib.sight',
     })
-    expect(parseSaveResult({ ok: false, reason: 'cancelled' })).toEqual({
+    expect(parseSaveResult({ ok: false, reason: 'cancelled' }, 'linux')).toEqual({
       ok: false,
       reason: 'cancelled',
     })
-    expect(parseSaveResult({ ok: false, reason: 'failed', message: 'disk full' })).toEqual({
-      ok: false,
-      reason: 'failed',
-      message: 'disk full',
-    })
+    expect(parseSaveResult({ ok: false, reason: 'failed', message: 'disk full' }, 'linux')).toEqual(
+      {
+        ok: false,
+        reason: 'failed',
+        message: 'disk full',
+      },
+    )
     for (const reply of [
       undefined,
       { ok: true, path: 'fib.sight', name: 'fib.sight' },
@@ -177,7 +229,20 @@ describe('messages to the page', () => {
       { ok: false, reason: 'other' },
       { ok: 'yes' },
     ])
-      expect(parseSaveResult(reply)).toMatchObject({ ok: false, reason: 'failed' })
+      expect(parseSaveResult(reply, 'linux')).toMatchObject({ ok: false, reason: 'failed' })
+  })
+
+  test('a file whose name is legal on its system opens and saves there', () => {
+    // Arrange: a backslash is part of a name on Linux, a folder separator on Windows.
+    const name = 'a\\b.sight'
+    const program = { kind: 'program', source: 'x', path: `/home/ada/${name}`, name }
+    const saved = { ok: true, path: `/home/ada/${name}`, name }
+
+    // Act and assert
+    expect(parseOpenRequest(program, 'linux')).toEqual(program)
+    expect(parseSaveResult(saved, 'linux')).toEqual(saved)
+    expect(parseOpenRequest(program, 'win32')).toBeNull()
+    expect(parseSaveResult(saved, 'win32')).toMatchObject({ ok: false, reason: 'failed' })
   })
 })
 

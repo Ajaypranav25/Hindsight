@@ -17,6 +17,9 @@ const config = {
   productName: 'Hindsight',
   copyright: 'Copyright © 2026 Ajaypranav25',
   directories: { output: 'release', buildResources: 'build' },
+  // The Windows .ico and the macOS .icns come from this 1024 px PNG; Linux has its own set below.
+  // (Named here, or electron-builder would prefer build/icons for every system.)
+  icon: 'build/icon.png',
   files: ['dist/**/*', 'package.json'],
   asar: true,
   // No native modules, nothing to rebuild.
@@ -58,8 +61,9 @@ const config = {
     target: [{ target: 'nsis', arch: ['x64'] }],
   },
   // One click, per user: no administrator rights and no questions, installed in
-  // %LOCALAPPDATA%\Programs\Hindsight with Start menu and desktop shortcuts, removable from
-  // Settings > Apps. build/installer.nsh (picked up by name) registers hindsight:// links.
+  // %LOCALAPPDATA%\Programs\hindsight-desktop (named after the package, not the product) with
+  // Start menu and desktop shortcuts, removable from Settings > Apps. build/installer.nsh (picked
+  // up by name) registers hindsight:// links.
   nsis: {
     oneClick: true,
     perMachine: false,
@@ -96,6 +100,12 @@ const config = {
     category: 'Development',
     // The .deb links /usr/bin/<executableName>; `hindsight` is the language's command-line tool.
     executableName: 'hindsight-desktop',
+    // The .desktop entry is named after package.json's desktopName (hindsight-desktop.desktop),
+    // which Electron also uses as the window's app_id / WM_CLASS and when it registers hindsight://
+    // links with xdg-settings, so desktops match the running window to its launcher entry.
+    syncDesktopName: true,
+    // Sizes 16 to 512, each drawn from the SVG (scripts/render-icon.mjs).
+    icon: 'build/icons',
     synopsis: 'A tiny programming language with a time machine built in',
     maintainer: 'Ajaypranav25 <ajaypranav25@users.noreply.github.com>',
   },
