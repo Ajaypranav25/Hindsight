@@ -45,6 +45,11 @@ export interface DesktopSaveRequest {
   readonly source: string
   /** The file to write; null asks the user for one (Save As). */
   readonly path: string | null
+  /**
+   * When asking: the file the Save dialog starts at, so Save As on an open file suggests that
+   * file's own folder and name. Only a starting point; the user still chooses.
+   */
+  readonly suggestion?: string | null
 }
 
 export type DesktopSaveResult =
