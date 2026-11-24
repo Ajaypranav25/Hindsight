@@ -1,6 +1,6 @@
 # Hindsight Architecture
 
-Version 0.4. **Normative for internal contracts.** `docs/SPEC.md` defines the language; this document
+Version 0.5. **Normative for internal contracts.** `docs/SPEC.md` defines the language; this document
 defines how the implementation is split into modules and the exact contracts between them. Contract
 types live in code and are the source of truth for shapes:
 

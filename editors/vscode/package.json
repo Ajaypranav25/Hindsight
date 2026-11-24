@@ -2,7 +2,7 @@
   "name": "hindsight-vscode",
   "displayName": "Hindsight",
   "description": "The Hindsight language (.sight) in VS Code: syntax highlighting, run on save, call counts, never-ran lines with why-not explanations, crash slices, and Open in Studio for the Hindsight desktop app.",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "publisher": "ajaypranav25",
   "icon": "icon.png",
   "license": "MIT",
