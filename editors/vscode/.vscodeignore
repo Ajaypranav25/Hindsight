@@ -1,4 +1,4 @@
-# Only the bundle, the manifest, the grammar, the language configuration, README and LICENSE ship.
+# Only the bundle, the manifest, the grammar, the language configuration, the icon, README and LICENSE ship.
 src/**
 scripts/**
 node_modules/**
@@ -8,3 +8,4 @@ tsconfig.json
 package-lock.json
 *.vsix
 .vscode/**
+icon.svg

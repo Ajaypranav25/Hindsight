@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- The studio's favicon: a run's trace with the pen (red) parked at a moment. -->
+  <rect width="32" height="32" rx="6" fill="#f5f8f3"/>
+  <path d="M3 22h6l3-8 4 8 3-12 3 6h7" fill="none" stroke="#17202b" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M22 4v24" stroke="#cf3427" stroke-width="2.4" stroke-linecap="round"/>
+</svg>
