@@ -1921,7 +1921,10 @@ browser tab cannot: files on disk, file associations and `hindsight://` links. I
   keeping the user's own program (`openProgramFile`, §11.3), and becomes the document
   `{path, name, savedSource}`. A link (`openSharedSource`) and a trace (`openTraceFile`) leave the
   document; a trace only once its program has replaced the editor's, so a file that cannot be read
-  changes nothing. `new` starts an empty program that belongs to no file (`newProgram`). Save
+  changes nothing. `new` starts an empty program that belongs to no file (`newProgram`). A whole
+  program the studio loads by itself (a gallery example, Restore, a trace from its own menu) leaves
+  the document too: the store's `programLoads` counts such loads, which edits never change, so the
+  connection tells them from typing and Save never writes them over the opened file. Save
   writes to the document's path, or asks when there is none; Save As always asks;
   `save-and-close` saves exactly as Save does, always with one `saveProgram` call (even with
   nothing to save), and the app closes the window once that save succeeds. Saves run one at a
