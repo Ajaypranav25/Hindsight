@@ -5,28 +5,26 @@
  * lock, and never register themselves as the system's hindsight:// handler.
  */
 import { spawn } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { _electron, expect, type ElectronApplication, type Page } from '@playwright/test'
+import {
+  _electron,
+  expect,
+  type ElectronApplication,
+  type Locator,
+  type Page,
+} from '@playwright/test'
 import type { DesktopBridge } from '../../src/studio/desktop/bridge'
 import { waitForRun } from '../../e2e/fixtures'
 
 export const DESKTOP_DIR = resolve(__dirname, '..')
-export const REPOSITORY_DIR = resolve(DESKTOP_DIR, '..')
 
 /** The packaged app under test, or undefined to run the development build. */
 export const PACKED_APP = process.env.HINDSIGHT_DESKTOP_APP
   ? resolve(DESKTOP_DIR, process.env.HINDSIGHT_DESKTOP_APP)
   : undefined
-
-/**
- * True once the studio drives the bridge itself (src/studio/desktop/connect.ts subscribes and
- * calls ready() at start-up). Tests that play the studio's part through the bridge run only before
- * that; tests of what the studio then does with requests run only after.
- */
-export const STUDIO_CONNECTED = existsSync(join(REPOSITORY_DIR, 'src/studio/desktop/connect.ts'))
 
 export const APP_VERSION = (
   JSON.parse(readFileSync(join(DESKTOP_DIR, 'package.json'), 'utf8')) as { version: string }
@@ -103,6 +101,39 @@ export async function launchSecondInstance(userDataDir: string, args: readonly s
 export async function waitForStudio(page: Page): Promise<void> {
   await expect(page.locator('#root')).not.toBeEmpty()
   await waitForRun(page)
+}
+
+/**
+ * The studio's notice, which takes over the header's status line for a few seconds (so
+ * waitForStudio waits for it to go).
+ */
+export function notice(page: Page): Locator {
+  return page.locator('.ch-notice-text')
+}
+
+/**
+ * Starts noting every notice the studio shows, including one on screen now; the returned function
+ * reads them. A notice stays for seconds, so one shown at start-up is still there to be noted.
+ */
+export async function watchNotices(page: Page): Promise<() => Promise<string[]>> {
+  await expect(page.locator('#root')).not.toBeEmpty()
+  await page.evaluate(() => {
+    const seen: string[] = []
+    const look = () => {
+      for (const element of document.querySelectorAll('.ch-notice-text')) {
+        const text = element.textContent ?? ''
+        if (!seen.includes(text)) seen.push(text)
+      }
+    }
+    Object.assign(window, { __notices: seen })
+    look()
+    new MutationObserver(look).observe(document.body, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+    })
+  })
+  return () => page.evaluate(() => [...(window as unknown as { __notices: string[] }).__notices])
 }
 
 /** Collects the page's errors and console.error messages from now on. */
@@ -211,11 +242,12 @@ export function windowCount(app: ElectronApplication): Promise<number> {
   return app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)
 }
 
-// --- playing the studio's part ----------------------------------------------------------------
+// --- listening beside the studio --------------------------------------------------------------
 
 /**
- * Subscribes to the bridge's open requests and commands from the page, calls ready() as the
- * studio does, and keeps what arrives (trace bytes as plain arrays) for `received`.
+ * Subscribes to the bridge's open requests and commands from the page, beside the studio's own
+ * listener (which has already called ready()), and keeps what arrives (trace bytes as plain
+ * arrays) for `received`.
  */
 export async function listenOnBridge(page: Page) {
   await page.evaluate(() => {
@@ -226,7 +258,6 @@ export async function listenOnBridge(page: Page) {
       log.push(request.kind === 'trace' ? { ...request, bytes: [...request.bytes] } : request),
     )
     bridge.onCommand((command) => log.push({ command }))
-    bridge.ready()
   })
 }
 

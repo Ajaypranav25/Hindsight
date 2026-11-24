@@ -1,11 +1,13 @@
 /**
- * The DesktopBridge as the studio sees it (window.hindsightDesktop), driven from the page the way
- * src/studio/desktop/connect.ts drives it: saving, the menus' commands and open requests.
+ * The DesktopBridge as the studio sees it (window.hindsightDesktop): saving, driven from the page
+ * the way src/studio/desktop/connect.ts drives it, and the menus' commands and open requests, which
+ * a listener beside the studio's own records as the studio acts on them.
  */
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
+import { editorContent } from '../../e2e/fixtures'
 import { appLink } from '../../src/studio/desktop/bridge'
 import { MENU_IDS } from '../src/menu-template'
 import {
@@ -20,6 +22,7 @@ import {
   stubOpenDialog,
   stubSaveDialog,
   waitForStudio,
+  windowTitle,
   type BridgeWindow,
   type DesktopApp,
 } from './app'
@@ -133,10 +136,13 @@ test('the File menu sends New, Save and Save As to the studio', async () => {
   // Act
   for (const id of [MENU_IDS.new, MENU_IDS.save, MENU_IDS.saveAs]) await clickMenu(desktop.app, id)
 
-  // Assert
+  // Assert: the studio emptied the editor, and both saves asked for a file (and were cancelled).
   await expect
     .poll(() => received(desktop.page))
     .toEqual([{ command: 'new' }, { command: 'save' }, { command: 'save-as' }])
+  await expect(editorContent(desktop.page)).toHaveText('')
+  await expect.poll(() => recorded(desktop.app, 'save')).toHaveLength(2)
+  expect(await windowTitle(desktop.app)).toBe('Hindsight')
 })
 
 test('File > Open reads the chosen program and hands it to the studio', async () => {
@@ -153,6 +159,8 @@ test('File > Open reads the chosen program and hands it to the studio', async ()
   await expect
     .poll(() => received(desktop.page))
     .toEqual([{ kind: 'program', source: 'print("opened")\n', path, name: 'opened.sight' }])
+  await expect(editorContent(desktop.page)).toContainText('print("opened")')
+  await expect.poll(() => windowTitle(desktop.app)).toBe('opened.sight — Hindsight')
 })
 
 test('an opened program may be saved over, an opened trace never', async () => {
@@ -199,4 +207,7 @@ test('a second launch hands its file and link to the running app and exits', asy
       { kind: 'program', source: 'print("second")\n', path, name: 'second.sight' },
       { kind: 'link', fragment: link.slice(link.indexOf('#')) },
     ])
+  // The studio opened both, in order: the link's program, of no file, is the one left.
+  await expect(editorContent(desktop.page)).toContainText('print("linked")')
+  await expect.poll(() => windowTitle(desktop.app)).toBe('Hindsight')
 })

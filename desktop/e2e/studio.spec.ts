@@ -2,14 +2,7 @@
 import { expect, test } from '@playwright/test'
 import { replaceProgram, waitForRun } from '../../e2e/fixtures'
 import { CONTENT_SECURITY_POLICY } from '../src/static-files'
-import {
-  closeApp,
-  collectErrors,
-  launchApp,
-  STUDIO_CONNECTED,
-  waitForStudio,
-  type DesktopApp,
-} from './app'
+import { closeApp, collectErrors, launchApp, waitForStudio, type DesktopApp } from './app'
 
 let desktop: DesktopApp
 
@@ -131,6 +124,5 @@ test('Copy link puts a link to the program on the clipboard', async () => {
   // Assert: copied straight to the clipboard, not offered for copying by hand.
   await expect(page.getByRole('button', { name: 'Link copied' })).toBeVisible()
   const link = await app.evaluate(({ clipboard }) => clipboard.readText())
-  expect(link).toMatch(/#src=[\w-]+/)
-  if (STUDIO_CONNECTED) expect(link).toMatch(/^hindsight:\/\/open\/#src=/)
+  expect(link).toMatch(/^hindsight:\/\/open\/#src=[\w-]+/)
 })
