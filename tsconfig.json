@@ -18,7 +18,12 @@
     "noEmit": true,
     "types": ["node", "vite/client"]
   },
-  "include": ["src", "tests", "e2e", "scripts", "editors/vscode/src", "*.ts"],
-  "//": "editors/vscode/src/glue imports the vscode module, whose types live only in editors/vscode/node_modules: editors/vscode/tsconfig.json checks it.",
-  "exclude": ["editors/vscode/src/glue"]
+  "include": ["src", "tests", "e2e", "scripts", "editors/vscode/src", "desktop/src", "*.ts"],
+  "//": "editors/vscode/src/glue imports the vscode module, and the desktop app's glue, main and preload import electron; their types live only in each package's node_modules, so editors/vscode/tsconfig.json and desktop/tsconfig.json check them.",
+  "exclude": [
+    "editors/vscode/src/glue",
+    "desktop/src/glue",
+    "desktop/src/main.ts",
+    "desktop/src/preload.ts"
+  ]
 }
