@@ -95,6 +95,11 @@ test('the page has no Node.js and no permissions but the clipboard', async () =>
   const result = await page.evaluate(async () => ({
     require: typeof (window as unknown as { require?: unknown }).require,
     process: typeof (window as unknown as { process?: unknown }).process,
+    clipboardWrite: (
+      await navigator.permissions.query({ name: 'clipboard-write' as PermissionName })
+    ).state,
+    clipboardRead: (await navigator.permissions.query({ name: 'clipboard-read' as PermissionName }))
+      .state,
     geolocation: (await navigator.permissions.query({ name: 'geolocation' })).state,
     notifications: await Notification.requestPermission(),
   }))
@@ -103,18 +108,22 @@ test('the page has no Node.js and no permissions but the clipboard', async () =>
   expect(result).toEqual({
     require: 'undefined',
     process: 'undefined',
+    clipboardWrite: 'granted',
+    clipboardRead: 'denied',
     geolocation: 'denied',
     notifications: 'denied',
   })
 })
 
 test('Copy link puts a link to the program on the clipboard', async () => {
-  // Arrange
+  // Arrange: the clipboard takes writes only from a page whose window has the focus.
   const { app, page } = desktop
   await waitForStudio(page)
   await replaceProgram(page, 'print("copied")\n')
   await waitForRun(page, /Finished/)
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.focus())
+  const focused = await page.evaluate(() => document.hasFocus())
+  test.skip(!focused, 'the window could not take the focus (a display without a window manager)')
 
   // Act
   await page.getByRole('button', { name: 'Copy a link to this program' }).click()
