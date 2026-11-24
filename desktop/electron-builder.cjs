@@ -94,7 +94,8 @@ const config = {
       { target: 'deb', arch: ['x64'] },
     ],
     category: 'Development',
-    executableName: 'hindsight',
+    // The .deb links /usr/bin/<executableName>; `hindsight` is the language's command-line tool.
+    executableName: 'hindsight-desktop',
     synopsis: 'A tiny programming language with a time machine built in',
     maintainer: 'Ajaypranav25 <ajaypranav25@users.noreply.github.com>',
   },

@@ -66,9 +66,16 @@ describe('the installers', () => {
     const targets = section('mac').target as { target: string; arch: string[] }[]
 
     expect(targets.map((target) => target.target).sort()).toEqual(['dmg', 'zip'])
-    for (const target of targets) expect(target.arch.sort()).toEqual(['arm64', 'x64'])
+    for (const target of targets) expect([...target.arch].sort()).toEqual(['arm64', 'x64'])
     expect(section('mac').identity).toBe('-')
     expect(section('mac').hardenedRuntime).toBe(false)
+  })
+
+  test('leave the `hindsight` command to the language on Linux', () => {
+    const cli = Object.keys(root.bin as Record<string, string>)
+
+    expect(cli).toContain('hindsight')
+    expect(cli).not.toContain(section('linux').executableName)
   })
 
   test('open .sight and .sighttrace files and hindsight:// links', () => {

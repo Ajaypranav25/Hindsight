@@ -104,7 +104,7 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            app: release/linux-unpacked/hindsight
+            app: release/linux-unpacked/hindsight-desktop
           - os: windows-latest
             app: release/win-unpacked/Hindsight.exe
           # macos-latest runs on Apple Silicon.
