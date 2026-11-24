@@ -22,8 +22,10 @@ import {
   closePrompt,
   closeStep,
   INITIAL_CLOSE_STATE,
+  offersReload,
   reloadPrompt,
   representedFilename,
+  SAVE_AND_CLOSE_WINDOW_MS,
   windowTitle,
   type CloseEffect,
   type CloseEvent,
@@ -40,6 +42,9 @@ const NO_DOCUMENT: DesktopDocumentState = { name: null, dirty: false }
 /** The studio's page background (src/studio/styles/tokens.css), so the window never flashes white. */
 const BACKGROUND = { light: '#e9eee8', dark: '#0e1319' } as const
 
+/** A save's time-limit timer fires this much after the limit, so the limit has surely passed. */
+const DEADLINE_MARGIN_MS = 50
+
 export interface StudioWindowOptions {
   readonly preload: string
   /** The window icon on Linux; Windows and macOS take theirs from the executable and bundle. */
@@ -50,7 +55,7 @@ export interface StudioWindowOptions {
 }
 
 export interface StudioWindowHooks {
-  /** The user chose to keep the window open with unsaved changes: a quit in progress stops. */
+  /** The window stays open with unsaved changes after all: a quit in progress stops. */
   onStay(): void
 }
 
@@ -68,6 +73,9 @@ export class StudioWindow {
   private closeState: CloseState = INITIAL_CLOSE_STATE
   private document: DesktopDocumentState = NO_DOCUMENT
   private knownPath: string | null = null
+  /** The window or its page is gone (closed, destroyed). */
+  private ended = false
+  private readonly timers = new Set<ReturnType<typeof setTimeout>>()
 
   constructor(
     private readonly options: StudioWindowOptions,
@@ -109,7 +117,7 @@ export class StudioWindow {
   }
 
   get alive(): boolean {
-    return !this.window.isDestroyed()
+    return !this.ended && !this.window.isDestroyed()
   }
 
   /** True when an IPC message comes from the studio page in this window's main frame. */
@@ -136,7 +144,7 @@ export class StudioWindow {
 
   setDocument(state: DesktopDocumentState): void {
     this.showDocument(state)
-    this.step({ type: 'document', dirty: state.dirty })
+    this.step({ type: 'document', dirty: state.dirty, now: Date.now() })
   }
 
   saveFinished(result: DesktopSaveResult): void {
@@ -184,9 +192,10 @@ export class StudioWindow {
     this.window.on('page-title-updated', (event) => event.preventDefault())
     this.window.on('close', (event) => {
       const effect = this.step({ type: 'close-requested', now: Date.now() })
-      if (effect === 'prevent' || effect === 'prompt') event.preventDefault()
-      else this.saveState()
+      if (effect === 'none') this.saveState()
+      else event.preventDefault()
     })
+    this.window.on('closed', () => this.end())
   }
 
   private wirePage(): void {
@@ -195,15 +204,24 @@ export class StudioWindow {
     contents.on('did-navigate', () => this.resetPage())
     // The unsaved-changes prompt is the app's; a page's beforeunload never blocks closing.
     contents.on('will-prevent-unload', (event) => event.preventDefault())
+    contents.on('destroyed', () => this.end())
+    // Whatever the reason: on Linux, a page Chromium killed can even report a clean exit.
     contents.on('render-process-gone', (_event, details) => {
-      if (details.reason === 'clean-exit') return
+      if (!this.alive || !offersReload(this.closeState)) return
       this.resetPage()
       void this.offerReload(details.reason)
     })
   }
 
+  private end(): void {
+    this.ended = true
+    for (const timer of this.timers) clearTimeout(timer)
+    this.timers.clear()
+  }
+
   private showDocument(state: DesktopDocumentState): void {
     this.document = state
+    if (!this.alive) return
     this.window.setTitle(windowTitle(state))
     if (process.platform !== 'darwin') return
     this.window.setDocumentEdited(state.dirty)
@@ -220,8 +238,10 @@ export class StudioWindow {
     const { state, effect } = closeStep(this.closeState, event)
     this.closeState = state
     if (effect === 'prompt') void this.prompt()
-    else if (effect === 'save-and-close') this.send(CHANNELS.command, 'save-and-close')
-    else if (effect === 'close') setImmediate(() => this.alive && this.window.close())
+    else if (effect === 'save-and-close') {
+      this.send(CHANNELS.command, 'save-and-close')
+      this.armDeadline(SAVE_AND_CLOSE_WINDOW_MS)
+    } else if (effect === 'close') setImmediate(() => this.alive && this.window.close())
     else if (effect === 'stay') this.hooks.onStay()
     return effect
   }
@@ -238,6 +258,15 @@ export class StudioWindow {
       noLink: true,
     })
     this.step({ type: 'answer', answer: answerOf(prompt, response), now: Date.now() })
+  }
+
+  /** Tells the close rules when the save chosen in the prompt has run past `limit`. */
+  private armDeadline(limit: number): void {
+    const timer = setTimeout(() => {
+      this.timers.delete(timer)
+      if (this.alive) this.step({ type: 'deadline', now: Date.now() })
+    }, limit + DEADLINE_MARGIN_MS)
+    this.timers.add(timer)
   }
 
   private async offerReload(reason: string): Promise<void> {

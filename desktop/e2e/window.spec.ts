@@ -449,3 +449,49 @@ test('a page that crashes can be reloaded', async () => {
     )
     .toMatch(/Finished/)
 })
+
+test('a page that ends with a "clean exit" while its window lives can be reloaded too', async () => {
+  // Arrange: on Linux, Chromium reports a renderer it killed as a clean exit (code 0).
+  const { app, page } = await start()
+  await stubMessageBox(app, 'Reload')
+  const reloaded = page.waitForEvent('load')
+
+  // Act: the event as Linux sends it (the page itself is fine here, so it can be reloaded).
+  await app.evaluate(({ BrowserWindow }) => {
+    const contents = BrowserWindow.getAllWindows()[0]!.webContents
+    contents.emit('render-process-gone', {}, { reason: 'clean-exit', exitCode: 0 })
+  })
+
+  // Assert
+  await reloaded
+  expect(await recorded(app, 'message')).toEqual(['Hindsight stopped working'])
+  await waitForStudio(page)
+})
+
+test('a window that closes never offers to reload its page', async () => {
+  // Arrange: a hidden window keeps the app running once the studio's closes, and the studio's
+  // page reports its end as its window closes, as on Linux.
+  const { app, page } = await start()
+  await stubMessageBox(app, 'Reload')
+  await app.evaluate(({ BrowserWindow }) => {
+    const studio = BrowserWindow.getAllWindows()[0]!
+    new BrowserWindow({ show: false })
+    studio.on('close', () =>
+      studio.webContents.emit('render-process-gone', {}, { reason: 'clean-exit', exitCode: 0 }),
+    )
+  })
+  const gone = closed(page)
+
+  // Act
+  await app.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows()
+      .find((window) => window.webContents.getURL().startsWith('app://'))
+      ?.close()
+  })
+
+  // Assert: closed, with no prompt, then or a moment later.
+  await gone
+  await new Promise((settle) => setTimeout(settle, 500))
+  expect(await recorded(app, 'message')).toEqual([])
+  expect(await windowCount(app)).toBe(1)
+})
