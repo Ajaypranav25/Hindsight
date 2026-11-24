@@ -60,6 +60,8 @@ class DesktopApp {
   private studio: StudioWindow | null = null
   /** Targets that arrived before the app was ready. */
   private waiting: LaunchTarget[] = []
+  /** Targets open one after another, so the studio gets them in the order they were given. */
+  private opening: Promise<void> = Promise.resolve()
   private quitting = false
 
   start(): void {
@@ -166,21 +168,24 @@ class DesktopApp {
       this.waiting = [...this.waiting, target]
       return
     }
+    this.opening = this.opening
+      .then(() => this.deliver(target))
+      .catch((error: unknown) => console.error('Could not open', target, error))
+  }
+
+  private async deliver(target: LaunchTarget): Promise<void> {
     if (target.kind === 'link') {
       this.window().open({ kind: 'link', fragment: target.fragment }, null)
       return
     }
-    void this.openFile(target.path)
-  }
-
-  private async openFile(path: string): Promise<void> {
-    const result = await this.files.read(path)
+    const result = await this.files.read(target.path)
     const studio = this.window()
     if (result.ok) {
-      studio.open(result.request, path)
+      studio.open(result.request, target.path)
       return
     }
-    await dialog.showMessageBox(studio.window, {
+    // Not awaited: the next file need not wait for this message to be dismissed.
+    void dialog.showMessageBox(studio.window, {
       type: 'error',
       message: 'The file could not be opened',
       detail: result.message,
