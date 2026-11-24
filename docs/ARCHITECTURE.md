@@ -1490,7 +1490,8 @@ and task list, and the schedule picker recording again under seeds 1 and 2.
 ## 11. Studio (`src/studio`)
 
 A single-page React 19 app (CodeMirror 6 editor, zustand store). It imports only
-`src/core/index.ts` and runs entirely in the browser: no server, no network calls besides fonts.
+`src/core/index.ts` and runs entirely in the browser or the desktop app (§13): no server and no
+network calls; even its fonts are bundled.
 
 ### 11.1 Concept
 
@@ -1752,8 +1753,11 @@ tabbed panels); the page may scroll vertically, never horizontally.
   breakpoints, output ticks and provenance. **Dark theme**: blue-graphite ground, faint cyan grid,
   pale ink, a brighter pen red and a lighter cobalt.
 - **Type**: Barlow Condensed (uppercase, letter-spaced instrument labels and the wordmark), Barlow
-  (interface text), JetBrains Mono (code, values, the tape counter with tabular digits). Loaded from
-  Google Fonts with system fallbacks.
+  (interface text), JetBrains Mono (code, values, the tape counter with tabular digits), with system
+  fallbacks. Self-hosted, so the studio works offline: `styles/fonts.css` declares woff2 files from
+  the `@fontsource` packages (devDependencies, bundled by Vite), Latin and Latin Extended subsets
+  only, the latter loaded only for text that needs it (`unicode-range`). The single-file build
+  inlines them all (about 320 KB of the page).
 - Panels read as instrument modules: hairline rules and small uppercase labels, not heavy cards.
   Transport icons are inline SVG. One orchestrated motion moment: the pen writing the chart while a
   run records. `prefers-reduced-motion` disables animation.
