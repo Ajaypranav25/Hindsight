@@ -3,7 +3,8 @@
   "displayName": "Hindsight",
   "description": "The Hindsight language (.sight) in VS Code: syntax highlighting, run on save, call counts, never-ran lines with why-not explanations, crash slices and links into Hindsight Studio.",
   "version": "0.4.1",
-  "publisher": "hindsight-placeholder",
+  "publisher": "ajaypranav25",
+  "icon": "icon.png",
   "license": "MIT",
   "homepage": "https://hindsight-two.vercel.app",
   "repository": {
