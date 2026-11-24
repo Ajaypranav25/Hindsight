@@ -11,5 +11,6 @@ blob-report/
 Thumbs.db
 .env
 .env.*
-.vercel
 *.vsix
+# The desktop app's installers and unpacked builds (desktop/).
+release/
