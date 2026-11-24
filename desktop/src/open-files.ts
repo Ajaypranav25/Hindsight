@@ -6,7 +6,7 @@
 import { basename, extname, resolve } from 'node:path'
 import { MAX_TRACE_FILE_BYTES, TRACE_FILE_EXTENSION } from '../../src/core/trace-format'
 import type { DesktopOpenRequest } from '../../src/studio/desktop/bridge'
-import { MAX_PROGRAM_BYTES } from './messages'
+import { MAX_PROGRAM_BYTES, parseOpenRequest } from './messages'
 
 export type FileKind = 'program' | 'trace'
 
@@ -36,12 +36,16 @@ export function sizeProblem(path: string, size: number): string | null {
   return `${basename(path)} is too large to open. ${what} can be at most ${megabytes(limit)}.`
 }
 
-/** The open request for a file's contents, or why it cannot be opened. */
-export function openRequestFor(path: string, bytes: Uint8Array): OpenResult {
+/**
+ * The open request for a file's contents on `platform` (a process.platform), or why it cannot be
+ * opened. The request passes the same check the preload applies before the studio sees it, so a
+ * file the studio would never get is an error the user sees, not a request dropped in silence.
+ */
+export function openRequestFor(path: string, bytes: Uint8Array, platform: string): OpenResult {
   const name = basename(path)
   const tooLarge = sizeProblem(path, bytes.length)
   if (tooLarge !== null) return { ok: false, message: tooLarge }
-  if (fileKindOf(path) === 'trace') return { ok: true, request: { kind: 'trace', bytes, name } }
+  if (fileKindOf(path) === 'trace') return checked({ kind: 'trace', bytes, name }, platform)
   let source: string
   try {
     source = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
@@ -51,7 +55,15 @@ export function openRequestFor(path: string, bytes: Uint8Array): OpenResult {
       message: `${name} is not a Hindsight program: it is not UTF-8 text.`,
     }
   }
-  return { ok: true, request: { kind: 'program', source, path, name } }
+  return checked({ kind: 'program', source, path, name }, platform)
+}
+
+type FileRequest = Exclude<DesktopOpenRequest, { readonly kind: 'link' }>
+
+function checked(request: FileRequest, platform: string): OpenResult {
+  if (parseOpenRequest(request, platform) !== null) return { ok: true, request }
+  const name = JSON.stringify(request.name)
+  return { ok: false, message: `${name} could not be opened because its name is not supported.` }
 }
 
 /**

@@ -80,15 +80,21 @@ function isFilePath(value: unknown): value is string {
   )
 }
 
-/** A file name such as `fib.sight`: no folders, no control characters. */
-export function isFileName(value: unknown): value is string {
-  return (
-    typeof value === 'string' &&
-    value.length > 0 &&
-    value.length <= MAX_NAME_LENGTH &&
-    // eslint-disable-next-line no-control-regex
-    !/[/\\\u0000-\u001f\u007f]/.test(value)
-  )
+/**
+ * What no file name holds on each system. macOS and Linux refuse only `/` and NUL, so a backslash
+ * or a newline is a legal part of a name there; Windows also refuses `\`, `:` and the control
+ * characters.
+ */
+// eslint-disable-next-line no-control-regex
+const WINDOWS_NAME_FORBIDS = /[/\\:\u0000-\u001f]/
+// eslint-disable-next-line no-control-regex
+const POSIX_NAME_FORBIDS = /[/\u0000]/
+
+/** A file name such as `fib.sight` on `platform` (a process.platform): no folders, nothing odd. */
+export function isFileName(value: unknown, platform: string): value is string {
+  if (typeof value !== 'string' || value.length === 0 || value.length > MAX_NAME_LENGTH)
+    return false
+  return !(platform === 'win32' ? WINDOWS_NAME_FORBIDS : POSIX_NAME_FORBIDS).test(value)
 }
 
 // --- page to main ----------------------------------------------------------------------------
@@ -100,10 +106,10 @@ export function parseSaveRequest(value: unknown): DesktopSaveRequest | null {
   return { source: fields.source, path: fields.path }
 }
 
-export function parseDocumentState(value: unknown): DesktopDocumentState | null {
+export function parseDocumentState(value: unknown, platform: string): DesktopDocumentState | null {
   const fields = fieldsOf(value)
   if (fields === null || typeof fields.dirty !== 'boolean') return null
-  if (fields.name !== null && !isFileName(fields.name)) return null
+  if (fields.name !== null && !isFileName(fields.name, platform)) return null
   return { name: fields.name, dirty: fields.dirty }
 }
 
@@ -118,16 +124,18 @@ function isLinkFragment(value: unknown): value is string {
   return typeof value === 'string' && fragmentOfAppLink(`${APP_LINK_BASE}/${value}`) === value
 }
 
-export function parseOpenRequest(value: unknown): DesktopOpenRequest | null {
+export function parseOpenRequest(value: unknown, platform: string): DesktopOpenRequest | null {
   const fields = fieldsOf(value)
   if (fields === null) return null
   switch (fields.kind) {
     case 'program':
-      return isProgramText(fields.source) && isFilePath(fields.path) && isFileName(fields.name)
+      return isProgramText(fields.source) &&
+        isFilePath(fields.path) &&
+        isFileName(fields.name, platform)
         ? { kind: 'program', source: fields.source, path: fields.path, name: fields.name }
         : null
     case 'trace':
-      return fields.bytes instanceof Uint8Array && isFileName(fields.name)
+      return fields.bytes instanceof Uint8Array && isFileName(fields.name, platform)
         ? { kind: 'trace', bytes: fields.bytes, name: fields.name }
         : null
     case 'link':
@@ -144,11 +152,11 @@ const MALFORMED_REPLY: DesktopSaveResult = {
 }
 
 /** The main process's answer to a save, checked; anything unexpected becomes a failed save. */
-export function parseSaveResult(value: unknown): DesktopSaveResult {
+export function parseSaveResult(value: unknown, platform: string): DesktopSaveResult {
   const fields = fieldsOf(value)
   if (fields === null) return MALFORMED_REPLY
   if (fields.ok === true) {
-    return isFilePath(fields.path) && isFileName(fields.name)
+    return isFilePath(fields.path) && isFileName(fields.name, platform)
       ? { ok: true, path: fields.path, name: fields.name }
       : MALFORMED_REPLY
   }

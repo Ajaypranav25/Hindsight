@@ -39,7 +39,7 @@ export class UserFiles {
       if (!info.isFile()) return { ok: false, message: `${basename(path)} is not a file.` }
       const tooLarge = sizeProblem(path, info.size)
       if (tooLarge !== null) return { ok: false, message: tooLarge }
-      const result = openRequestFor(path, new Uint8Array(await readFile(path)))
+      const result = openRequestFor(path, new Uint8Array(await readFile(path)), this.platform)
       if (!result.ok) return result
       app.addRecentDocument(path)
       if (result.request.kind === 'program') this.grant(path)

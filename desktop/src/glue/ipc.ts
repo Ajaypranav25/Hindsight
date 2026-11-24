@@ -30,7 +30,7 @@ export function registerIpc(host: IpcHost): void {
     return result
   })
   ipcMain.on(CHANNELS.setDocument, (event, payload: unknown) => {
-    const state = parseDocumentState(payload)
+    const state = parseDocumentState(payload, process.platform)
     if (state !== null) host.studioFor(event)?.setDocument(state)
   })
   ipcMain.on(CHANNELS.ready, (event) => host.studioFor(event)?.markReady())
