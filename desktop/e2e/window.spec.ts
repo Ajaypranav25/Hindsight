@@ -3,9 +3,9 @@
  * Save and Save As, View > Reload, where it opens, what it does with links to the web, and a
  * crashed page.
  */
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { basename, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
 import { editorContent, loadExample, replaceProgram } from '../../e2e/fixtures'
 import { MENU_IDS } from '../src/menu-template'
@@ -145,9 +145,10 @@ test('Save in the close prompt writes the edited program to its file, then close
   // Act
   await closeWindow(started.app)
 
-  // Assert
+  // Assert: the file was replaced whole, and no temporary file is left beside it.
   await gone
   expect(readFileSync(path, 'utf8')).toBe(EDITED)
+  expect(readdirSync(dirname(path))).toEqual(['kept.sight'])
 })
 
 test('a save that fails keeps the window open, and the studio says why', async () => {

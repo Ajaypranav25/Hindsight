@@ -1,12 +1,14 @@
 /**
  * Reading and writing the user's files. The page names the file it saves to, so the app writes
  * only to files the user picked in this session (opened, chosen in a Save dialog, or passed to the
- * app by the system); for any other path it asks with a Save dialog first.
+ * app by the system); for any other path it asks with a Save dialog first. Saves are atomic
+ * (atomic-write.ts): a failed save leaves the file as it was.
  */
-import { readFile, stat, writeFile } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
 import { basename } from 'node:path'
 import { app, dialog, type BrowserWindow } from 'electron'
 import type { DesktopSaveRequest, DesktopSaveResult } from '../../../src/studio/desktop/bridge'
+import { writeFileAtomically } from '../atomic-write'
 import {
   describeFileError,
   OPEN_FILTERS,
@@ -69,7 +71,7 @@ export class UserFiles {
     const target = known ? request.path : await this.chooseSaveTarget(window, request)
     if (target === null) return { ok: false, reason: 'cancelled' }
     try {
-      await writeFile(target, request.source, 'utf8')
+      await writeFileAtomically(target, request.source, this.platform)
     } catch (error) {
       const reason = describeFileError(error)
       const message = `${basename(target)} could not be saved because ${reason}.`
