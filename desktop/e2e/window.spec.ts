@@ -1,7 +1,7 @@
 /**
- * The app's window: its title and the unsaved-changes prompt for the studio's program, File > New,
- * Save and Save As, View > Reload, where it opens, what it does with links to the web, and a
- * crashed page.
+ * The app's window: its title and the unsaved-changes prompts for the studio's program (before
+ * closing, and before File > Open or File > New replaces it), File > New, Save and Save As,
+ * View > Reload, where it opens, what it does with links to the web, and a crashed page.
  */
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -15,7 +15,9 @@ import {
   closeWindow,
   DESKTOP_DIR,
   launchApp,
+  listenOnBridge,
   notice,
+  received,
   recorded,
   stubMessageBox,
   stubOpenDialog,
@@ -249,6 +251,7 @@ test('a program the studio loads over a file leaves it, so Save never overwrites
   const { app, page } = started
   await edit(started, 'print("a, edited")\n', '\u25cf a.sight \u2014 Hindsight')
   await stubOpenDialog(app, [b])
+  await stubMessageBox(app, "Don't Save")
   await clickMenu(app, MENU_IDS.open)
   await expect(editorContent(page)).toContainText('print("b")')
   await expect.poll(() => windowTitle(app)).toBe('b.sight \u2014 Hindsight')
@@ -279,6 +282,27 @@ test('a program the studio loads over a file leaves it, so Save never overwrites
   expect(readFileSync(a, 'utf8')).toBe('print("a")\n')
 })
 
+test('File > New while the page is still loading is carried out once it is ready', async () => {
+  // Arrange
+  const { app, page } = await startWith(programFile('loading.sight'))
+
+  // Act: reload, and choose New the moment the new page exists, before it listens.
+  const reloaded = page.waitForEvent('load')
+  await app.evaluate(async ({ BrowserWindow, Menu }, newId) => {
+    const contents = BrowserWindow.getAllWindows()[0]!.webContents
+    const navigated = new Promise((settle) => contents.once('did-navigate', settle))
+    contents.reload()
+    await navigated
+    Menu.getApplicationMenu()?.getMenuItemById(newId)?.click()
+  }, MENU_IDS.new)
+  await reloaded
+  await waitForStudio(page)
+
+  // Assert: the reloaded studio got New (it would otherwise restore the file's program).
+  await expect(editorContent(page)).toHaveText('')
+  await expect.poll(() => windowTitle(app)).toBe('Hindsight')
+})
+
 /** Whether the studio sends Save As a starting file yet (src/studio/desktop/connect.ts). */
 const STUDIO_SUGGESTS = readFileSync(
   join(DESKTOP_DIR, '..', 'src', 'studio', 'desktop', 'connect.ts'),
@@ -298,6 +322,83 @@ test('File > Save As on an opened file starts the Save dialog at that file', asy
 
   // Assert
   await expect.poll(() => recorded(app, 'save')).toEqual([path])
+})
+
+// --- replacing a program with unsaved changes --------------------------------------------------
+
+/** a.sight opened and edited, with File > Open set to choose b.sight. */
+async function editedBeforeOpening() {
+  const a = programFile('a.sight', 'print("a")\n')
+  const b = programFile('b.sight', 'print("b")\n')
+  const started = await startWith(a)
+  await edit(started, 'print("a, edited")\n', '● a.sight — Hindsight')
+  await stubOpenDialog(started.app, [b])
+  return { ...started, a, b }
+}
+
+const ASK_A = 'Do you want to save the changes you made to a.sight?'
+
+test("File > Open over unsaved changes asks; Cancel keeps the edits, Don't Save opens", async () => {
+  // Arrange
+  const { app, page, a } = await editedBeforeOpening()
+  await stubMessageBox(app, 'Cancel')
+
+  // Act: Cancel.
+  await clickMenu(app, MENU_IDS.open)
+
+  // Assert: the edited program and its title stay.
+  await expect.poll(() => recorded(app, 'message')).toEqual([ASK_A])
+  await expect(editorContent(page)).toContainText('print("a, edited")')
+  expect(await windowTitle(app)).toBe('● a.sight — Hindsight')
+
+  // Act: Don't Save.
+  await stubMessageBox(app, "Don't Save")
+  await clickMenu(app, MENU_IDS.open)
+
+  // Assert: b.sight opened, and a.sight was never written.
+  await expect(editorContent(page)).toContainText('print("b")')
+  await expect.poll(() => windowTitle(app)).toBe('b.sight — Hindsight')
+  expect(await recorded(app, 'message')).toEqual([ASK_A])
+  expect(readFileSync(a, 'utf8')).toBe('print("a")\n')
+})
+
+test('File > Open over unsaved changes, Save: writes the edits, then opens the file', async () => {
+  // Arrange
+  const { app, page, a, b } = await editedBeforeOpening()
+  await stubSaveDialog(app, null)
+  await stubMessageBox(app, 'Save')
+  await listenOnBridge(page)
+
+  // Act
+  await clickMenu(app, MENU_IDS.open)
+
+  // Assert: the studio saved a.sight first, without a dialog, and then got b.sight.
+  await expect(editorContent(page)).toContainText('print("b")')
+  await expect.poll(() => windowTitle(app)).toBe('b.sight — Hindsight')
+  expect(readFileSync(a, 'utf8')).toBe('print("a, edited")\n')
+  expect(await received(page)).toEqual([
+    { command: 'save' },
+    { kind: 'program', source: 'print("b")\n', path: b, name: 'b.sight' },
+  ])
+  expect(await recorded(app, 'message')).toEqual([ASK_A])
+  expect(await recorded(app, 'save')).toEqual([])
+})
+
+test('File > New over unsaved changes asks first too', async () => {
+  // Arrange
+  const { app, page } = await editedBeforeOpening()
+  await stubMessageBox(app, 'Cancel')
+
+  // Act and assert: Cancel keeps the edits.
+  await clickMenu(app, MENU_IDS.new)
+  await expect.poll(() => recorded(app, 'message')).toEqual([ASK_A])
+  await expect(editorContent(page)).toContainText('print("a, edited")')
+
+  // Act and assert: Don't Save starts the new program.
+  await stubMessageBox(app, "Don't Save")
+  await clickMenu(app, MENU_IDS.new)
+  await expect(editorContent(page)).toHaveText('')
+  await expect.poll(() => windowTitle(app)).toBe('Hindsight')
 })
 
 // --- View > Reload -----------------------------------------------------------------------------
