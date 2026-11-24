@@ -22,6 +22,11 @@ export const studioStore = createStudioStore(
 // the program it replaces is kept first.
 watchSharedLinks(host, (source, time) => studioStore.getState().openSharedSource(source, time))
 
+// Edits are saved a moment after typing stops; a page that is closing or reloading saves at once,
+// so the last keystrokes are not lost (the desktop app's windows close without asking when the
+// program belongs to no file).
+globalThis.addEventListener?.('pagehide', () => studioStore.getState().flushPersist())
+
 // Inside the desktop app, the app's files, links and menu commands reach the store; in a browser
 // there is no bridge and nothing changes.
 const bridge = desktopBridge()

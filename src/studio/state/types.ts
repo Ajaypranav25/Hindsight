@@ -196,6 +196,11 @@ export interface StudioActions {
   /** Starts an empty program (the desktop app's File > New), keeping the program it replaces. */
   newProgram(): void
   /**
+   * Saves the program now if a save is still waiting (edits are saved shortly after typing stops),
+   * so the last keystrokes survive a page that is going away.
+   */
+  flushPersist(): void
+  /**
    * Opens a `.sighttrace` file: its program replaces the editor's (keeping the user's own), is
    * recorded again with its what-if edits, and the pen lands on the saved step.
    */

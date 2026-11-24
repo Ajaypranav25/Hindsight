@@ -138,3 +138,28 @@ describe('showing a notice', () => {
     expect(store.getState().notice).toBeNull()
   })
 })
+
+describe('saving the program before the page goes away', () => {
+  test('flushPersist stores an edit at once instead of after the delay', () => {
+    // Arrange
+    const { store, storage } = setup()
+    store.getState().setSource('print("typed")\n')
+
+    // Act
+    store.getState().flushPersist()
+
+    // Assert: no time has passed, yet the edit is stored.
+    expect(storage.read(STORAGE_KEYS.source)).toBe('print("typed")\n')
+  })
+
+  test('flushPersist does nothing when no save is waiting', () => {
+    const { store, storage, scheduler } = setup()
+    store.getState().setSource('print("typed")\n')
+    scheduler.advance(1000)
+    storage.write(STORAGE_KEYS.source, 'changed elsewhere')
+
+    store.getState().flushPersist()
+
+    expect(storage.read(STORAGE_KEYS.source)).toBe('changed elsewhere')
+  })
+})

@@ -74,6 +74,7 @@ export function pickActions(s: StudioStore): StudioActions {
     openSharedSource: s.openSharedSource,
     openProgramFile: s.openProgramFile,
     newProgram: s.newProgram,
+    flushPersist: s.flushPersist,
     openTraceFile: s.openTraceFile,
     forkWhatIf: s.forkWhatIf,
     leaveWhatIf: s.leaveWhatIf,

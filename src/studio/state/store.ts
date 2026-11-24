@@ -217,6 +217,7 @@ class Controller {
       openSharedSource: (source, time) => this.openSharedSource(source, time),
       openProgramFile: (source, name) => this.openDelivered(source, keptAfterFileNotice(name)),
       newProgram: () => this.openDelivered('', KEPT_AFTER_NEW_NOTICE),
+      flushPersist: () => this.flushPersist(),
       openTraceFile: (bytes) => this.trace.open(bytes),
       forkWhatIf: (target, value, name) => this.whatIf.fork(target, value, name),
       leaveWhatIf: () => this.leaveWhatIf(),
@@ -524,12 +525,24 @@ class Controller {
     if (this.persistTimer !== null) this.deps.scheduler.clearTimeout(this.persistTimer)
     this.persistTimer = this.deps.scheduler.setTimeout(() => {
       this.persistTimer = null
-      if (this.persistBlocked) return
-      const { storage } = this.deps
-      storage.write(STORAGE_KEYS.source, this.get().source)
-      if (this.delivered) storage.write(STORAGE_KEYS.sourceDelivered, 'true')
-      else storage.remove(STORAGE_KEYS.sourceDelivered)
+      this.persist()
     }, PERSIST_DELAY_MS)
+  }
+
+  /** Saves at once when a save is waiting: the page is going away before the timer would fire. */
+  private flushPersist(): void {
+    if (this.persistTimer === null) return
+    this.deps.scheduler.clearTimeout(this.persistTimer)
+    this.persistTimer = null
+    this.persist()
+  }
+
+  private persist(): void {
+    if (this.persistBlocked) return
+    const { storage } = this.deps
+    storage.write(STORAGE_KEYS.source, this.get().source)
+    if (this.delivered) storage.write(STORAGE_KEYS.sourceDelivered, 'true')
+    else storage.remove(STORAGE_KEYS.sourceDelivered)
   }
 
   // --- navigation ---------------------------------------------------------------------------
