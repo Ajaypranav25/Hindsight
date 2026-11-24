@@ -22,8 +22,23 @@ call stack, every variable, every list and record — in under a millisecond.
 
 ## Try it
 
-**In your browser:** [hindsight-two.vercel.app](https://hindsight-two.vercel.app),
-nothing to install. Or run it locally:
+**The desktop app** for Windows, macOS and Linux: download it from the
+[latest release](https://github.com/Ajaypranav25/Hindsight/releases/latest).
+
+- Windows: `Hindsight-Setup-x64.exe` (installs for your user only, no administrator needed)
+- macOS on Apple silicon: `Hindsight-mac-arm64.dmg` (or `Hindsight-mac-arm64.zip`)
+- macOS on Intel: `Hindsight-mac-x64.dmg` (or `Hindsight-mac-x64.zip`)
+- Linux: `Hindsight-linux-x86_64.AppImage`, or `Hindsight-linux-amd64.deb` for Debian and Ubuntu
+
+`SHA256SUMS.txt` beside them lists each file's checksum. The app is not signed yet, so the first
+launch needs one extra step:
+
+- **Windows** SmartScreen says it protected your PC: click **More info**, then **Run anyway**.
+- **macOS** says it cannot check the app: open **System Settings > Privacy & Security** and click
+  **Open Anyway** beside the message about Hindsight.
+- **Linux**: make the AppImage executable first: `chmod +x Hindsight-linux-x86_64.AppImage`.
+
+**From a checkout**, run the studio in your browser:
 
 ```sh
 npm install
@@ -150,6 +165,35 @@ Keyboard: **F11** / **Shift+F11** step into forward/back, **F10** / **Shift+F10*
 **F7** / **Shift+F7** step out, **F8** / **Shift+F8** continue, **F9** breakpoint, **Space** play,
 **Home** / **End** jump to the ends, **Ctrl+Enter** run, **Shift+F9** why didn't the cursor line run.
 On a console line, **Shift+F10** opens its menu instead of stepping back over.
+
+## Desktop app
+
+The desktop app is the studio in a window of its own, with what a browser tab cannot do:
+
+- **Files.** **File > Open**, **Save** and **Save As** read and write `.sight` programs. The title
+  bar shows the file's name and whether it has unsaved changes, and closing a window with unsaved
+  changes asks first. **File > New** starts an empty program. As with links and examples, the
+  program a file or a new program replaces is kept, and **Restore** brings it back.
+- **Double-click** a `.sight` file to open it, or a `.sighttrace` file to open the run it holds.
+- **`hindsight://` links.** In the app, **Copy link** copies a `hindsight://open/#src=…` link that
+  opens the program, at the pen's step, in the app on any machine that has it. Links hold up to
+  30,000 characters; save longer programs as files. **Hindsight: Open in Studio** in the VS Code
+  extension opens programs in the app the same way.
+- **Offline.** The studio and its fonts ship inside the app.
+
+To build it from a checkout (the app serves the built studio, so build that first):
+
+```sh
+npm install && npm run build:studio
+cd desktop && npm ci
+npm run build        # builds the app
+npm start            # runs the app from the build
+npm run pack         # an unpacked app in desktop/release/ (what the end-to-end tests drive)
+npm run dist         # the installers, in desktop/release/
+npm run e2e          # Playwright drives the built app
+```
+
+Details: [desktop/README.md](desktop/README.md).
 
 ## The command line
 
@@ -456,7 +500,8 @@ the program every time you save, then shows what the run did: compile and runtim
 **ran N times** above each function, and **never ran — why not?** above code the run never reached
 (click it for the explanation, written after the line). **Hindsight: Lines That Led to the Crash**
 dims everything outside the crash's backward slice, **Hindsight: Run File** prints the output, and
-**Hindsight: Open in Studio** opens the program in the studio with the pen on the cursor's line.
+**Hindsight: Open in Studio** opens the program in the Hindsight desktop app with the pen on the
+cursor's line.
 
 Install it from the
 [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=ajaypranav25.hindsight-vscode):
@@ -534,8 +579,8 @@ Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - **Fuzzing** keeps the lexer and parser from throwing on arbitrary input, and a bytecode verifier
   checks the stack discipline of every corpus program, gallery example and generated program.
 - **Playwright** end-to-end tests drive the studio in Chrome.
-- **CI** runs all of it on Linux and Windows, plus the performance budgets; Vercel deploys the
-  studio from `main`.
+- **CI** runs all of it on Linux and Windows, plus the performance budgets, and builds and drives
+  the desktop app on Windows, macOS and Linux.
 - About 96 % line coverage, enforced so it cannot drift down; strict TypeScript; zero runtime
   dependencies in the language core.
 
@@ -554,6 +599,7 @@ src/studio/        the React + CodeMirror studio
 src/cli/           the hindsight command-line tool
 src/conformance/   the annotation checker shared by the test suite and `hindsight test`
 editors/vscode/    the VS Code extension (language support, run on save, lenses, why-not)
+desktop/           the desktop app (Electron): windows, menus, files and hindsight:// links
 tests/lang/        the conformance corpus
 examples/          the studio's gallery programs
 docs/              language specification and architecture

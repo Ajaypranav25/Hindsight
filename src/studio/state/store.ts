@@ -27,7 +27,9 @@ import {
 import {
   KEPT_AFTER_EXAMPLE_NOTICE,
   KEPT_AFTER_LINK_NOTICE,
+  KEPT_AFTER_NEW_NOTICE,
   keepPreviousSource,
+  keptAfterFileNotice,
   type KeepResult,
 } from './previous-source'
 import { editRunOf, keptPlace, type KeptPlace } from './keep-place'
@@ -210,8 +212,11 @@ class Controller {
         this.deps.storage.write(STORAGE_KEYS.hintDismissed, 'true')
       },
       clearNotice: () => this.set({ notice: null }),
+      showNotice: (notice) => this.notify(notice),
       restorePreviousSource: () => this.restorePreviousSource(),
       openSharedSource: (source, time) => this.openSharedSource(source, time),
+      openProgramFile: (source, name) => this.openDelivered(source, keptAfterFileNotice(name)),
+      newProgram: () => this.openDelivered('', KEPT_AFTER_NEW_NOTICE),
       openTraceFile: (bytes) => this.trace.open(bytes),
       forkWhatIf: (target, value, name) => this.whatIf.fork(target, value, name),
       leaveWhatIf: () => this.leaveWhatIf(),
@@ -263,9 +268,17 @@ class Controller {
 
   /** A share link opened in a running studio; it runs only when auto-run is on. */
   private openSharedSource(source: string, time?: number | null): void {
-    this.replaceKeepingPrevious(source, KEPT_AFTER_LINK_NOTICE, this.get().settings.autoRun)
+    this.openDelivered(source, KEPT_AFTER_LINK_NOTICE)
     // Set after the replacement (which clears it); a run started there reads it when it lands.
     this.pendingTime = time ?? null
+  }
+
+  /**
+   * A program the user asked for (a link, a file, a new empty program) replaces the editor's,
+   * keeping the user's own; like a link, it runs only when auto-run is on.
+   */
+  private openDelivered(source: string, notice: Notice): void {
+    this.replaceKeepingPrevious(source, notice, this.get().settings.autoRun)
   }
 
   /**

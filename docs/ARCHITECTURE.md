@@ -1,6 +1,6 @@
 # Hindsight Architecture
 
-Version 0.4. **Normative for internal contracts.** `docs/SPEC.md` defines the language; this document
+Version 0.5. **Normative for internal contracts.** `docs/SPEC.md` defines the language; this document
 defines how the implementation is split into modules and the exact contracts between them. Contract
 types live in code and are the source of truth for shapes:
 
@@ -35,6 +35,7 @@ tests/*.test.ts       cross-module tests (corpus runner, time-travel properties,
 e2e/                  Playwright tests for the studio
 examples/             gallery programs shown in the studio
 editors/vscode/       the VS Code extension (§12); its own package.json and node_modules
+desktop/              the desktop app (§13, Electron); its own package.json and node_modules
 ```
 
 Module dependency direction (no cycles):
@@ -1485,12 +1486,14 @@ Playwright against the dev server with the local Chrome (`channel: 'chrome'`): l
 step forwards and backwards, scrub the timeline, click output to jump, jump to a variable's origin,
 toggle breakpoints, compile errors, sharing links; for programs with tasks
 (`studio-tasks.spec.ts`), the swim lanes (lane colors read off the canvas), the deadlock message
-and task list, and the schedule picker recording again under seeds 1 and 2.
+and task list, and the schedule picker recording again under seeds 1 and 2. The desktop app has
+its own suite, which drives the packed app (§13).
 
 ## 11. Studio (`src/studio`)
 
 A single-page React 19 app (CodeMirror 6 editor, zustand store). It imports only
-`src/core/index.ts` and runs entirely in the browser: no server, no network calls besides fonts.
+`src/core/index.ts` and runs entirely in the browser or the desktop app (§13): no server and no
+network calls; even its fonts are bundled.
 
 ### 11.1 Concept
 
@@ -1715,7 +1718,9 @@ tabbed panels); the page may scroll vertically, never horizontally.
   source, uncompressed; programs over 60,000 characters are not linked) with the pen's step
   (`&t=`), making a moment link: opening it records the program and puts the pen at that step, so a
   bug report opens on the bug. A link replays the real run, so during a what-if its step is at most
-  the first edit's, where both futures are still the same. Opening such a link loads
+  the first edit's, where both futures are still the same. Inside the desktop app the button copies
+  a `hindsight://` link instead (§13; up to 30,000 characters, past which it suggests saving the
+  program as a file), and the single-file build (§11.6) copies the source text. Opening such a link loads
   that program, stores it as the current source and removes the fragment (`history.replaceState`),
   so the link is used once and later edits survive a reload; a link pasted into an open studio
   loads on `hashchange` like an example (it runs only when auto-run is on). The current source and
@@ -1730,8 +1735,8 @@ tabbed panels); the page may scroll vertically, never horizontally.
   saved step and says so in a notice; a fingerprint mismatch or an edit that no longer applies is an
   error-tone notice, and a damaged file leaves the program untouched (`state/trace.ts`,
   `lib/trace-download.ts`, `chrome/TraceMenu.tsx`, `editor/trace-drop.ts`).
-- **Previous program**: only one program is stored, so before a share link or an example replaces
-  a program the user wrote, that program is kept as `hindsight:previous-source`. Text that arrived
+- **Previous program**: only one program is stored, so before a share link, an example, a trace or
+  (in the desktop app) a program file or File > New replaces a program the user wrote, that program is kept as `hindsight:previous-source`. Text that arrived
   with a link or an example and has not been edited is not the user's (`hindsight:source-delivered`
   marks it across reloads), so it is never kept: a page that opens two links in a row cannot push
   the user's program out. The copy is read back; if storage refused it, the new program is shown but
@@ -1752,8 +1757,11 @@ tabbed panels); the page may scroll vertically, never horizontally.
   breakpoints, output ticks and provenance. **Dark theme**: blue-graphite ground, faint cyan grid,
   pale ink, a brighter pen red and a lighter cobalt.
 - **Type**: Barlow Condensed (uppercase, letter-spaced instrument labels and the wordmark), Barlow
-  (interface text), JetBrains Mono (code, values, the tape counter with tabular digits). Loaded from
-  Google Fonts with system fallbacks.
+  (interface text), JetBrains Mono (code, values, the tape counter with tabular digits), with system
+  fallbacks. Self-hosted, so the studio works offline: `styles/fonts.css` declares woff2 files from
+  the `@fontsource` packages (devDependencies, bundled by Vite), Latin and Latin Extended subsets
+  only, the latter loaded only for text that needs it (`unicode-range`). The single-file build
+  inlines them all (about 320 KB of the page).
 - Panels read as instrument modules: hairline rules and small uppercase labels, not heavy cards.
   Transport icons are inline SVG. One orchestrated motion moment: the pen writing the chart while a
   run records. `prefers-reduced-motion` disables animation.
@@ -1785,11 +1793,12 @@ src/studio/
   panels/    CallStack.tsx · Variables.tsx · ValueTree.tsx · HeapGraph.tsx · Console.tsx ·
              ConsoleLine.tsx · MakeItSo.tsx · RepairPreviews.tsx · History.tsx
   chrome/    Header.tsx · ExamplePicker.tsx · Settings.tsx · HelpDialog.tsx · Status.tsx ·
-             ContextMenu.tsx
+             ContextMenu.tsx · Share.tsx
+  desktop/   bridge.ts (the contract with the desktop app; hindsight:// links) · connect.ts (§13)
   insight/   ProfilePanel.tsx · profile-model.ts · flame-draw.ts · ContractsCard.tsx ·
              contracts-model.ts · contracts-state.ts · EditDiffStrip.tsx · compute.ts (the
              analyses, shared by worker and fallback) · insight-protocol.ts · use-insight.ts
-  styles/    tokens.css · base.css (+ one CSS file per component folder)
+  styles/    fonts.css · tokens.css · base.css (+ one CSS file per component folder)
   examples.ts  (loads /examples/*.sight via import.meta.glob with `?raw`; reads `// title:` and
                `// summary:` header comments)
 ```
@@ -1866,8 +1875,10 @@ that bundles the core; it is never published from CI.
   `analyze` compiles and records with `recordAsync` (slices, an abort flag) and turns diagnostics
   and the runtime error into 1-based problems; call counts come from one pass over the depth series
   (a call begins where the depth rises, the call tree's rule, §7.6); never-ran lenses group the
-  consecutive statement lines with no `lineHits`; `crashSlice` uses `errorSlice`; studio links reuse
-  the studio's `shareFragment` (60,000-character limit). `RunScheduler` debounces saves per
+  consecutive statement lines with no `lineHits`; `crashSlice` uses `errorSlice`. Open in Studio
+  links (`studio-link.ts`) are `hindsight://open` links built with the desktop app's `appLink`
+  (30,000 characters, §13) unless `hindsight.studioUrl` names an http(s) studio, whose links reuse
+  the studio's `shareFragment` (60,000 characters); any other setting is an error. `RunScheduler` debounces saves per
   document (300 ms) and aborts the run in flight when a newer one starts; a superseded run's result
   is dropped. The root `npm run typecheck`, `lint` and `test` cover these modules.
 - **Glue** (`src/glue/`, the only code importing `vscode`; checked by `editors/vscode/tsconfig.json`
@@ -1882,3 +1893,64 @@ that bundles the core; it is never published from CI.
   drives it (open, save, edit, close, every command). `npm run package` (vsce) writes the `.vsix`,
   which is git-ignored. The CI job `vscode` runs `npm ci`, `typecheck`, `build` and `smoke` in
   `editors/vscode`, which needs nothing from the root's dependencies.
+
+## 13. Desktop app (`desktop/`)
+
+An Electron app with its own `package.json` and lockfile (like the extension) that shows the built
+studio (`dist/studio`, so `npm run build:studio` comes first) in a window of its own and adds what a
+browser tab cannot: files on disk, file associations and `hindsight://` links. Its commands
+(`npm ci`, `build`, `start`, `pack`, `dist`, `e2e`) and its own layout are in `desktop/README.md`.
+
+- **Loading the studio.** The main process serves `dist/studio` from a privileged custom protocol
+  (standard and secure, so the studio's module scripts, its analysis worker and `localStorage`
+  behave as on a web origin) with a strict Content-Security-Policy. The studio makes no network
+  requests, fonts included (§11.4), so the app works offline.
+- **The bridge.** A preload script, sandboxed and with context isolation, exposes the
+  `DesktopBridge` of `src/studio/desktop/bridge.ts` as `window.hindsightDesktop`; that module is
+  the whole contract between the two sides, and pure, so the main process bundles it too. The
+  studio owns the program text; the app owns windows, menus, files and links. The app sends open
+  requests (`program`: a file's text, path and name; `trace`: a file's bytes; `link`: a validated
+  `#src=…` fragment) and menu commands (`save`, `save-as`, `new`, `save-and-close`). The studio
+  asks the app to write the program (`saveProgram`, answered with `ok` and the path and name,
+  `cancelled`, or `failed` with a message) and reports `{name, dirty}` (`setDocument`) for the
+  title bar and the "unsaved changes" prompt. `ready()` says the studio is listening: requests that
+  arrived before it (files and links passed at launch) are delivered after it.
+- **The studio's side** (`src/studio/desktop/connect.ts`, wired in `state/studio.ts` only when the
+  bridge exists; a browser has none and nothing changes). `connectDesktop` subscribes to requests
+  and commands, reports the document, then calls `ready()`. A program file opens like a link,
+  keeping the user's own program (`openProgramFile`, §11.3), and becomes the document
+  `{path, name, savedSource}`. A link (`openSharedSource`) and a trace (`openTraceFile`) leave the
+  document; a trace only once its program has replaced the editor's, so a file that cannot be read
+  changes nothing. `new` starts an empty program that belongs to no file (`newProgram`). Save
+  writes to the document's path, or asks when there is none; Save As always asks;
+  `save-and-close` saves exactly as Save does, always with one `saveProgram` call (even with
+  nothing to save), and the app closes the window once that save succeeds. Saves run one at a
+  time, so a second Save writes to the file the first one chose. A successful save makes the text
+  it wrote the document's `savedSource`; a failure is an error notice (`showNotice`); a cancel
+  does nothing; a program opened while a save dialog was up does not take the saved file. `dirty`
+  is `path !== null && source !== savedSource`; `setDocument` is called only when `{name, dirty}`
+  changes, once per replacement and never with its intermediate states.
+- **`hindsight://` links**: `hindsight://open/#src=<base64url of the UTF-8 source>[&t=N]`, the
+  share link's fragment (§11.3) behind a fixed scheme and host. `appLink` builds them;
+  `fragmentOfAppLink` accepts only scheme `hindsight`, host `open`, no path, query, credentials or
+  port, and a program that decodes, and returns the fragment the app passes on. A link is at most
+  30,000 characters (`MAX_APP_LINK_LENGTH`): Windows hands it to the app on a command line, which
+  holds at most 32,767, so links stay below that on every system and longer programs travel as
+  files. In the app, Copy link copies these links; the VS Code extension opens them (§12).
+- **One instance.** Opening a file or a link while the app runs hands it to the running app (a
+  second launch's command line on Windows and Linux, `open-file` and `open-url` events on macOS)
+  instead of starting another copy.
+- **File associations.** `.sight` files open as programs and `.sighttrace` files as traces, and the
+  app registers the `hindsight` scheme with the OS.
+- **Packaging.** electron-builder writes the installers to `desktop/release/` under names without
+  a version, so `https://github.com/Ajaypranav25/Hindsight/releases/latest/download/<name>` always
+  serves the newest: `Hindsight-Setup-x64.exe` (NSIS, installed per user),
+  `Hindsight-mac-arm64.dmg` and `Hindsight-mac-x64.dmg` (each also as a `.zip`),
+  `Hindsight-linux-x86_64.AppImage` and `Hindsight-linux-amd64.deb`, plus `SHA256SUMS.txt`. The
+  app is not signed with a developer certificate: macOS builds are signed ad hoc (Apple silicon
+  runs no unsigned code at all), so Gatekeeper asks once (System Settings > Privacy & Security >
+  Open Anyway), and Windows SmartScreen warns once (More info > Run anyway).
+- **CI and releases.** CI builds the studio and the app and runs the desktop end-to-end tests
+  (Playwright driving the packed app) on Windows, macOS and Linux. The release workflow builds the
+  installers on each system and creates the GitHub Release that carries them and
+  `SHA256SUMS.txt`.

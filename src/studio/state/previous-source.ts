@@ -21,6 +21,21 @@ export const KEPT_AFTER_EXAMPLE_NOTICE: Notice = {
   action: 'restore-previous',
 }
 
+export const KEPT_AFTER_NEW_NOTICE: Notice = {
+  text: 'Started a new program. Your previous program was kept.',
+  tone: 'info',
+  action: 'restore-previous',
+}
+
+/** After the desktop app opened the program file `name` over the user's own program. */
+export function keptAfterFileNotice(name: string): Notice {
+  return {
+    text: `Opened ${name}. Your previous program was kept.`,
+    tone: 'info',
+    action: 'restore-previous',
+  }
+}
+
 /** True for text the user wrote: not blank and not an unchanged gallery example. */
 export function isOwnProgram(source: string, examples: readonly Example[]): boolean {
   return source.trim() !== '' && !examples.some((example) => example.source === source)

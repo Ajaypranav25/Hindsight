@@ -171,6 +171,8 @@ export interface StudioActions {
   updateSettings(patch: Partial<Settings>): void
   dismissHint(): void
   clearNotice(): void
+  /** Shows a notice in the status line for the usual time (the desktop app's save errors). */
+  showNotice(notice: Notice): void
   /**
    * Swaps `previousSource` back into the editor and records it; the program it replaces is kept
    * in turn when it is the user's own. Does nothing when no program was kept.
@@ -181,6 +183,13 @@ export interface StudioActions {
    * link's `time` places the pen once it has been recorded.
    */
   openSharedSource(source: string, time?: number | null): void
+  /**
+   * Opens a program file the desktop app read (`name` is its file name), keeping the program it
+   * replaces as a link does; it runs only when auto-run is on.
+   */
+  openProgramFile(source: string, name: string): void
+  /** Starts an empty program (the desktop app's File > New), keeping the program it replaces. */
+  newProgram(): void
   /**
    * Opens a `.sighttrace` file: its program replaces the editor's (keeping the user's own), is
    * recorded again with its what-if edits, and the pen lands on the saved step.

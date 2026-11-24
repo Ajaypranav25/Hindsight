@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
+import { appLink, DESKTOP_BRIDGE_KEY } from '../desktop/bridge'
 import { memoryStorage } from '../lib/storage'
 import { setEditorCursorLine } from '../lib/shortcuts'
 import { StudioProvider } from '../state/context'
@@ -269,6 +270,72 @@ describe('Header', () => {
     fireEvent.keyDown(dialog, { key: 'Escape' })
     expect(screen.queryByRole('dialog', { name: 'Help' })).toBeNull()
     expect(document.activeElement).toBe(opener)
+  })
+})
+
+describe('Copy link in the desktop app', () => {
+  const host = window as unknown as Record<string, unknown>
+
+  function inDesktopApp() {
+    host[DESKTOP_BRIDGE_KEY] = {
+      platform: 'win32',
+      version: '0.5.0',
+      onOpen: () => () => {},
+      onCommand: () => () => {},
+      saveProgram: vi.fn(),
+      setDocument: vi.fn(),
+      ready: vi.fn(),
+    }
+  }
+
+  afterEach(() => {
+    delete host[DESKTOP_BRIDGE_KEY]
+  })
+
+  test('copies a hindsight:// link that opens the program, at the pen, in the app', async () => {
+    // Arrange
+    inDesktopApp()
+    const s = setup('print("shared")\n')
+    await finishRun(s)
+    act(() => s.store.getState().seek(7))
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+
+    // Act
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Copy a link/ }))
+    })
+
+    // Assert
+    expect(writeText).toHaveBeenCalledWith(appLink('print("shared")\n', 7))
+    expect(writeText.mock.calls[0]![0]).toMatch(/^hindsight:\/\/open\/#src=[A-Za-z0-9_-]+&t=7$/)
+    expect(screen.getByRole('button', { name: 'Link copied' })).toBeTruthy()
+  })
+
+  test('a program too long for an app link is to be saved as a file instead', () => {
+    // Arrange: short enough for a browser link, too long for one the app is handed.
+    inDesktopApp()
+    setup('print(1)\n'.repeat(3000))
+
+    // Act
+    fireEvent.click(screen.getByRole('button', { name: /Copy a link/ }))
+
+    // Assert
+    const panel = screen.getByRole('dialog', { name: 'Link not available' })
+    expect(panel.textContent).toContain('Links hold up to 30,000 characters')
+    expect(panel.textContent).toContain('save it as a file')
+  })
+
+  test('in a browser the same program still gets an ordinary link', async () => {
+    setup('print(1)\n'.repeat(3000))
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Copy a link/ }))
+    })
+
+    expect(writeText).toHaveBeenCalledWith(expect.stringMatching(/^http:\/\/[^#]+#src=/))
   })
 })
 

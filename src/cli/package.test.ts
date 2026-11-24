@@ -37,7 +37,7 @@ describe('the npm package', () => {
   test('publishes publicly with provenance and links back to the project', () => {
     expect(manifest.publishConfig).toEqual({ access: 'public', provenance: true })
     expect(manifest.repository.url).toContain('github.com/Ajaypranav25/Hindsight')
-    expect(manifest.homepage).toBe('https://hindsight-two.vercel.app')
+    expect(manifest.homepage).toBe('https://github.com/Ajaypranav25/Hindsight#readme')
     expect(manifest.bugs.url).toContain('/issues')
     expect(manifest.keywords.length).toBeGreaterThan(0)
   })
