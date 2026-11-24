@@ -318,10 +318,10 @@ export class StudioWindow {
     return effect
   }
 
-  /** Requests held while the window asked about closing are taken up once it stays open. */
+  /** Requests held while the window was busy closing are taken up once it stays open. */
   private resumeReplacing(): void {
     if (this.replaceState.phase !== 'held') return
-    if (closeBusy(this.closeState) || this.closeState.closing) return
+    if (closeBusy(this.closeState)) return
     this.replaceEvent({ type: 'resume' })
   }
 

@@ -148,9 +148,12 @@ export interface CloseStep {
   readonly effect: CloseEffect
 }
 
-/** The window's close prompt is open, or the save it asked for is under way. */
+/**
+ * The window's close prompt is open, the save it asked for is under way, or the window is closing.
+ * What would replace the program meanwhile waits (and goes with the window if it closes).
+ */
 export function closeBusy(state: CloseState): boolean {
-  return state.prompting || state.closeAfterSaveUntil !== null
+  return state.prompting || state.closeAfterSaveUntil !== null || state.closing
 }
 
 /**

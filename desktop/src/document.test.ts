@@ -237,12 +237,15 @@ describe('closing a window', () => {
 })
 
 describe('while closing', () => {
-  test('the close is busy while its prompt is open or its save is under way', () => {
+  test('the close is busy while its prompt is open, its save is under way, or it is closing', () => {
     expect(closeBusy(INITIAL_CLOSE_STATE)).toBe(false)
     expect(closeBusy(run([dirty, close]).state)).toBe(true)
     expect(closeBusy(savingAt(0).state)).toBe(true)
     expect(closeBusy(run([saved(5, false)], savingAt(0).state).state)).toBe(false)
     expect(closeBusy(run([dirty, close, cancel]).state)).toBe(false)
+    // Don't Save leaves the document dirty, but the window is going: nothing may ask again.
+    expect(closeBusy(run([dirty, close, discard]).state)).toBe(true)
+    expect(closeBusy(run([close]).state)).toBe(true)
   })
 
   test('a page that goes away is offered a reload, unless the window is closing', () => {
