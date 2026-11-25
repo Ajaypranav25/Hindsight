@@ -1,91 +1,77 @@
 /**
- * The hero's 3D scene: charms hanging on chains from above the top of the page. Each chain has two
- * joints, so it bends: the upper half swings from the anchor and the lower half (with the charm)
- * lags behind it like a real chain, and a slow breeze keeps everything moving. The pointer brushes
- * the chains and charms it passes over, charms lean toward a pointer that comes near, and a click
- * or tap sets one swinging. With reduced motion the charms hang still.
+ * The hero's 3D scene: glossy charms floating in the air, bobbing and turning slowly. The pointer
+ * pushes away the charms it comes near (they spring back to their places), a quick sweep knocks
+ * them spinning, and a click sends a burst through the ones around it. The camera leans a little
+ * toward the pointer. With reduced motion nothing moves by itself; only the pointer moves things.
  */
 import * as THREE from 'three'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
-import { buildChain, buildCharm, charmCentre, createMaterials, type CharmKind } from './charms'
+import { buildCharm, createMaterials, HANGER, type CharmKind, type Materials } from './charms'
+
+type Kind = CharmKind | 'dot' | 'pen'
 
 interface Placement {
-  readonly kind: CharmKind
-  /** Where the chain is fixed, in scene units (the view is about 7.5 units tall). */
+  readonly kind: Kind
+  /** Where it floats, in scene units (the view is about 7.5 units tall, centred on 0). */
   readonly x: number
-  readonly links: number
+  readonly y: number
+  readonly z: number
   readonly scale: number
-  readonly depth: number
+  /** The way it faces at rest (radians). */
+  readonly turn: readonly [number, number, number]
+  /** A dot's colour. */
+  readonly tone?: 'pen' | 'cobalt' | 'sage'
 }
 
-/** Wide screens: a cluster up and to the right, leaving the headline's corner clear. */
+/** Wide screens: a loose cloud up and to the right, leaving the headline's corner clear. */
 const WIDE: readonly Placement[] = [
-  { kind: 'hourglass', x: -1.3, links: 8, scale: 0.8, depth: -1.2 },
-  { kind: 'beads', x: -0.15, links: 5, scale: 0.85, depth: -0.5 },
-  { kind: 'icon', x: 1.1, links: 11, scale: 1.2, depth: 0.6 },
-  { kind: 'loop', x: 2.55, links: 6, scale: 0.9, depth: -0.2 },
-  { kind: 'braces', x: 3.75, links: 11, scale: 0.8, depth: -1.0 },
-  { kind: 'rewind', x: 4.75, links: 10, scale: 0.78, depth: 0.2 },
+  { kind: 'hourglass', x: -2.6, y: 1.9, z: -1.4, scale: 0.85, turn: [0.15, 0.4, -0.25] },
+  { kind: 'loop', x: -0.5, y: 2.45, z: -0.6, scale: 0.85, turn: [0.2, -0.5, 0.3] },
+  { kind: 'icon', x: 1.55, y: 1.05, z: 0.9, scale: 1.35, turn: [0.12, -0.42, 0.1] },
+  { kind: 'braces', x: 3.6, y: 2.35, z: -0.9, scale: 0.85, turn: [0.1, 0.45, -0.2] },
+  { kind: 'rewind', x: 4.8, y: 0.55, z: 0.1, scale: 0.85, turn: [0.25, -0.55, 0.15] },
+  { kind: 'pen', x: 5.6, y: 2.6, z: -1.6, scale: 0.9, turn: [0.3, 0.2, -0.9] },
+  { kind: 'dot', x: 0.15, y: 0.75, z: 1.7, scale: 0.2, turn: [0, 0, 0], tone: 'pen' },
+  { kind: 'dot', x: 2.95, y: -0.35, z: 1.3, scale: 0.15, turn: [0, 0, 0], tone: 'cobalt' },
+  { kind: 'dot', x: -1.5, y: 3.0, z: -2.2, scale: 0.24, turn: [0, 0, 0], tone: 'sage' },
+  { kind: 'dot', x: 6.3, y: 1.3, z: -0.8, scale: 0.18, turn: [0, 0, 0], tone: 'cobalt' },
 ]
 
-/** Narrow screens: fewer, smaller charms hanging into the top half. */
+/** Narrow screens: fewer, smaller charms in the top half. */
 const NARROW: readonly Placement[] = [
-  { kind: 'hourglass', x: -1.05, links: 11, scale: 0.55, depth: -0.8 },
-  { kind: 'icon', x: 0.15, links: 13, scale: 0.85, depth: 0.5 },
-  { kind: 'loop', x: 0.95, links: 9, scale: 0.58, depth: -0.3 },
+  { kind: 'hourglass', x: -1.15, y: 2.4, z: -1.0, scale: 0.55, turn: [0.15, 0.4, -0.25] },
+  { kind: 'icon', x: 0.2, y: 1.55, z: 0.6, scale: 0.95, turn: [0.12, -0.42, 0.1] },
+  { kind: 'loop', x: 1.3, y: 2.95, z: -0.5, scale: 0.5, turn: [0.2, -0.5, 0.3] },
+  { kind: 'rewind', x: -1.1, y: 0.75, z: -0.4, scale: 0.5, turn: [0.25, -0.55, 0.15] },
+  { kind: 'dot', x: 1.25, y: 0.9, z: 0.9, scale: 0.14, turn: [0, 0, 0], tone: 'pen' },
 ]
 
-/** The chains' anchor, just above the top of the view. */
-const ANCHOR_Y = 4.6
 const MAX_STEP_S = 1 / 30
+/** The pull back to a charm's place, and how quickly its motion dies down. */
+const SPRING = 7
+const DAMPING = 3.4
+const TURN_SPRING = 5
+const TURN_DAMPING = 2.6
+/** The pointer's reach (scene units, scaled by the charm), its push, its sweep and its click. */
+const REACH = 1.9
+const REPEL = 26
+const SWEEP = 2.2
+const BURST_REACH = 3.2
+const BURST = 7
+/** The fastest a charm may move (units per second) and turn (radians per second). */
+const MAX_SPEED = 9
+const MAX_SPIN = 7
 
-/** The upper joint: a slow swing from the anchor. */
-const UPPER = { stiffness: 2.6, damping: 1.1 }
-/** The lower joint: stiffer and quicker, thrown by the upper joint's motion (the chain's bend). */
-const LOWER = { stiffness: 7, damping: 1.8, inertia: 0.9 }
-/** How far each joint may swing (radians): lively, but the charms never fly up out of view. */
-const MAX_SWING = 0.55
-const MAX_BEND = 0.6
-/** The fastest a joint may turn (radians per second). */
-const MAX_SPIN = 2.2
-
-/** Pointer response: px around a charm or chain that it reacts to, and how hard. */
-const REACH_PX = 150
-const BRUSH = 0.0055
-const LEAN = 0.9
-const TAP = 1.3
-
-/** Clamps `value` to ±`limit`. */
-function clamp(value: number, limit: number): number {
-  return Math.max(-limit, Math.min(limit, value))
-}
-
-/**
- * A joint near its limit is pushed back softly (so it slows down instead of hitting a wall),
- * and its speed is capped.
- */
-function settle(joint: Joint, limit: number): void {
-  joint.velocity = clamp(joint.velocity, MAX_SPIN)
-  const over = Math.abs(joint.angle) - limit * 0.8
-  if (over > 0) joint.velocity -= Math.sign(joint.angle) * over * 0.35
-  joint.angle = clamp(joint.angle, limit)
-}
-
-interface Joint {
-  angle: number
-  velocity: number
-}
-
-interface Pendulum {
-  readonly pivot: THREE.Group
-  readonly elbow: THREE.Group
-  readonly charm: THREE.Group
-  readonly twist: number
-  readonly reach: number
+interface Floater {
+  readonly object: THREE.Group
+  readonly rest: THREE.Vector3
+  readonly restTurn: THREE.Vector3
+  readonly scale: number
   readonly phase: number
-  readonly upper: Joint
-  readonly lower: Joint
-  readonly tilt: Joint
+  readonly position: THREE.Vector3
+  readonly velocity: THREE.Vector3
+  readonly turn: THREE.Vector3
+  readonly spin: THREE.Vector3
 }
 
 export interface HeroScene {
@@ -100,17 +86,36 @@ function environment(renderer: THREE.WebGLRenderer): THREE.Texture {
 }
 
 function easeOutBack(t: number): number {
-  const c = 1.4
+  const c = 1.6
   return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2)
 }
 
-/** Distance from point p to the segment a–b, all in screen pixels. */
-function distanceToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number) {
-  const dx = bx - ax
-  const dy = by - ay
-  const length = dx * dx + dy * dy
-  const t = length === 0 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / length))
-  return { distance: Math.hypot(px - (ax + t * dx), py - (ay + t * dy)), along: t }
+/** A charm without what it would hang by, turning about its own middle. */
+function floatingCharm(kind: CharmKind, m: Materials): THREE.Group {
+  const charm = buildCharm(kind, m)
+  for (const part of charm.children.filter((child) => child.name === HANGER))
+    part.removeFromParent()
+  const centre = new THREE.Box3().setFromObject(charm).getCenter(new THREE.Vector3())
+  charm.position.sub(centre)
+  const holder = new THREE.Group()
+  holder.add(charm)
+  return holder
+}
+
+function accent(placement: Placement, m: Materials): THREE.Group {
+  const holder = new THREE.Group()
+  if (placement.kind === 'pen') {
+    holder.add(new THREE.Mesh(new THREE.CapsuleGeometry(0.13, 1.5, 8, 24), m.pen))
+  } else {
+    const material =
+      placement.tone === 'cobalt' ? m.cobalt : placement.tone === 'sage' ? m.sage : m.pen
+    holder.add(new THREE.Mesh(new THREE.SphereGeometry(1, 32, 24), material))
+  }
+  return holder
+}
+
+function clampLength(vector: THREE.Vector3, max: number): void {
+  if (vector.lengthSq() > max * max) vector.setLength(max)
 }
 
 export function mountHero(canvas: HTMLCanvasElement, host: HTMLElement): HeroScene {
@@ -133,46 +138,46 @@ export function mountHero(canvas: HTMLCanvasElement, host: HTMLElement): HeroSce
   const materials = createMaterials()
   const root = new THREE.Group()
   scene.add(root)
-  let pendulums: Pendulum[] = []
+  let floaters: Floater[] = []
   let layout: readonly Placement[] | null = null
 
   function build(placements: readonly Placement[]): void {
     root.clear()
-    pendulums = placements.map((placement, index) => {
-      const upperLinks = Math.max(1, Math.floor(placement.links / 2))
-      const upper = buildChain(upperLinks, materials)
-      const lower = buildChain(placement.links - upperLinks, materials)
-      const pivot = new THREE.Group()
-      pivot.position.set(placement.x, ANCHOR_Y, placement.depth)
-      pivot.scale.setScalar(placement.scale)
-      const elbow = new THREE.Group()
-      elbow.position.y = -upper.length
-      const charm = buildCharm(placement.kind, materials)
-      charm.position.y = -lower.length
-      const twist = (index % 2 === 0 ? 1 : -1) * 0.35
-      charm.rotation.y = twist
-      elbow.add(lower.group, charm)
-      pivot.add(upper.group, elbow)
-      root.add(pivot)
-      const start = still ? 0 : index % 2 === 0 ? 0.22 : -0.18
+    floaters = placements.map((placement, index) => {
+      const object =
+        placement.kind === 'dot' || placement.kind === 'pen'
+          ? accent(placement, materials)
+          : floatingCharm(placement.kind, materials)
+      const rest = new THREE.Vector3(placement.x, placement.y, placement.z)
+      const restTurn = new THREE.Vector3(...placement.turn)
+      object.position.copy(rest)
+      object.rotation.set(restTurn.x, restTurn.y, restTurn.z)
+      object.scale.setScalar(still ? placement.scale : 0)
+      root.add(object)
       return {
-        pivot,
-        elbow,
-        charm,
-        twist,
-        reach: (upper.length + lower.length - charmCentre(placement.kind)) * placement.scale,
-        phase: index * 1.7,
-        upper: { angle: start, velocity: 0 },
-        lower: { angle: -start * 0.6, velocity: 0 },
-        tilt: { angle: 0, velocity: 0 },
+        object,
+        rest,
+        restTurn,
+        scale: placement.scale,
+        phase: index * 1.37,
+        position: rest.clone(),
+        velocity: new THREE.Vector3(),
+        turn: restTurn.clone(),
+        spin: new THREE.Vector3(),
       }
     })
   }
 
-  const pointer = { x: 0, y: 0, vx: 0, inside: false, lastX: 0, lastT: 0 }
+  // The pointer, in pixels and as a ray into the scene.
+  const pointer = { x: 0, y: 0, inside: false, moved: false }
+  const ndc = new THREE.Vector2()
+  const raycaster = new THREE.Raycaster()
+  const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0)
+  const hit = new THREE.Vector3()
+  const lastHit = new THREE.Vector3()
+  const sweep = new THREE.Vector3()
+  const offset = new THREE.Vector3()
   const lean = new THREE.Vector2()
-  const anchor = new THREE.Vector3()
-  const end = new THREE.Vector3()
 
   function resize(): void {
     const width = host.clientWidth
@@ -185,109 +190,112 @@ export function mountHero(canvas: HTMLCanvasElement, host: HTMLElement): HeroSce
       layout = next
       build(next)
     }
-    // Keep the cluster's right edge inside the view on medium widths.
-    root.position.x = width < 760 ? 0 : Math.min(0.4, (camera.aspect - 1.75) * 1.8)
+    // Keep the cloud's right edge inside the view on medium widths.
+    root.position.x = width < 760 ? 0 : Math.min(0.4, (camera.aspect - 1.8) * 1.9)
   }
 
-  function toScreen(point: THREE.Vector3, width: number, height: number): { x: number; y: number } {
-    point.project(camera)
-    return { x: ((point.x + 1) / 2) * width, y: ((1 - point.y) / 2) * height }
-  }
-
-  /** Where a pendulum's chain runs on screen: from its anchor to its charm's middle. */
-  function screenLine(p: Pendulum, width: number, height: number) {
-    anchor.set(0, 0, 0).applyMatrix4(p.pivot.matrixWorld)
-    end.set(0, charmCentre(p.charm.name as CharmKind), 0).applyMatrix4(p.charm.matrixWorld)
-    return { a: toScreen(anchor, width, height), b: toScreen(end, width, height) }
+  /** Where the pointer meets the plane z = depth (in the cloud's coordinates). */
+  function pointerAt(depth: number, target: THREE.Vector3): boolean {
+    ndc.set((pointer.x / host.clientWidth) * 2 - 1, -(pointer.y / host.clientHeight) * 2 + 1)
+    raycaster.setFromCamera(ndc, camera)
+    plane.constant = -depth
+    if (raycaster.ray.intersectPlane(plane, target) === null) return false
+    target.x -= root.position.x
+    return true
   }
 
   function onPointerMove(event: PointerEvent): void {
     const rect = host.getBoundingClientRect()
-    const x = event.clientX - rect.left
-    const now = performance.now()
-    const dt = Math.max(1, now - pointer.lastT)
-    pointer.vx = ((x - pointer.lastX) / dt) * 16
-    pointer.lastX = x
-    pointer.lastT = now
-    pointer.x = x
+    pointer.x = event.clientX - rect.left
     pointer.y = event.clientY - rect.top
     pointer.inside = true
+    pointer.moved = true
   }
 
   function onPointerLeave(): void {
     pointer.inside = false
   }
 
-  /** A click or tap on a chain or charm swings it away from the pointer. */
+  /** A click or tap: every charm near it is thrown outwards and set spinning. */
   function onPointerDown(event: PointerEvent): void {
     onPointerMove(event)
-    const width = host.clientWidth
-    const height = host.clientHeight
-    for (const p of pendulums) {
-      const { a, b } = screenLine(p, width, height)
-      const hit = distanceToSegment(pointer.x, pointer.y, a.x, a.y, b.x, b.y)
-      const radius = REACH_PX * 0.6 * p.pivot.scale.x
-      if (hit.distance > radius) continue
-      const side = pointer.x < b.x ? 1 : -1
-      p.upper.velocity += side * TAP * (0.4 + hit.along * 0.6)
-      p.lower.velocity += side * TAP * 1.3 * hit.along
-      p.tilt.velocity += TAP * 0.4
+    for (const f of floaters) {
+      if (!pointerAt(f.position.z, hit)) continue
+      offset.subVectors(f.position, hit).setZ(0)
+      const distance = offset.length()
+      const reach = BURST_REACH * Math.max(0.6, f.scale)
+      if (distance >= reach) continue
+      const strength = BURST * (1 - distance / reach)
+      if (distance < 0.001) offset.set(0, 1, 0)
+      f.velocity.addScaledVector(offset.normalize(), strength)
+      f.spin.x += (Math.random() - 0.5) * strength * 1.4
+      f.spin.y += (Math.random() - 0.5) * strength * 1.8
+      f.spin.z += (Math.random() - 0.5) * strength
     }
   }
 
-  /**
-   * The pointer's effect on every chain and charm near it: a push in the direction it moves
-   * (strongest low on the chain, where it swings freely) and a gentle lean toward it.
-   */
-  function respond(width: number, height: number, dt: number): void {
+  /** The pointer pushes away what it comes near, and a sweep drags things along and spins them. */
+  function respond(dt: number): void {
     if (!pointer.inside) return
-    for (const p of pendulums) {
-      const { a, b } = screenLine(p, width, height)
-      const hit = distanceToSegment(pointer.x, pointer.y, a.x, a.y, b.x, b.y)
-      const radius = REACH_PX * p.pivot.scale.x
-      if (hit.distance >= radius) continue
-      const closeness = 1 - hit.distance / radius
-      const push = pointer.vx * BRUSH * closeness
-      p.upper.velocity += push * (0.35 + hit.along * 0.65)
-      p.lower.velocity += push * 1.4 * hit.along
-      const toward = Math.max(-1, Math.min(1, (pointer.x - b.x) / radius))
-      p.upper.velocity -= toward * LEAN * closeness * dt
-      p.lower.velocity -= toward * LEAN * 0.5 * closeness * dt
+    if (pointerAt(0, hit)) {
+      sweep.subVectors(hit, lastHit).divideScalar(Math.max(dt, 1 / 240))
+      if (!pointer.moved) sweep.set(0, 0, 0)
+      clampLength(sweep, 40)
+      lastHit.copy(hit)
     }
-    pointer.vx *= 0.55
+    pointer.moved = false
+    for (const f of floaters) {
+      if (!pointerAt(f.position.z, hit)) continue
+      offset.subVectors(f.position, hit).setZ(0)
+      const distance = offset.length()
+      const reach = REACH * Math.max(0.55, f.scale)
+      if (distance >= reach) continue
+      const closeness = 1 - distance / reach
+      if (distance > 0.001)
+        f.velocity.addScaledVector(offset.normalize(), REPEL * closeness ** 2 * dt)
+      f.velocity.addScaledVector(sweep, SWEEP * closeness * dt)
+      f.spin.y += sweep.x * 0.9 * closeness * dt
+      f.spin.x -= sweep.y * 0.9 * closeness * dt
+      f.spin.z -= sweep.x * 0.35 * closeness * dt
+    }
   }
 
   function step(dt: number, time: number): void {
-    for (const p of pendulums) {
-      const breeze = Math.sin(time * 0.55 + p.phase) * 0.06 + Math.sin(time * 1.3 + p.phase) * 0.025
-      const upperForce =
-        -UPPER.stiffness * p.upper.angle - UPPER.damping * p.upper.velocity + breeze
-      p.upper.velocity += upperForce * dt
-      p.upper.angle += p.upper.velocity * dt
-      settle(p.upper, MAX_SWING)
-      // The lower half is thrown the other way when the upper half speeds up: the chain bends.
-      const lowerForce =
-        -LOWER.stiffness * p.lower.angle -
-        LOWER.damping * p.lower.velocity -
-        LOWER.inertia * upperForce
-      p.lower.velocity += lowerForce * dt
-      p.lower.angle += p.lower.velocity * dt
-      settle(p.lower, MAX_BEND)
-      const tiltForce = -UPPER.stiffness * p.tilt.angle - UPPER.damping * p.tilt.velocity
-      p.tilt.velocity += (tiltForce + breeze * 0.5) * dt
-      p.tilt.angle += p.tilt.velocity * dt
-      settle(p.tilt, MAX_SWING)
+    for (const f of floaters) {
+      // Its place, with a slow bob when it may move by itself.
+      const bobX = still ? 0 : Math.sin(time * 0.5 + f.phase) * 0.1
+      const bobY = still ? 0 : Math.sin(time * 0.7 + f.phase * 1.3) * 0.16
+      offset.set(
+        f.rest.x + bobX - f.position.x,
+        f.rest.y + bobY - f.position.y,
+        f.rest.z - f.position.z,
+      )
+      f.velocity.addScaledVector(offset, SPRING * dt).multiplyScalar(Math.max(0, 1 - DAMPING * dt))
+      clampLength(f.velocity, MAX_SPEED)
+      f.position.addScaledVector(f.velocity, dt)
+      // Its turn, drifting a little around the way it faces.
+      const driftY = still ? 0 : Math.sin(time * 0.35 + f.phase) * 0.35
+      const driftX = still ? 0 : Math.sin(time * 0.45 + f.phase * 0.7) * 0.12
+      offset.set(
+        f.restTurn.x + driftX - f.turn.x,
+        f.restTurn.y + driftY - f.turn.y,
+        f.restTurn.z - f.turn.z,
+      )
+      f.spin
+        .addScaledVector(offset, TURN_SPRING * dt)
+        .multiplyScalar(Math.max(0, 1 - TURN_DAMPING * dt))
+      clampLength(f.spin, MAX_SPIN)
+      f.turn.addScaledVector(f.spin, dt)
     }
   }
 
-  function pose(entrance: number): void {
-    for (const [index, p] of pendulums.entries()) {
-      p.pivot.rotation.z = p.upper.angle
-      p.pivot.rotation.x = p.tilt.angle * 0.6
-      p.elbow.rotation.z = p.lower.angle
-      p.charm.rotation.y = p.twist + p.tilt.angle * 1.2 + p.lower.velocity * 0.15
-      const t = Math.min(1, Math.max(0, (entrance - 0.12 * index) / 1.1))
-      p.pivot.position.y = ANCHOR_Y + (1 - easeOutBack(t)) * 6
+  function pose(time: number): void {
+    for (const [index, f] of floaters.entries()) {
+      f.object.position.copy(f.position)
+      f.object.rotation.set(f.turn.x, f.turn.y, f.turn.z)
+      if (still) continue
+      const t = Math.min(1, Math.max(0, (time - 0.08 * index) / 0.9))
+      f.object.scale.setScalar(f.scale * Math.max(0, easeOutBack(t)))
     }
   }
 
@@ -301,26 +309,22 @@ export function mountHero(canvas: HTMLCanvasElement, host: HTMLElement): HeroSce
     const dt = Math.min(MAX_STEP_S, (now - last) / 1000)
     last = now
     const time = (now - started) / 1000
-    const width = host.clientWidth
-    const height = host.clientHeight
-    if (!still) {
-      respond(width, height, dt)
-      step(dt, time)
-      const targetX = pointer.inside ? (pointer.x / width - 0.5) * 0.6 : 0
-      const targetY = pointer.inside ? (pointer.y / height - 0.5) * -0.35 : 0
-      lean.x += (targetX - lean.x) * 0.04
-      lean.y += (targetY - lean.y) * 0.04
-      camera.position.x = lean.x
-      camera.position.y = lean.y
-      camera.lookAt(0, 0, 0)
-    }
-    pose(still ? 10 : time)
+    respond(dt)
+    step(dt, time)
+    const targetX = pointer.inside ? (pointer.x / host.clientWidth - 0.5) * 0.6 : 0
+    const targetY = pointer.inside ? (pointer.y / host.clientHeight - 0.5) * -0.35 : 0
+    lean.x += (targetX - lean.x) * 0.04
+    lean.y += (targetY - lean.y) * 0.04
+    camera.position.x = lean.x
+    camera.position.y = lean.y
+    camera.lookAt(0, 0, 0)
+    pose(time)
     renderer.render(scene, camera)
     frame = requestAnimationFrame(render)
   }
 
   function start(): void {
-    if (running || still) return
+    if (running) return
     running = true
     last = performance.now()
     frame = requestAnimationFrame(render)
@@ -336,12 +340,6 @@ export function mountHero(canvas: HTMLCanvasElement, host: HTMLElement): HeroSce
     else stop()
   }
 
-  function renderStill(): void {
-    pose(10)
-    root.updateMatrixWorld(true)
-    renderer.render(scene, camera)
-  }
-
   const observer = new IntersectionObserver(([entry]) => {
     visible = entry?.isIntersecting ?? true
     updateRunning()
@@ -349,7 +347,9 @@ export function mountHero(canvas: HTMLCanvasElement, host: HTMLElement): HeroSce
   observer.observe(host)
   const resizeObserver = new ResizeObserver(() => {
     resize()
-    if (still) renderStill()
+    if (!still) return
+    pose(10)
+    renderer.render(scene, camera)
   })
   resizeObserver.observe(host)
   document.addEventListener('visibilitychange', updateRunning)
@@ -358,8 +358,7 @@ export function mountHero(canvas: HTMLCanvasElement, host: HTMLElement): HeroSce
   host.addEventListener('pointerdown', onPointerDown)
 
   resize()
-  if (still) renderStill()
-  else start()
+  start()
 
   return {
     dispose() {

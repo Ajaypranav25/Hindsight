@@ -1,8 +1,8 @@
 /**
- * The glossy charms that hang in the hero, built from Three.js primitives (no model files): the app
+ * The glossy charms that float in the hero, built from Three.js primitives (no model files): the app
  * icon, a rewind button, a pair of braces, an hourglass, a replay loop and a string of beads. Each
- * charm's origin is the ring it hangs from, so its body lies below (negative y). The same builders
- * render the small icons in the page (scripts/render-icons.mjs).
+ * charm is built hanging from a ring at its origin (parts named HANGER), which the hero and the
+ * icons leave out. The same builders render the small icons in the page (scripts/render-icons.mjs).
  */
 import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
@@ -270,26 +270,4 @@ export function buildCharm(kind: CharmKind, m: Materials): THREE.Group {
   const group = BUILDERS[kind](m)
   group.name = kind
   return group
-}
-
-/** The distance below the origin of a charm's middle (where the pointer brushes it). */
-export function charmCentre(kind: CharmKind): number {
-  return { icon: -0.95, rewind: -0.82, braces: -1.15, hourglass: -1.2, loop: -1.0, beads: -1.3 }[
-    kind
-  ]
-}
-
-/** A chrome chain of `links` links hanging down from the origin; returns it and its length. */
-export function buildChain(links: number, m: Materials): { group: THREE.Group; length: number } {
-  const group = new THREE.Group()
-  const geometry = new THREE.TorusGeometry(0.1, 0.028, 10, 24)
-  geometry.scale(1, 1.55, 1)
-  const pitch = 0.235
-  for (let i = 0; i < links; i++) {
-    const link = new THREE.Mesh(geometry, m.chrome)
-    link.position.y = -i * pitch - 0.12
-    link.rotation.y = i % 2 === 0 ? 0 : Math.PI / 2
-    group.add(link)
-  }
-  return { group, length: links * pitch }
 }
