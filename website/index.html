@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hindsight — debug in hindsight</title>
+    <meta
+      name="description"
+      content="Hindsight is a tiny programming language with a time machine built in. Run a program, then drag the red pen back through every step. Free for Windows, macOS and Linux."
+    />
+    <meta name="theme-color" content="#eef2ec" />
+    <meta property="og:title" content="Hindsight — debug in hindsight" />
+    <meta
+      property="og:description"
+      content="A tiny programming language with a time machine built in. Free for Windows, macOS and Linux."
+    />
+    <meta property="og:image" content="media/demo-poster.webp" />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+
+    <header class="nav" data-nav>
+      <a class="nav-pill nav-brand" href="#top" aria-label="Hindsight, back to the top">
+        <img src="favicon.svg" alt="" width="22" height="22" />
+        <span>Hindsight</span>
+      </a>
+      <nav class="nav-pill nav-links" aria-label="Sections">
+        <a href="#product">Studio</a>
+        <a href="#features">Features</a>
+        <a href="#mcp">MCP</a>
+        <a href="#download">Download</a>
+      </nav>
+      <div class="nav-pill nav-actions">
+        <a class="nav-quiet" href="https://github.com/Ajaypranav25/Hindsight">GitHub</a>
+        <a class="button button-dark button-small" href="#download" data-primary-download
+          >Download</a
+        >
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="hero" id="top" data-hero>
+        <canvas class="hero-canvas" data-hero-canvas aria-hidden="true"></canvas>
+        <div class="hero-copy">
+          <h1 class="hero-title">Debug in<br />hindsight.</h1>
+          <div class="hero-side">
+            <p>
+              Hindsight is a tiny programming language with a time machine built in. Run a program,
+              then drag the red pen back through every step it took.
+            </p>
+            <div class="hero-actions">
+              <a class="button button-dark" href="#download" data-primary-download>
+                <span data-primary-label>Download Hindsight</span>
+                <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                  <path d="M8 2v9m0 0 3.5-3.5M8 11 4.5 7.5M3 14h10" />
+                </svg>
+              </a>
+              <span class="hero-meta" data-release-line>Free and open source</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="product" id="product" aria-labelledby="product-title">
+        <h2 class="sr" id="product-title">The studio</h2>
+        <div class="device reveal">
+          <img class="device-charm" src="icons/icon.png" alt="" width="132" height="132" />
+          <div class="device-bar" aria-hidden="true">
+            <span></span><span></span><span></span>
+            <p>15-linked-list.sight — Hindsight</p>
+          </div>
+          <video
+            class="device-video"
+            data-demo
+            autoplay
+            muted
+            loop
+            playsinline
+            preload="metadata"
+            poster="media/demo-poster.webp"
+            aria-label="The studio stepping backwards through a linked-list reversal while the heap graph rewires its arrows"
+          >
+            <source src="media/demo.webm" type="video/webm" />
+            <source src="media/demo.mp4" type="video/mp4" />
+          </video>
+        </div>
+      </section>
+
+      <section class="statement" aria-label="What Hindsight does">
+        <p class="statement-text reveal">
+          Hindsight
+          <img class="glyph" src="icons/icon.png" alt="" />
+          records every step of your program, so you can
+          <img class="glyph" src="icons/rewind.png" alt="" />
+          rewind it, ask
+          <img class="glyph" src="icons/braces.png" alt="" />
+          where any value came from,
+          <img class="glyph" src="icons/hourglass.png" alt="" />
+          change the past and
+          <img class="glyph" src="icons/loop.png" alt="" />
+          watch a new future play out.
+        </p>
+      </section>
+
+      <section class="features" id="features" aria-labelledby="features-title">
+        <div class="section-head reveal">
+          <p class="eyebrow">What's inside</p>
+          <h2 id="features-title">A debugger that remembers everything.</h2>
+        </div>
+        <div class="bento">
+          <article class="card card-wide reveal">
+            <div class="card-copy">
+              <h3>Step backwards</h3>
+              <p>
+                Step into, over and out of calls in both directions. Every variable, list and record
+                is rebuilt at any step in under a millisecond, and the heap graph rewires its arrows
+                as you scrub.
+              </p>
+            </div>
+            <img src="media/heap.webp" alt="The heap graph showing linked records" loading="lazy" />
+          </article>
+          <article class="card reveal">
+            <img class="card-icon" src="icons/braces.png" alt="" loading="lazy" />
+            <h3>Where did this come from?</h3>
+            <p>
+              Click any value to land on the moment it was written, then follow the chain back to
+              its first cause.
+            </p>
+          </article>
+          <article class="card reveal">
+            <img class="card-icon" src="icons/hourglass.png" alt="" loading="lazy" />
+            <h3>Change the past</h3>
+            <p>
+              Give a variable another value at any moment. Hindsight forks the run there and shows
+              where the new future parts from the real one.
+            </p>
+          </article>
+          <article class="card card-wide card-flip reveal">
+            <div class="card-copy">
+              <h3>Let it find the bug</h3>
+              <p>
+                Answer a few yes-or-no questions about the calls your program made, and the bug
+                finder names the function whose own code is wrong. Contracts and assertions can
+                answer the questions for you.
+              </p>
+            </div>
+            <img
+              src="media/bug-finder.webp"
+              alt="The bug finder asking about a call"
+              loading="lazy"
+            />
+          </article>
+          <article class="card reveal">
+            <img class="card-icon" src="icons/loop.png" alt="" loading="lazy" />
+            <h3>Tasks and races</h3>
+            <p>
+              Channels and tasks run on a deterministic scheduler. Deadlocks explain themselves, and
+              the race finder tries schedules until one breaks.
+            </p>
+          </article>
+          <article class="card card-span reveal">
+            <img class="card-icon" src="icons/rewind.png" alt="" loading="lazy" />
+            <h3>Works with your tools</h3>
+            <p>
+              Files open by double-click, links open in the app, and the same debugger runs from the
+              command line, in VS Code and for AI agents over MCP.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="mcp" id="mcp" aria-labelledby="mcp-title">
+        <div class="mcp-copy reveal">
+          <p class="eyebrow">For AI agents</p>
+          <h2 id="mcp-title">Give your agent a time machine.</h2>
+          <p>
+            <code>hindsight mcp</code> serves the debugger over the Model Context Protocol. An agent
+            records a run, then asks it questions instead of guessing: where a value came from, why
+            a line never ran, which function is wrong, and whether a fix really fixes it.
+          </p>
+          <p>
+            Every answer comes from a recorded run, and patches are checked by running them again.
+            Responses fit an agent's context window: long results come in pages.
+          </p>
+          <button
+            class="copy copy-dark"
+            type="button"
+            data-copy='{ "mcpServers": { "hindsight": { "command": "npx", "args": ["-y", "hindsight-lang", "mcp"] } } }'
+          >
+            <code>npx -y hindsight-lang mcp</code><span class="copy-state">Copy config</span>
+          </button>
+          <p class="mcp-note">
+            Works with any MCP client, such as Claude Code, Claude Desktop or Cursor.
+          </p>
+        </div>
+        <div class="console reveal" aria-label="The MCP server's tools">
+          <div class="console-bar" aria-hidden="true">
+            <span></span><span></span><span></span>
+            <p>hindsight mcp · 19 tools</p>
+          </div>
+          <pre class="console-config" aria-hidden="true"><span class="k">"mcpServers"</span>: {
+  <span class="k">"hindsight"</span>: {
+    <span class="k">"command"</span>: <span class="s">"npx"</span>,
+    <span class="k">"args"</span>: [<span class="s">"-y"</span>, <span class="s">"hindsight-lang"</span>, <span class="s">"mcp"</span>]
+  }
+}</pre>
+          <ul class="tools">
+            <li><b>run_trace</b><span>record a program</span></li>
+            <li><b>seek_state</b><span>the whole state at any step</span></li>
+            <li><b>query_provenance</b><span>where a value came from</span></li>
+            <li><b>why_not</b><span>why a line never ran</span></li>
+            <li><b>slice</b><span>the lines that led to a crash</span></li>
+            <li><b>find_bug</b><span>name the wrong function</span></li>
+            <li><b>diagnose_failure</b><span>a crash or wrong output, explained</span></li>
+            <li><b>suggest_repairs</b><span>fixes, each re-run</span></li>
+            <li><b>verify_patch</b><span>does the fix fix it?</span></li>
+            <li><b>fork_whatif</b><span>change the past</span></li>
+            <li><b>diff_runs</b><span>where two runs part</span></li>
+            <li><b>explore_schedules</b><span>hunt for races</span></li>
+          </ul>
+          <p class="tools-more">
+            Also <code>query</code>, <code>solve</code>, <code>get_divergence</code>,
+            <code>profile</code>, <code>infer_contracts</code>, <code>export_trace</code> and
+            <code>open_trace</code>.
+          </p>
+        </div>
+      </section>
+
+      <section class="download" id="download" aria-labelledby="download-title">
+        <div class="section-head reveal">
+          <p class="eyebrow" data-release-eyebrow>Latest release</p>
+          <h2 id="download-title">Download Hindsight.</h2>
+          <p class="section-lead">
+            Free and open source, for Windows, macOS and Linux. Works offline.
+          </p>
+        </div>
+        <div class="systems" data-systems></div>
+        <details class="first-launch reveal">
+          <summary>The first time you open it</summary>
+          <div class="first-launch-body">
+            <p>
+              The app isn't code-signed yet, so your system asks before running it the first time.
+            </p>
+            <dl>
+              <dt>Windows</dt>
+              <dd>
+                SmartScreen says "Windows protected your PC": choose <b>More info</b>, then
+                <b>Run anyway</b>.
+              </dd>
+              <dt>macOS</dt>
+              <dd>
+                Open the app once, then go to <b>System Settings › Privacy &amp; Security</b> and
+                choose <b>Open Anyway</b>.
+              </dd>
+              <dt>Linux</dt>
+              <dd>
+                On Debian and Ubuntu, prefer the .deb: it adds file and link integration. The
+                AppImage needs <code>libfuse2</code> (<code>libfuse2t64</code> on Ubuntu 24.04);
+                make it executable with <code>chmod +x</code>.
+              </dd>
+            </dl>
+            <p>
+              Each file's SHA-256 checksum is in
+              <a data-checksums href="#">SHA256SUMS.txt</a>.
+            </p>
+          </div>
+        </details>
+
+        <div class="extras">
+          <article class="extra reveal">
+            <h3>Command line</h3>
+            <p>The language and the debugger in your terminal (Node 22.12 or later).</p>
+            <button class="copy" type="button" data-copy="npm i -g hindsight-lang">
+              <code>npm i -g hindsight-lang</code><span class="copy-state">Copy</span>
+            </button>
+          </article>
+          <article class="extra reveal">
+            <h3>VS Code</h3>
+            <p>Run on save, call counts, never-ran lines and Open in Studio.</p>
+            <a
+              class="button button-light"
+              href="https://marketplace.visualstudio.com/items?itemName=ajaypranav25.hindsight-vscode"
+              >Get the extension</a
+            >
+          </article>
+          <article class="extra reveal">
+            <h3>AI agents</h3>
+            <p>The debugger as an MCP server, so an agent can stop guessing.</p>
+            <button
+              class="copy"
+              type="button"
+              data-copy='{ "mcpServers": { "hindsight": { "command": "npx", "args": ["-y", "hindsight-lang", "mcp"] } } }'
+            >
+              <code>npx -y hindsight-lang mcp</code><span class="copy-state">Copy config</span>
+            </button>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p class="footer-mark"><img src="favicon.svg" alt="" width="20" height="20" /> Hindsight</p>
+      <nav aria-label="Project">
+        <a href="https://github.com/Ajaypranav25/Hindsight">GitHub</a>
+        <a href="https://github.com/Ajaypranav25/Hindsight/releases">Releases</a>
+        <a href="https://github.com/Ajaypranav25/Hindsight/issues">Report an issue</a>
+        <a href="https://www.npmjs.com/package/hindsight-lang">npm</a>
+      </nav>
+      <p class="footer-note">MIT licensed.</p>
+    </footer>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

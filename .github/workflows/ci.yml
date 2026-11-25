@@ -74,6 +74,25 @@ jobs:
       - run: npm run build
       - run: npm run smoke
 
+  # The download website (website/): type-checked and built with its own dependencies.
+  website:
+    name: Website
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: website
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+      - run: npm ci
+      - run: npm run build
+
   e2e:
     name: End-to-end
     runs-on: ubuntu-latest
