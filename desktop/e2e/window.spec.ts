@@ -533,13 +533,21 @@ test('a page that crashes can be reloaded', async () => {
   const { app } = await start()
   await stubMessageBox(app, 'Reload')
 
-  // Act
-  await app.evaluate(({ BrowserWindow }) =>
-    BrowserWindow.getAllWindows()[0]?.webContents.forcefullyCrashRenderer(),
-  )
+  // Act (recording what the main process sees, so a failure on another system says why)
+  await app.evaluate(({ BrowserWindow }) => {
+    const contents = BrowserWindow.getAllWindows()[0]!.webContents
+    const seen: string[] = ((globalThis as { __gone?: string[] }).__gone = [])
+    contents.on('render-process-gone', (_event, details) => seen.push(JSON.stringify(details)))
+    contents.forcefullyCrashRenderer()
+  })
 
   // Assert: Playwright gives up on a crashed page, so the reloaded one is read from the app.
-  await expect.poll(() => recorded(app, 'message')).toEqual(['Hindsight stopped working'])
+  await expect
+    .poll(async () => ({
+      messages: await recorded(app, 'message'),
+      gone: await app.evaluate(() => (globalThis as { __gone?: string[] }).__gone),
+    }))
+    .toMatchObject({ messages: ['Hindsight stopped working'] })
   await expect
     .poll(() =>
       app.evaluate(({ BrowserWindow }) =>
