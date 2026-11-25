@@ -36,6 +36,7 @@ export function initialState(
   const exampleId = examples.find((example) => example.source === source)?.id ?? null
   return {
     source,
+    programLoads: 0,
     exampleId,
     compile: null,
     recording: null,

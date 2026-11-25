@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { appLink, desktopBridge, MAX_APP_LINK_LENGTH } from '../desktop/bridge'
 import { formatCount } from '../lib/format'
 import { MAX_SHARED_SOURCE_LENGTH, shareFragment } from '../lib/share'
 import { useStudio } from '../state/context'
@@ -21,6 +22,17 @@ const COPIED_MS = 2000
  */
 const COPY_SOURCE = import.meta.env.VITE_SHARE_MODE === 'source'
 
+/**
+ * What "Copy link" copies: inside the desktop app a `hindsight://` link, which opens the program in
+ * the app on any machine that has it; in a browser a link to this page, or the source text.
+ */
+type CopyMode = 'app-link' | 'link' | 'source'
+
+function copyMode(): CopyMode {
+  if (desktopBridge() !== null) return 'app-link'
+  return COPY_SOURCE ? 'source' : 'link'
+}
+
 /** The page address without its fragment. */
 export function pageAddress(location: Pick<Location, 'origin' | 'pathname' | 'href'>): string {
   if (location.origin && location.origin !== 'null') return location.origin + location.pathname
@@ -30,6 +42,23 @@ export function pageAddress(location: Pick<Location, 'origin' | 'pathname' | 'hr
 function linkTo(source: string, time: number | null): string | null {
   const fragment = shareFragment(source, time)
   return fragment === null ? null : pageAddress(window.location) + fragment
+}
+
+/** The text to copy, or null when the program is too long for a link. */
+function textToCopy(mode: CopyMode, source: string, time: number | null): string | null {
+  if (mode === 'source') return source
+  return mode === 'app-link' ? appLink(source, time) : linkTo(source, time)
+}
+
+/**
+ * Why there is no link. App links are shorter because Windows hands them to the app on a command
+ * line, and the app can open the program's file instead.
+ */
+function tooLongText(mode: CopyMode): string {
+  const limit = mode === 'app-link' ? MAX_APP_LINK_LENGTH : MAX_SHARED_SOURCE_LENGTH
+  const text = `This program is too long to fit in a link. Links hold up to ${formatCount(limit)}`
+  if (mode !== 'app-link') return `${text} characters.`
+  return `${text} characters, so save it as a file (File > Save) and share the file instead.`
 }
 
 /**
@@ -51,6 +80,7 @@ function CopyLink() {
   const time = useStudio(momentTime)
   const { open, show, rootRef, triggerRef } = usePopover()
   const [result, setResult] = useState<ShareResult>({ kind: 'none' })
+  const [mode] = useState(copyMode)
 
   useEffect(() => {
     if (result.kind !== 'copied') return
@@ -59,7 +89,7 @@ function CopyLink() {
   }, [result])
 
   const copy = () => {
-    const text = COPY_SOURCE ? source : linkTo(source, time)
+    const text = textToCopy(mode, source, time)
     if (text === null) {
       setResult({ kind: 'too-large' })
       show()
@@ -74,7 +104,7 @@ function CopyLink() {
     clipboard.writeText(text).then(() => setResult({ kind: 'copied' }), fallback)
   }
 
-  const noun = COPY_SOURCE ? 'Program' : 'Link'
+  const noun = mode === 'source' ? 'Program' : 'Link'
   return (
     <div className="ch-anchor" ref={rootRef}>
       <button
@@ -85,7 +115,7 @@ function CopyLink() {
         aria-label={
           result.kind === 'copied'
             ? `${noun} copied`
-            : COPY_SOURCE
+            : mode === 'source'
               ? "Copy this program's source"
               : 'Copy a link to this program'
         }
@@ -99,14 +129,11 @@ function CopyLink() {
         {result.kind === 'copied' ? `${noun} copied to the clipboard` : ''}
       </span>
       {open && result.kind === 'manual' && (
-        <ManualCopy text={result.text} multiline={COPY_SOURCE} />
+        <ManualCopy text={result.text} multiline={mode === 'source'} />
       )}
       {open && result.kind === 'too-large' && (
         <div className="ch-pop ch-share-panel" role="dialog" aria-label="Link not available">
-          <p className="ch-share-text">
-            This program is too long to fit in a link. Links hold up to{' '}
-            {formatCount(MAX_SHARED_SOURCE_LENGTH)} characters.
-          </p>
+          <p className="ch-share-text">{tooLongText(mode)}</p>
         </div>
       )}
     </div>

@@ -1,0 +1,23 @@
+{
+  "//": "Type-checks the whole app (the Electron glue, main and preload included) and its end-to-end tests against Electron's and Node's types. The root tsconfig.json checks only the Electron-free modules, which the root test suite covers.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "useDefineForClassFields": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["src", "e2e", "*.ts"],
+  "exclude": ["src/**/*.test.ts"]
+}

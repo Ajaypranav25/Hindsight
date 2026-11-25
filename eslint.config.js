@@ -12,6 +12,8 @@ export default tseslint.config(
       'playwright-report',
       'test-results',
       'editors/vscode/dist',
+      'desktop/dist',
+      'desktop/release',
     ],
   },
   js.configs.recommended,
@@ -39,8 +41,16 @@ export default tseslint.config(
       'tests/**',
       '*.config.{js,ts}',
       'editors/vscode/scripts/**',
+      'desktop/scripts/**',
+      'desktop/e2e/**',
+      'desktop/*.{cjs,ts}',
     ],
     languageOptions: { globals: globals.node },
     rules: { 'no-console': 'off' },
+  },
+  {
+    // The desktop app's main process and preload script.
+    files: ['desktop/src/**'],
+    languageOptions: { globals: globals.node },
   },
 )

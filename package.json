@@ -1,9 +1,9 @@
 {
   "name": "hindsight-lang",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "A tiny programming language with a time machine built in: run a program, then rewind it, scrub through it, and ask where any value came from.",
   "license": "MIT",
-  "homepage": "https://hindsight-two.vercel.app",
+  "homepage": "https://github.com/Ajaypranav25/Hindsight#readme",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Ajaypranav25/Hindsight.git"
@@ -68,6 +68,9 @@
     "@codemirror/state": "^6.7.6",
     "@codemirror/view": "^6.43.14",
     "@eslint/js": "^10.0.1",
+    "@fontsource/barlow": "^5.3.0",
+    "@fontsource/barlow-condensed": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
     "@lezer/highlight": "^1.2.5",
     "@playwright/test": "^1.64.1",
     "@testing-library/dom": "^10.4.2",

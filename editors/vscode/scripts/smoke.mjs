@@ -99,11 +99,11 @@ assert.ok(dimmed.includes(3), `${dimmed}`)
 assert.match(observed.messages.at(-1)[1], /lines? led to R\d{3}/)
 step('crash slice: dims the unrelated lines')
 
-// Open in Studio passes the moment link as a string, fragment intact.
+// Open in Studio passes the desktop app's moment link as a string, fragment intact.
 await run('hindsight.openInStudio')
 const [url] = observed.opened
 assert.equal(typeof url, 'string')
-const match = /^https:\/\/hindsight-two\.vercel\.app\/#src=([A-Za-z0-9_-]+)&t=(\d+)$/.exec(url)
+const match = /^hindsight:\/\/open\/#src=([A-Za-z0-9_-]+)&t=(\d+)$/.exec(url)
 assert.ok(match, url)
 assert.equal(Buffer.from(match[1], 'base64url').toString('utf8'), PROGRAM)
 step('open in studio: a moment link with the cursor line')

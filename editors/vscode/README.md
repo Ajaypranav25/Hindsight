@@ -16,10 +16,12 @@ shows what the run did:
 - **Hindsight: Lines That Led to the Crash** dims every line outside the backward slice of the
   runtime error, so only the lines that could have caused it stand out.
 - **Hindsight: Run File** prints the output and how the run ended to the Hindsight output channel.
-- **Hindsight: Open in Studio** opens the program in
-  [Hindsight Studio](https://hindsight-two.vercel.app) with the pen on the first step of the
-  cursor's line (programs up to 60,000 characters; for longer ones, save a trace with
-  `hindsight record` and open it in the studio).
+- **Hindsight: Open in Studio** opens the program in the Hindsight desktop app with the pen on the
+  first step of the cursor's line. It needs the app: download it for Windows, macOS or Linux from
+  the [latest release](https://github.com/Ajaypranav25/Hindsight/releases/latest). The link
+  carries the program, so it holds programs whose link fits in 30,000 characters; open longer ones
+  in the app with **File > Open**. To use a studio you run yourself instead (`npm run dev` in a
+  checkout of the repository), set `hindsight.studioUrl` to its address.
 - **Hindsight: Clear Highlights** removes the explanation and the dimming (editing does too).
 
 Runs happen in the extension host in short slices, so the editor stays responsive; a save while a
@@ -27,12 +29,12 @@ run is still recording aborts it and starts over.
 
 ## Settings
 
-| Setting               | Default                            | What it does                                     |
-| --------------------- | ---------------------------------- | ------------------------------------------------ |
-| `hindsight.maxSteps`  | 2,000,000                          | Step budget per run (one step = one instruction) |
-| `hindsight.runOnSave` | `true`                             | Record on open and on save                       |
-| `hindsight.codeLens`  | `true`                             | Show call counts and never-ran lenses            |
-| `hindsight.studioUrl` | `https://hindsight-two.vercel.app` | The studio "Open in Studio" links to             |
+| Setting               | Default            | What it does                                                                                       |
+| --------------------- | ------------------ | -------------------------------------------------------------------------------------------------- |
+| `hindsight.maxSteps`  | 2,000,000          | Step budget per run (one step = one instruction)                                                   |
+| `hindsight.runOnSave` | `true`             | Record on open and on save                                                                         |
+| `hindsight.codeLens`  | `true`             | Show call counts and never-ran lenses                                                              |
+| `hindsight.studioUrl` | `hindsight://open` | Where "Open in Studio" opens programs: the desktop app, or the http(s) address of a studio you run |
 
 ## Install
 

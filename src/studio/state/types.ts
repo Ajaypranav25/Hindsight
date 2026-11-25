@@ -66,6 +66,11 @@ export interface OriginMark {
 
 export interface StudioState {
   readonly source: string
+  /**
+   * Counts the whole programs put in the editor (an example, a link, a file, a trace, Restore,
+   * New); edits never change it, so it tells a replaced program from an edited one.
+   */
+  readonly programLoads: number
   /** The gallery example the source came from, if unchanged since loading. */
   readonly exampleId: string | null
   /** Latest compile of `source`. */
@@ -171,6 +176,8 @@ export interface StudioActions {
   updateSettings(patch: Partial<Settings>): void
   dismissHint(): void
   clearNotice(): void
+  /** Shows a notice in the status line for the usual time (the desktop app's save errors). */
+  showNotice(notice: Notice): void
   /**
    * Swaps `previousSource` back into the editor and records it; the program it replaces is kept
    * in turn when it is the user's own. Does nothing when no program was kept.
@@ -181,6 +188,18 @@ export interface StudioActions {
    * link's `time` places the pen once it has been recorded.
    */
   openSharedSource(source: string, time?: number | null): void
+  /**
+   * Opens a program file the desktop app read (`name` is its file name), keeping the program it
+   * replaces as a link does; it runs only when auto-run is on.
+   */
+  openProgramFile(source: string, name: string): void
+  /** Starts an empty program (the desktop app's File > New), keeping the program it replaces. */
+  newProgram(): void
+  /**
+   * Saves the program now if a save is still waiting (edits are saved shortly after typing stops),
+   * so the last keystrokes survive a page that is going away.
+   */
+  flushPersist(): void
   /**
    * Opens a `.sighttrace` file: its program replaces the editor's (keeping the user's own), is
    * recorded again with its what-if edits, and the pen lands on the saved step.

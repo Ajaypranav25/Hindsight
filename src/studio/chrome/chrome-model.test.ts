@@ -12,6 +12,7 @@ import { createThemeSwitch } from './theme'
 function state(patch: Partial<StudioState> = {}): StudioState {
   return {
     source: 'print(1)\n',
+    programLoads: 0,
     exampleId: null,
     compile: null,
     recording: null,

@@ -7,11 +7,13 @@ export const PERF_TESTS = '**/*.perf.test.{ts,tsx}'
 export default defineConfig({
   plugins: [react()],
   test: {
-    // editors/vscode/src: the extension's vscode-free modules (its glue/ needs VS Code to run).
+    // editors/vscode/src and desktop/src: the extension's and the desktop app's modules that need
+    // neither VS Code nor Electron (their glue only runs inside those).
     include: [
       'src/**/*.test.{ts,tsx}',
       'tests/**/*.test.{ts,tsx}',
       'editors/vscode/src/**/*.test.ts',
+      'desktop/src/**/*.test.ts',
     ],
     exclude: [...configDefaults.exclude, PERF_TESTS],
     environment: 'node',
@@ -19,10 +21,14 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       // The extension's vscode-free modules count; its glue/ runs only inside VS Code.
-      include: ['src/**/*.{ts,tsx}', 'editors/vscode/src/*.ts'],
+      include: ['src/**/*.{ts,tsx}', 'editors/vscode/src/*.ts', 'desktop/src/*.ts'],
       exclude: [
         'src/**/*.test.{ts,tsx}',
         'editors/vscode/src/*.test.ts',
+        'desktop/src/*.test.ts',
+        // The desktop app's entry points: Electron wiring, exercised by its end-to-end tests.
+        'desktop/src/main.ts',
+        'desktop/src/preload.ts',
         'src/studio/main.tsx',
         'src/core/testing/**',
         // Worker entry points: they only wire the tested handler to a real worker.

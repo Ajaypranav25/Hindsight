@@ -1,5 +1,7 @@
 /** The real studio store, wired to the core. Only main.tsx imports this module. */
 import { compareRecordings, compile, mapMoment, recordAsync } from '../../core/index'
+import { desktopBridge } from '../desktop/bridge'
+import { connectDesktop } from '../desktop/connect'
 import { EXAMPLES } from '../examples'
 import { takeSharedMoment, watchSharedLinks, type ShareHost } from '../lib/share'
 import { browserStorage } from '../lib/storage'
@@ -19,3 +21,13 @@ export const studioStore = createStudioStore(
 // A share link pasted into the address bar of an open studio opens like one followed from outside:
 // the program it replaces is kept first.
 watchSharedLinks(host, (source, time) => studioStore.getState().openSharedSource(source, time))
+
+// Edits are saved a moment after typing stops; a page that is closing or reloading saves at once,
+// so the last keystrokes are not lost (the desktop app's windows close without asking when the
+// program belongs to no file).
+globalThis.addEventListener?.('pagehide', () => studioStore.getState().flushPersist())
+
+// Inside the desktop app, the app's files, links and menu commands reach the store; in a browser
+// there is no bridge and nothing changes.
+const bridge = desktopBridge()
+if (bridge !== null) connectDesktop(studioStore, bridge)
