@@ -22,7 +22,9 @@ call stack, every variable, every list and record — in under a millisecond.
 
 ## Try it
 
-**The desktop app** for Windows, macOS and Linux: download it from the
+**The desktop app** for Windows, macOS and Linux: download it from
+[ajaypranav25.github.io/Hindsight](https://ajaypranav25.github.io/Hindsight/), which picks the
+right file for your system, or from the
 [latest release](https://github.com/Ajaypranav25/Hindsight/releases/latest).
 
 - Windows: `Hindsight-Setup-x64.exe` (installs for your user only, no administrator needed)
