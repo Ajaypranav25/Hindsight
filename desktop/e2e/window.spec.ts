@@ -547,7 +547,7 @@ test('a page that crashes can be reloaded', async () => {
       messages: await recorded(app, 'message'),
       gone: await app.evaluate(() => (globalThis as { __gone?: string[] }).__gone),
     }))
-    .toMatchObject({ messages: ['Hindsight stopped working'] })
+    .toEqual({ messages: ['Hindsight stopped working'], gone: [expect.any(String)] })
   await expect
     .poll(() =>
       app.evaluate(({ BrowserWindow }) =>
