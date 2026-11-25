@@ -18,7 +18,14 @@ const frames = process.argv[2]
 
 /** The demo was captured at one frame per 230 ms step. */
 const FRAME_RATE = String(1000 / 230)
-const SCREENSHOTS = ['heap', 'bug-finder']
+/**
+ * The README's screenshots (2880×1800), cropped to the part a feature card talks about, so they
+ * stay legible at card size: crop is ffmpeg's w:h:x:y in the original's pixels.
+ */
+const SCREENSHOTS = [
+  { name: 'heap', crop: '1260:400:1610:762' },
+  { name: 'bug-finder', crop: '1290:440:1590:930' },
+]
 
 function ffmpeg(args) {
   const result = spawnSync('ffmpeg', ['-y', '-loglevel', 'error', ...args], { stdio: 'inherit' })
@@ -68,14 +75,14 @@ ffmpeg([
   '82',
   join(out, 'demo-poster.webp'),
 ])
-for (const name of SCREENSHOTS) {
+for (const { name, crop } of SCREENSHOTS) {
   ffmpeg([
     '-i',
     join(images, `${name}.png`),
     '-vf',
-    'scale=1600:-1',
+    `crop=${crop},scale=1200:-1`,
     '-q:v',
-    '80',
+    '86',
     join(out, `${name}.webp`),
   ])
 }

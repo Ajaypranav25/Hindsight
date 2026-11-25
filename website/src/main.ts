@@ -93,7 +93,7 @@ function updateReleaseText(release: ReleaseInfo | null): void {
   const eyebrow = document.querySelector('[data-release-eyebrow]')
   if (!release) return
   const date = formatDate(release.date)
-  if (line) line.textContent = `${release.version} · Free and open source`
+  if (line) line.textContent = `${release.version} · Free and open source · MIT licensed`
   if (eyebrow) eyebrow.textContent = date ? `${release.version} · ${date}` : release.version
 }
 
