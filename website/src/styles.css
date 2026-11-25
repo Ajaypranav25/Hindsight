@@ -257,34 +257,6 @@ code {
   animation-delay: 0.24s;
 }
 
-.hero-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 28px;
-  padding: 7px 16px 7px 12px;
-  border-radius: 999px;
-  border: 1px solid rgb(23 32 43 / 0.08);
-  background: rgb(255 255 255 / 0.6);
-  color: var(--ink-soft);
-  font-size: 14px;
-  font-weight: 500;
-  text-decoration: none;
-  transition: border-color 0.2s;
-}
-
-.hero-chip:hover {
-  border-color: rgb(23 32 43 / 0.2);
-}
-
-.hero-chip-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--pen);
-  box-shadow: 0 0 0 4px rgb(207 52 39 / 0.14);
-}
-
 .hero-title {
   margin: 0;
   font-size: clamp(40px, 4.5vw, 74px);
@@ -1013,10 +985,6 @@ code {
     width: 100%;
     justify-content: flex-start;
     padding: clamp(280px, 40svh, 380px) var(--gutter) 48px;
-  }
-
-  .hero-chip {
-    margin-bottom: 18px;
   }
 
   .hero-lead {

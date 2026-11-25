@@ -91,12 +91,10 @@ function updatePrimary(yours: System | null, intel: boolean): void {
 function updateReleaseText(release: ReleaseInfo | null): void {
   const line = document.querySelector('[data-release-line]')
   const eyebrow = document.querySelector('[data-release-eyebrow]')
-  const chip = document.querySelector('[data-release-chip]')
   if (!release) return
   const date = formatDate(release.date)
   if (line) line.textContent = `${release.version} · Free and open source · MIT licensed`
   if (eyebrow) eyebrow.textContent = date ? `${release.version} · ${date}` : release.version
-  if (chip) chip.textContent = `${release.version} is out, for Windows, macOS and Linux`
 }
 
 function setUpCopyButtons(): void {
