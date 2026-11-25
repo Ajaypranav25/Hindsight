@@ -3,7 +3,7 @@
   "version": "0.5.0",
   "description": "A tiny programming language with a time machine built in: run a program, then rewind it, scrub through it, and ask where any value came from.",
   "license": "MIT",
-  "homepage": "https://github.com/Ajaypranav25/Hindsight#readme",
+  "homepage": "https://ajaypranav25.github.io/Hindsight/",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Ajaypranav25/Hindsight.git"
